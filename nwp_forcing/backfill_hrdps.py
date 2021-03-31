@@ -1,10 +1,11 @@
-import re
 import glob
-import pandas as pd
 import os
+import pandas as pd
+import re
 import urllib3
-from tqdm import tqdm
 from datetime import datetime
+from tqdm import tqdm
+
 
 def find_hpfx_earliest_date():
     http = urllib3.PoolManager()

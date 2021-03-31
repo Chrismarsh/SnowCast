@@ -1,14 +1,15 @@
-import xarray as xr
-import os
+import datetime
 import imp
+import json
+import numpy as np
+import os
+import pandas as pd
 import send_mail
 import sys
-import numpy as np
-import pandas as pd
-import datetime
-import json
-import time
 import threading
+import time
+import xarray as xr
+
 # Hack to force datetimes to display in GMT/UTC (numpy 1.11.1 has fixed this but other dependent modules (pynio) can't handel numpy 1.11.1)
 os.environ['TZ'] = 'GMT'
 time.tzset()

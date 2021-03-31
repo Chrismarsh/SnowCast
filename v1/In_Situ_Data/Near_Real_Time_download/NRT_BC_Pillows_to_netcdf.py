@@ -1,10 +1,11 @@
-import pandas as pd
-import xarray as xr
-import sys
-import os
 import imp
-import wget
+import os
+import pandas as pd
 import seaborn as sns
+import sys
+import wget
+import xarray as xr
+
 sns.set_context("talk",font_scale=1.5)
 sns.set_style('whitegrid')
 # Load in config file

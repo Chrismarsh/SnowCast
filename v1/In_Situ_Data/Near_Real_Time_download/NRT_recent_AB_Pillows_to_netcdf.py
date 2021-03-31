@@ -3,15 +3,16 @@
 # urls for files look like this:
 # http://environment.alberta.ca/apps/Basins/data/text/snow/05CA805.csv
 
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import xarray as xr
-import sys
-import os
 import imp
-import wget
+import matplotlib.pyplot as plt
+import numpy as np
+import os
+import pandas as pd
 import seaborn as sns
+import sys
+import wget
+import xarray as xr
+
 sns.set_context("talk",font_scale=1.5)
 sns.set_style('whitegrid')
 # Load in config file

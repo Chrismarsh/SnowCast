@@ -2,23 +2,25 @@
 Apply statistic model to adjust numerical weather output based on gridded observed data
 
 '''
-import xarray as xr
-import pandas as pd
-import numpy as np
-import os
-import sys
+import PP
+import dask.multiprocessing
 import datetime
-from scipy.interpolate import griddata
 import imp
-import seaborn as sns
+import json
 import matplotlib
 import matplotlib.pyplot as plt
-import idw
-import json
-import dask.multiprocessing
-from dask import compute, delayed
-import PP
+import numpy as np
+import os
+import pandas as pd
+import seaborn as sns
+import sys
 import time
+import xarray as xr
+from dask import compute, delayed
+from scipy.interpolate import griddata
+
+import idw
+
 start_time = time.time()
 # Hack to force datetimes to display in GMT/UTC (numpy 1.11.1 has fixed this but other dependent modules (pynio) can't handel numpy 1.11.1)
 os.environ['TZ'] = 'GMT'

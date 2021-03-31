@@ -1,18 +1,19 @@
-import xarray as xr
-import os
-import glob
-import imp
-import sys
-import numpy as np
-import pandas as pd
-import datetime
-import json
-import time
-import utm
 ###
 # Experimental cache option to speed up dask calls
-import cachey 
+import cachey
+import datetime
+import glob
+import imp
+import json
+import numpy as np
+import os
+import pandas as pd
+import sys
+import time
+import utm
+import xarray as xr
 from dask.cache import Cache
+
 cache = Cache(10e9)
 cache.register()
 ###

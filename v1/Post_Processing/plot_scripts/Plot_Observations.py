@@ -1,19 +1,20 @@
 '''
 Plot point and gridded observations
 '''
-import xarray as xr
-import pandas as pd
-import numpy as np
 import cartopy.crs as ccrs
-import os
-import sys
 import datetime
-from scipy.interpolate import griddata
 import imp
-import seaborn as sns
 import matplotlib
 import matplotlib.pyplot as plt
+import numpy as np
+import os
+import pandas as pd
+import seaborn as sns
+import sys
 import time
+import xarray as xr
+from scipy.interpolate import griddata
+
 start_time = time.time()
 # Hack to force datetimes to display in GMT/UTC (numpy 1.11.1 has fixed this but other dependent modules (pynio) can't handel numpy 1.11.1)
 os.environ['TZ'] = 'GMT'

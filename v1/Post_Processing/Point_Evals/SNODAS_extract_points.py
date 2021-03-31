@@ -1,10 +1,10 @@
-import xarray as xr
+import glob
+import imp
 import numpy as np
 import os
 import sys
-import imp
-import glob
 import time
+import xarray as xr
 
 ''' Extracts SNODAS modeled values at observational points. Exports to netcdf file'''
 

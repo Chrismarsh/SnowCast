@@ -1,16 +1,17 @@
 # Evaluate CHM at Snow coarse sites
 
-import matplotlib
-# matplotlib.use('Agg')
-from matplotlib import markers
-import numpy as np
-import matplotlib.pyplot as plt
-import xarray as xr
-import sys
 import imp
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
 import os
 # Plot settings
 import seaborn as sns
+import sys
+import xarray as xr
+# matplotlib.use('Agg')
+from matplotlib import markers
+
 sns.set_style('whitegrid')
 # sns.set_style('ticks')
 sns.set_context("talk", font_scale=1.5, rc={"lines.linewidth": 2.5})

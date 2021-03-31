@@ -1,7 +1,8 @@
-import os
-import glob
-import xarray as xr
 import datetime
+import glob
+import os
+import xarray as xr
+
 # Also requires rasterio
 
 # Dir to vtu files

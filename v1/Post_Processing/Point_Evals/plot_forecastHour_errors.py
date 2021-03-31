@@ -1,16 +1,16 @@
-import matplotlib as mpl
-# mpl.use('Agg')
-import numpy as np
-import matplotlib.pyplot as plt
-import xarray as xr
-import sys
-import imp
-import os
 import cartopy.crs as ccrs
 import cartopy.io.shapereader as shpreader
+import imp
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+# mpl.use('Agg')
+import numpy as np
+import os
 import seaborn as sns
-import CHM_functions as chmF
+import sys
+import xarray as xr
 
+import CHM_functions as chmF
 
 plt.rcParams.update({'figure.max_open_warning': 0})
 # General plotting settings

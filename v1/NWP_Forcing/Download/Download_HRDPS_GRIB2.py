@@ -1,13 +1,13 @@
-import os
-import numpy as np
-import wget
-import sys
 import imp
+import numpy as np
+import os
+import send_mail
+import socket
+import sys
 import time
 import urllib
-import send_mail
 import urllib2
-import socket
+import wget
 
 # Load in config file
 #######  load user configurable paramters here    #######

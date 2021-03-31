@@ -1,14 +1,14 @@
-from nwp_forcing import main as nwp_main
-from run_chm import main as chm_main
-from plot import main as plot_main
-from notifier import slack
-from webupload import upload
-
+import dask
+import importlib
 import os
 import sys
-import importlib
 from datetime import datetime
-import dask
+
+from notifier import slack
+from nwp_forcing import main as nwp_main
+from plot import main as plot_main
+from run_chm import main as chm_main
+from webupload import upload
 
 if __name__ == '__main__':
     cluster = dask.distributed.LocalCluster(threads_per_worker=1, n_workers=2)

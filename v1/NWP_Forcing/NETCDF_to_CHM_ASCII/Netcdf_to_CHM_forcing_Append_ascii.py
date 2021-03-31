@@ -1,15 +1,16 @@
-import xarray as xr
-import os
+import datetime
+import distutils
 import glob
 import imp
-import sys
-import numpy as np
-import pandas as pd
-import datetime
 import json
+import numpy as np
+import os
+import pandas as pd
+import sys
 import time
-import distutils
+import xarray as xr
 from distutils import dir_util
+
 start_time = time.time()
 # Hack to force datetimes to display in GMT/UTC (numpy 1.11.1 has fixed this but other dependent modules (pynio) can't handel numpy 1.11.1)
 os.environ['TZ'] = 'GMT'

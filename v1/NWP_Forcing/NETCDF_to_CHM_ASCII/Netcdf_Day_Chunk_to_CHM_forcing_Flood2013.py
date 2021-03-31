@@ -1,14 +1,15 @@
-import xarray as xr
-import os
+import datetime
 import glob
 import imp
-import sys
-import numpy as np
-import pandas as pd
-import datetime
 import json
+import numpy as np
+import os
+import pandas as pd
+import sys
 import time
 import utm
+import xarray as xr
+
 ###
 # Experimental cache option to speed up dask calls
 # import cachey

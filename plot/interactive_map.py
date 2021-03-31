@@ -1,19 +1,19 @@
-import xarray as xr
-import numpy as np
-import pandas as pd
-import plot.plot_settings as plot_settings
-import matplotlib as mpl
-import subprocess
-import os
-import xarray as xr
 import branca
-import folium
-from folium.utilities import parse_options
 import branca.colormap as cm
+import folium
+import matplotlib as mpl
+import numpy as np
+import os
+import pandas as pd
+import subprocess
+import xarray as xr
+import xarray as xr
 from branca.element import MacroElement
-from jinja2 import Template
 from collections import OrderedDict
+from folium.utilities import parse_options
+from jinja2 import Template
 
+import plot.plot_settings as plot_settings
 
 
 class GroupedLayerControl(MacroElement):

@@ -1,12 +1,13 @@
-import xarray as xr
-import pandas as pd
+import glob
+import imp
 import numpy as np
 import os
+import pandas as pd
 import sys
-import imp
-import glob
-import CHM_functions as chmF
 import time
+import xarray as xr
+
+import CHM_functions as chmF
 
 ''' Evaluate GEM forecasts of meteorology compared to point observations.
     Calculate variable X error versus lead time (1-48, or 1-(6day) ). '''

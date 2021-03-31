@@ -1,17 +1,18 @@
 # Convert ascii files (one var, one time step) to netcdf files
 
-import xarray as xr
-import os
-import imp
-import sys
-import numpy as np
-import pandas as pd
 import datetime
-import json
-import time
-import threading
 import glob
+import imp
+import json
+import numpy as np
+import os
+import pandas as pd
+import sys
+import threading
+import time
+import xarray as xr
 from itertools import compress
+
 # Hack to force datetimes to display in GMT/UTC (numpy 1.11.1 has fixed this but other dependent modules (pynio) can't handel numpy 1.11.1)
 os.environ['TZ'] = 'GMT'
 time.tzset()

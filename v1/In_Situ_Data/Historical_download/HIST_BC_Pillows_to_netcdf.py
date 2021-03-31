@@ -1,10 +1,10 @@
-import numpy as np
-import pandas as pd
-import xarray as xr
-import sys
-import os
 import imp
+import numpy as np
+import os
+import pandas as pd
+import sys
 import wget
+import xarray as xr
 
 # Load in config file
 #######  load user configurable paramters here    #######

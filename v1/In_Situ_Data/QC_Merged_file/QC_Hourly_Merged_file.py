@@ -1,10 +1,10 @@
-import numpy as np
-import xarray as xr
-import sys
-import os
 import imp
 import matplotlib
 import matplotlib.pyplot as plt
+import numpy as np
+import os
+import sys
+import xarray as xr
 
 #TODO: Add constant check for some variables
 

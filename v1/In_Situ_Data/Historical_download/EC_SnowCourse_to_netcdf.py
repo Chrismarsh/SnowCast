@@ -1,10 +1,10 @@
-import pandas as pd
-from datetime import datetime
-import xarray as xr
-import os
-import sys
-import imp
 import glob
+import imp
+import os
+import pandas as pd
+import sys
+import xarray as xr
+from datetime import datetime
 
 # Load in config file
 #######  load user configurable paramters here    #######

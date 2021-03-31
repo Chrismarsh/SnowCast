@@ -1,15 +1,16 @@
-import numpy as np
-import matplotlib as mpl
-import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import cartopy.io.shapereader as shpreader
+import imp
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
-from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
-import xarray as xr
+import numpy as np
+import os
 import seaborn as sns
 import sys
-import os
-import imp
+import xarray as xr
+from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
+
 import CHM_functions as chmF
 
 # Load in config file

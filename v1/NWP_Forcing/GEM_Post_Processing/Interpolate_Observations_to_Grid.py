@@ -1,20 +1,21 @@
 '''
 Take netcdf file of observations of variable X, interpolate to a grid taken from a NWP model
 '''
-import xarray as xr
-import pandas as pd
-import numpy as np
-import os
-import sys
+import PP
 import datetime
-from scipy.interpolate import griddata
 import imp
-import seaborn as sns
 import matplotlib
 import matplotlib.pyplot as plt
-import PP
-import idw
+import numpy as np
 import numpy.ma as ma
+import os
+import pandas as pd
+import seaborn as sns
+import sys
+import xarray as xr
+from scipy.interpolate import griddata
+
+import idw
 
 # General plotting settings
 sns.set_style('whitegrid')

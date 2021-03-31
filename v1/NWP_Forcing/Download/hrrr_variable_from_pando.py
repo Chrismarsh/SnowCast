@@ -9,12 +9,12 @@ Download a single variable from the HRRR archive using cURL.
 """
 
 import commands
+import os
 import re
+import ssl
+import urllib2
 from StringIO import StringIO
 from datetime import date, timedelta
-import os
-import urllib2
-import ssl
 
 
 def download_HRRR_variable_from_pando(DATE, variable,

@@ -1,9 +1,10 @@
-import sys
-import os
-import shutil 
-import numpy as np
-import pandas as pd
 import matplotlib as mpl
+import numpy as np
+import os
+import pandas as pd
+import shutil
+import sys
+
 mpl.use('Agg')
 import matplotlib.pyplot as plt
 import glob

@@ -1,13 +1,15 @@
-import os
+import dask.multiprocessing
 import glob
 import imp
+import matplotlib.pyplot as plt
+import os
 import sys
 import time
 import utm
-import matplotlib.pyplot as plt
-import dask.multiprocessing
 from dask import compute, delayed
+
 import chm_forcing
+
 ###
 start_time = time.time()
 # Hack to force datetimes to display in GMT/UTC (numpy 1.11.1 has fixed this but other dependent modules (pynio) can't handel numpy 1.11.1)

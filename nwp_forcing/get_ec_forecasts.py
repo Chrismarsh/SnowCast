@@ -20,13 +20,13 @@
 
 '''
 
-import os
-import time
-import optparse as op
 import datetime as dt
-import urllib3
-import threading
+import optparse as op
+import os
 import socket
+import threading
+import time
+import urllib3
 
 global NumFilesDownloaded
 global FilesFailed

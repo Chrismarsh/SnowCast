@@ -1,7 +1,8 @@
-import os
-import numpy as np
-import pandas as pd
 import matplotlib
+import numpy as np
+import os
+import pandas as pd
+
 matplotlib.use('Agg') # Generate images without having a window appear
 import matplotlib.pyplot as plt
 import glob

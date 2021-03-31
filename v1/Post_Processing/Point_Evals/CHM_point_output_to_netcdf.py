@@ -4,14 +4,14 @@
 # 1) that output file name syntax is : XXX_out.txt where XXX is the three letter station/point code
 # 2) Time zone is in UTC
 
+import datetime
+import glob
+import imp
+import os
+import pandas as pd
+import sys
 # Saves to netcdf file in \points\ dir
 import xarray as xr
-import glob
-import os
-import sys
-import imp
-import pandas as pd
-import datetime
 
 #EXP_names = ['HRDPS_Historical','forecast_CRHO_spinup','GDPS_Current','HRDPS_Current_Snowpack']
 

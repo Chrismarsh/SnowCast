@@ -1,11 +1,12 @@
-import matplotlib
-import numpy as np
-import matplotlib.pyplot as plt
-import xarray as xr
-import sys
 import imp
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
 import os
 import seaborn as sns
+import sys
+import xarray as xr
+
 plt.rcParams.update({'figure.max_open_warning': 0})
 
 
