@@ -1,0 +1,137 @@
+import xarray as xr
+import os
+import glob
+import re
+import numpy as np
+import pandas as pd
+
+
+def preprocess(x, keep_forecast=False):
+    if len(x.datetime) < 48:
+        raise Exception(f'Expected a nc with 48 timesteps. nc start = {x.datetime[0].values}')
+
+    nc_start_hour = pd.to_datetime(x.datetime.values[0], format='%Y-%m-%dT%H:%M:%S').hour
+    if nc_start_hour > 1:
+        raise Exception(f'Start hour is later than 1am and will break the indexing. Double check this is what you want. nc start = {x.datetime[0].values}')
+
+    # standard mode, we aren't the last item, so throw away the +24h forecast
+    start_idx = 1
+    stop_idx = 25
+
+    if keep_forecast:
+        start_idx = 25
+        stop_idx = 48
+
+    # if we start at 1am, we need to shift the index back by one
+    if nc_start_hour == 1:
+        start_idx -= 1
+        stop_idx -= 1
+
+        if keep_forecast:
+            start_idx -= 1
+            stop_idx -= 1
+
+    x = x.isel(datetime=np.arange(start_idx, stop_idx))
+
+    return x
+
+
+def hrdps_nc_to_chm(settings):
+    # Get all file names
+    all_files = glob.glob(os.path.join(settings['nc_ar_dir'], '*.nc'))
+    nc_files = {}
+    date = []
+    fname = []
+    for f in all_files:
+        p = re.compile('([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})')
+        m = p.search(f)
+
+        d = pd.to_datetime(m.group(1), format='%Y-%m-%dT%H:%M:%S')
+        date.append(d)
+        fname.append(f)
+
+    df = pd.DataFrame({'date': date, 'file': fname})
+    df = df.sort_values(by=['date'])
+    df = df.reset_index()
+
+    start = df.date[0].strftime('%Y-%m-%d %H:%M')
+    end = df.date[len(df.date) - 1].strftime('%Y-%m-%d %H:%M')  # :-1 somehow returns the wrong item
+    diff = pd.date_range(start=start,
+                         end=end,
+                         freq='1d').difference(df.date)
+    if len(diff) > 0:
+        missing = ','.join([str(d) for d in diff.to_list()])
+        raise Exception(f'Missing the following dates: {missing}')
+
+    # this is everything not including +24hr forecase
+    ar_nc_path = os.path.join(settings['nc_chm_dir'], f'HRDPS_West_current.nc')
+    forecast_nc_path = os.path.join(settings['nc_chm_dir'], f'HRDPS_West_forecast.nc')
+
+    update_nc = False  # are we just going to update/append to an existing nc or regen the whole thing?
+    if os.path.exists(ar_nc_path) and not settings['force_nc_archive']:
+        update_nc = True
+        print('Updating existing nc archive...')
+        existing_ar = xr.open_dataset(ar_nc_path,
+                                      engine='netcdf4')
+
+        # get time coverage of existing
+        end = existing_ar.datetime[len(existing_ar.datetime) - 1].values
+
+        # only keep the input nc to append
+        df = df[df.date > end]
+
+        existing_ar.close()
+        if len(df) == 0:
+            print(f"Archive has end date {end}, which matches most recent .nc chunks. No update needed")
+            return True
+
+    ds = xr.open_mfdataset(df.file.tolist(),
+                           concat_dim='datetime',
+                           engine='netcdf4',
+                           parallel=True,
+                           lock=False,
+                           preprocess=lambda x: preprocess(x))
+    # ds = ds.rename_dims({'valid_time': 'datetime'})
+
+    forecast = xr.open_mfdataset(df.file.tolist()[-1],
+                                 concat_dim='datetime',
+                                 engine='netcdf4',
+                                 parallel=True,
+                                 lock=False,
+                                 preprocess=lambda x: preprocess(x, keep_forecast=True))
+    # forecast = forecast.rename_dims({'valid_time': 'datetime'})
+
+    # write out the archive
+    write_mode = 'w'
+    if update_nc:
+        existing_ar = xr.open_mfdataset([ar_nc_path],
+                                        lock=False,
+                                        engine='netcdf4')
+        # update our archive of non-forecasts
+        ds = xr.concat([existing_ar, ds],
+                       dim="datetime")
+
+        ds.to_netcdf(ar_nc_path + '.tmp',
+                     engine='netcdf4'
+                     )
+        os.remove(ar_nc_path)
+        os.rename(ar_nc_path + '.tmp', ar_nc_path)
+    else:
+        ds.to_netcdf(ar_nc_path,
+                     mode='w',
+                     engine='netcdf4'
+                     )
+
+    ds = xr.concat([ds, forecast],
+                   dim="datetime")
+
+    try:
+        os.remove(forecast_nc_path)
+    except OSError as e:
+        pass
+
+    ds.to_netcdf(forecast_nc_path,
+                 engine='netcdf4'
+                 )
+
+    return True

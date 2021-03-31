@@ -1,0 +1,14 @@
+{
+    "FRG": {
+        "elevation": 2327.0,
+        "file": "FRG.txt",
+        "filter": {
+            "scale_wind_speed": {
+                "Z_F": "5.73",
+                "variable": "u"
+            }
+        },
+        "latitude": 50.836420000000004,
+        "longitude": -115.22048999999998
+    }
+}

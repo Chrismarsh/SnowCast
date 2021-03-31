@@ -1,0 +1,17 @@
+{
+  "1": {
+    "canopyType":"1", // Clearing
+    "LAI": "0",
+    "CanopyHeight": "0"
+  },
+  "2": {
+    "canopyType":"0", // Forest Gap
+    "LAI": "3",
+    "CanopyHeight": "10"
+  },
+  "0": {
+    "canopyType":"3", // Water body
+    "is_water":true,
+    "LAI": "0"
+  }
+}

@@ -1,0 +1,185 @@
+{
+
+   // Section for generic model options
+  "option":
+  {
+    // For point model to work, there must be an input and output station of the appropriate names. All other points will be ignored.
+//    "point_mode":
+//    {
+//      "output":"UpperClearing",
+//      "forcing":"UpperClearing"
+//    },
+
+    //"notification_script":"./finished.sh",
+   // "station_search_radius":0.1,//0.22, // decimal degrees
+    "station_N_nearest":4,
+    "interpolant":"idw",
+    "per_triangle_timeseries":"false",
+    "ui":false,
+    "debug_level":"debug",
+
+    "prj_name":"Kananaskis",
+
+    "startdate":"20170901T060000",
+    "enddate":"20180830T000000"
+  },
+  "modules": //important these are [ ]
+  [
+    //met interp
+    "solar",
+    "WindNinja",
+//    "Marsh_shading_iswr",
+    "iswr_from_nwp",
+    //"lw_no_lapse",
+    "Longwave_from_obs",
+    //"Burridge_iswr",
+    "fast_shadow",
+    "iswr",
+    // "Liston_monthly_llra_ta",
+    "kunkel_rh",
+   // "Kunkel_monthlyTd_rh",
+//     "Thornton_p",
+    "p_no_lapse",
+    // "Dist_tlapse",
+     "t_monthly_lapse",
+     "scale_wind_vert",
+//    "point_mode",
+
+    //met process
+    //"Walcek_cloud",
+    // "Sicart_ilwr",
+    "Harder_precip_phase",
+//     "threshold_p_phase",
+
+    //snow processes
+    "Simple_Canopy",
+    "snobal",
+    //"snowpack",
+    "Richard_albedo",
+    "fetchr"
+  ],
+
+  // In case of a cycle depencency, remove dependencies between two modules. 
+  // If module A depends on B (A->B), then to remove the depency specify it as
+  // "A":"B" 
+  // will remove the dependency on B from A.
+  "remove_depency":
+  {
+    // Running snobal
+    "Simple_Canopy":"snobal",
+    "Richard_albedo":"snobal",
+    "scale_wind_vert":"snobal",
+    // Running snowpack
+    "Simple_Canopy":"snowpack",
+    "Richard_albedo":"snowpack",
+    "scale_wind_vert":"snowpack",
+    // Running snow_slide 
+    "snow_slide":"snobal",
+    // Running PBSM3D 
+    "PBSM3D":"snobal",
+    // Running Wind Ninja
+    "WindNinja":"snobal"
+  },
+
+  "config":
+  {
+    "Richard_albedo":
+    {
+      "min_swe_refresh":10,
+      "init_albedo_snow":0.8
+    },
+    "snobal":
+    { 
+     "param_snow_compaction":1
+    },    
+    "Thornton_p":
+    {
+    "apply_cosine_correction":true
+    },
+    "p_no_lapse":
+    {
+      "apply_cosine_correction":true
+    },
+     "snow_slide":
+    { 
+     "use_vertical_snow":true
+    },   
+    "PBSM3D":
+    {
+      "nLayer": 10,
+      "smooth_coeff": 6500,
+      "rouault_diffusion_coef":  false,
+      "min_sd_trans": 0.1,
+      "enable_veg": true,
+      "snow_diffusion_const": 0.3,
+      "settling_velocity":0.5,   
+      "do_fixed_settling": true,   
+      "do_sublimation": true,
+      "use_tanh_fetch": true,
+      "use_R94_lambda": false,
+      "use_PomLi_probability":false, 
+      "use_subgrid_topo": false,
+      "use_subgrid_topo_V2": false,
+      "z0_ustar_coupling": false,
+      "debug_output":true
+    },
+    "fetchr":
+    {
+      "incl_veg": false,
+      "I": 0.06
+    },
+    "WindNinja":
+    {
+      "Max_spdup":3.5,
+      "N_windfield":12, 
+      "ninja_recirc":false,
+      "compute_Sx":false,
+      "L_avg":2500     
+    },
+    "iswr":
+    {   
+      "already_cosine_corrected":true
+    }	 
+  },
+  "meshes":
+  {
+    "mesh":"srtm_snowcast_mesh.mesh",
+    "parameters":
+    {
+      "file":"srtm_snowcast_mesh.param"
+    }
+  },
+  "parameter_mapping": {
+    "landcover":"USGS_treeCover.json"
+  }, 
+ 
+  "output":
+  {
+    "output_dir":"NoBS_NoAval_NoRecirc_WN2500_12",    
+    "file":"SnowCast_stations.json", 
+    "mesh":
+     {
+       "base_name":"SC",
+       "variables":["swe","snowdepthavg","snowdepthavg_vert","U_2m_above_srf","sum_snowpack_subl"],
+       "frequency":24,
+       "write_parameters":false
+     }
+  },
+  "forcing":
+  {
+        "UTC_offset":0,
+        "use_netcdf":true,
+        "file":"GEM-CHM_2p5_snowcast_2017090106_2018083005.nc",
+        "filter": {
+            "scale_wind_speed": {
+                "Z_F": 40,
+                "variable": "u",
+		"ignore_canopy": "true"
+       },
+            "debias_lw": {
+                "factor": 20.0,
+                "variable": "Qli"
+            }             
+    }
+  }
+}
