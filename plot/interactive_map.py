@@ -15,6 +15,67 @@ from jinja2 import Template
 
 import plot.plot_settings as plot_settings
 
+class LinearColormap(cm.LinearColormap):
+    def __init__(self, colors, index=None, vmin=0., vmax=1., caption=''):
+        super(LinearColormap, self).__init__(colors=colors,vmin=vmin, vmax=vmax,
+                                             caption=caption)
+    _template = Template("""
+    {% macro script(this, kwargs) %}
+    var {{this.get_name()}} = {};
+
+    {%if this.color_range %}
+    {{this.get_name()}}.color = d3.scale.threshold()
+              .domain({{this.color_domain}})
+              .range({{this.color_range}});
+    {%else%}
+    {{this.get_name()}}.color = d3.scale.threshold()
+              .domain([{{ this.color_domain[0] }}, {{ this.color_domain[-1] }}])
+              .range(['{{ this.fill_color }}', '{{ this.fill_color }}']);
+    {%endif%}
+
+    {{this.get_name()}}.x = d3.scale.linear()
+              .domain([{{ this.color_domain[0] }}, {{ this.color_domain[-1] }}])
+              .range([0, 400]);
+
+    {{this.get_name()}}.legend = L.control({position: 'topright'});
+    {{this.get_name()}}.legend.onAdd = function (map) {var div = L.DomUtil.create('div', 'legend'); return div};
+    {{this.get_name()}}.legend.addTo({{this._parent.get_name()}});
+
+    {{this.get_name()}}.xAxis = d3.svg.axis()
+        .scale({{this.get_name()}}.x)
+        .orient("top")
+        .tickSize(1)
+        .tickValues({{ this.tick_labels }});
+
+    {{this.get_name()}}.svg = d3.select(".legend.leaflet-control").append("svg")
+        .attr("id", 'legend')
+        .attr("width", 450)
+        .attr("height", 40);
+
+    {{this.get_name()}}.g = {{this.get_name()}}.svg.append("g")
+        .attr("class", "key")
+        .attr("transform", "translate(25,16)");
+
+    {{this.get_name()}}.g.selectAll("rect")
+        .data({{this.get_name()}}.color.range().map(function(d, i) {
+          return {
+            x0: i ? {{this.get_name()}}.x({{this.get_name()}}.color.domain()[i - 1]) : {{this.get_name()}}.x.range()[0],
+            x1: i < {{this.get_name()}}.color.domain().length ? {{this.get_name()}}.x({{this.get_name()}}.color.domain()[i]) : {{this.get_name()}}.x.range()[1],
+            z: d
+          };
+        }))
+      .enter().append("rect")
+        .attr("height", 10)
+        .attr("x", function(d) { return d.x0; })
+        .attr("width", 1.5)
+        .style("fill", function(d) { return d.z; });
+
+    {{this.get_name()}}.g.call({{this.get_name()}}.xAxis).append("text")
+        .attr("class", "caption")
+        .attr("y", 21)
+        .text('{{ this.caption }}');
+{% endmacro %}
+""")
 
 class GroupedLayerControl(MacroElement):
 
@@ -338,7 +399,7 @@ def make_map(settings, df):
                 overlay=False,
                 tms=True,
                 show=True if time == 0 and var == 'snowdepthavg' else False).add_to(m)
-            colormap = cm.LinearColormap(colors=plot_settings.get_cmap(var), vmin=vmin, vmax=vmax)
+            colormap = LinearColormap(colors=plot_settings.get_cmap(var), vmin=vmin, vmax=vmax)
             colormap.caption = '%s (%s)' % (plot_settings.get_title(var), plot_settings.get_unit(var))
 
             m.add_child(colormap)
@@ -396,110 +457,26 @@ def make_tiles(settings, tiff, var, time, vmax, vmin, minZoom, maxZoom):
     os.remove(colormap)
 
 
-def make_map_good(settings, df):
-
-    m = None
-    for var in settings['plot_vars']:
-
-        all_vmax = []
-        all_vmin = []
-        cm_handles = [] #colourmap handles
-        for time in [0, -1]:
-            colored_data, lat, lon, vmax, vmin, model_time = get_var(df, var, time = time)
-
-            # save out vmin/max for the entirely timerange to get a  global min/max later
-            all_vmax.append(vmax)
-            all_vmin.append(vmin)
-            # Define the folium map
-            if m is None:
-                m = folium.Map(location=[lat.mean(), lon.mean()], zoom_start=9, tiles=None)
-                folium.TileLayer('Stamen Terrain', control=False, overlay=True).add_to(m)
-                # Add the layer control
-
-            name = plot_settings.get_title(var)
-
-            if time == 0:
-                name = '%s - Current %s' % (name, model_time)
-            else:
-                name = '%s - Forecast for %s' %(name,model_time)
-
-            # Add the raster layer
-            IO = folium.raster_layers.ImageOverlay(colored_data,
-                                              [[lat.min(), lon.min()], [lat.max(), lon.max()]],
-                                              mercator_project=True,
-                                              name=name,
-                                              opacity=0.6,
-                                              show=True if time == 0 and var == 'snowdepthavg' else False,
-                                              control_scale=True,
-                                              max_zoom=11
-                                              ).add_to(m)
-
-
-            colormap = cm.LinearColormap(colors=plot_settings.get_cmap(var), vmin=vmin, vmax=vmax)
-            colormap.caption = '%s (%s)' % (plot_settings.get_title(var), plot_settings.get_unit(var))
-            cm_handles.append(colormap)
-            m.add_child(colormap)
-            m.add_child(BindColormap(IO, colormap))
-
-        vmax = np.amax(all_vmax)
-        vmin = np.amax(all_vmin)
-
-        # for key, cmh in m._children.items():
-        #     if isinstance(cmh, cm.LinearColormap):
-        #         if plot_settings.get_title(var) in cmh.caption:
-        #             m._children[key].vmin = vmin
-        #             m._children[key].vmax = vmax
-
-
-    # create difference plots
-    # diff = df.isel(time=-1) - df.isel(time=0)
-    diff = None
-
-    for var in settings['plot_vars']:
-        colored_data, lat, lon, vmax, vmin, model_time = get_var(diff, var, None)
-        name = 'Predicted change in ' + plot_settings.get_title(var)
-
-        IO = folium.raster_layers.ImageOverlay(colored_data,
-                                          [[lat.min(), lon.min()], [lat.max(), lon.max()]],
-                                          mercator_project=True,
-                                          name=name,
-                                          opacity=0.6,
-                                          show=False,
-                                          control_scale=True,
-                                          max_zoom=11
-                                          ).add_to(m)
-
-        colormap = cm.LinearColormap(colors=plot_settings.get_cmap(f'{var}_diff'), vmin=vmin, vmax=vmax)
-        colormap.caption = '%s (%s)' % (plot_settings.get_title(var), plot_settings.get_unit(var))
-        m.add_child(colormap)
-        m.add_child(BindColormap(IO, colormap))
-
-
-    GroupedLayerControl(collapsed=False,exclusiveGroups=['Forecasts']).add_to(m)
-    m.add_child(Sidebar(m))
-    m.add_child(FavIcon())
-    m.save(os.path.join(settings['html_dir'],'index.html'))
-
 
 def get_var(df, var, time):
     d = None
     has_time = True
 
-    # if time is not None:
-    #     d = df[var].isel(time=time).rio.write_nodata(-9999)
-    # else:
-    #     d = df[var].rio.write_nodata(-9999) # if a diff comes in it won't have a time axis
-    #     time = 'diff'
-    #     has_time = False
-    #
-    # d.rio.to_raster(f'{var}_wgs_{time}.tif')
-    # exec = f"""/usr/local/bin/gdalwarp -t_srs EPSG:4326 -srcnodata '-9999' {var}_wgs_{time}.tif  output_{var}_{time}.tif"""
-    # subprocess.check_call([exec], shell=True)
-
-
-    if time is None:
-        time='diff'
+    if time is not None:
+        d = df[var].isel(time=time).rio.write_nodata(-9999)
+    else:
+        d = df[var].rio.write_nodata(-9999) # if a diff comes in it won't have a time axis
+        time = 'diff'
         has_time = False
+
+    d.rio.to_raster(f'{var}_wgs_{time}.tif')
+    exec = f"""/usr/local/bin/gdalwarp -t_srs EPSG:4326 -srcnodata '-9999' {var}_wgs_{time}.tif  output_{var}_{time}.tif"""
+    subprocess.check_call([exec], shell=True)
+
+    #
+    # if time is None:
+    #     time='diff'
+    #     has_time = False
 
 
     da = xr.open_rasterio(f'output_{var}_{time}.tif')

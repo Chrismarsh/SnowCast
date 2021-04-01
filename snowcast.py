@@ -50,26 +50,26 @@ if __name__ == '__main__':
 
     slack.send_slack_notifier(settings['webhook_url'],'Snowcast run started :zap:','')
 
-    # try:
-    #     nwp_main.main(settings)
-    # except:
-    #     message = 'Snowcast run failed during NWP processing :exclamation:'
-    #     slack.send_slack_notifier(settings['webhook_url'], message, '')
-    #     raise Exception(message)
-    #
-    # try:
-    #     chm_main.main(settings)
-    # except:
-    #     message = 'Snowcast run failed during CHM run :exclamation:'
-    #     slack.send_slack_notifier(settings['webhook_url'], message, '')
-    #     raise Exception(message)
-    #
-    # try:
-    #     plot_main.main(settings)
-    # except:
-    #     message = 'Snowcast run failed during plot generation :exclamation:'
-    #     slack.send_slack_notifier(settings['webhook_url'], message, '')
-    #     raise Exception(message)
+    try:
+        nwp_main.main(settings)
+    except:
+        message = 'Snowcast run failed during NWP processing :exclamation:'
+        slack.send_slack_notifier(settings['webhook_url'], message, '')
+        raise Exception(message)
+
+    try:
+        chm_main.main(settings)
+    except:
+        message = 'Snowcast run failed during CHM run :exclamation:'
+        slack.send_slack_notifier(settings['webhook_url'], message, '')
+        raise Exception(message)
+
+    try:
+        plot_main.main(settings)
+    except:
+        message = 'Snowcast run failed during plot generation :exclamation:'
+        slack.send_slack_notifier(settings['webhook_url'], message, '')
+        raise Exception(message)
 
     try:
         upload.upload(settings)
@@ -79,7 +79,7 @@ if __name__ == '__main__':
         raise Exception(message)
 
 
-    message="Done at =", datetime.now().strftime("%H:%M:%S")
+    message = "Finished at " + datetime.now().strftime("%H:%M:%S")
     slack.send_slack_notifier(settings['webhook_url'], message, '')
 
     print(message)
