@@ -10,6 +10,6 @@ def main(settings):
     df = filter_output(settings)
     df = df.compute()
     make_interactive(settings, df)
-    # make_interactive(settings, None)
+
 
     # make_static(settings, df)
