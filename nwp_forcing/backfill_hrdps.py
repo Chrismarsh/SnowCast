@@ -95,7 +95,7 @@ def backfill_grib2(settings):
         return True
 
     missing = '\n'.join([str(d) for d in diff.to_list()])
-    print(f'Missing the following dates: {missing}')
+    print(f'Missing the following dates: \n{missing}')
 
     leadTime = []
     for l in range(0, 48, 1):
