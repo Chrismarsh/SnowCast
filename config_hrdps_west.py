@@ -28,7 +28,8 @@ settings['chm_outpath'] = os.path.join(settings['snowcast_base'], 'run_chm/outpu
 # where to put the leaflet output
 settings['html_dir'] = os.path.join(settings['snowcast_base'], 'www')
 
-settings['chm_bin'] = os.path.join(settings['snowcast_base'], 'run_chm/CHM')
+# how should CHM be called?
+settings['chm_exec_str'] = 'mpirun -np 2 %s -f config.json' % os.path.join(settings['snowcast_base'], 'run_chm/CHM')
 
 # force a regeneration of the complete nc archieve
 settings['force_nc_archive'] = False

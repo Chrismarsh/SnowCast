@@ -1,5 +1,6 @@
 import subprocess
+import os
 
 def main(settings):
-    exec_str = 'mpirun -np 2 %s -f config.json' % settings['chm_bin']
-    subprocess.check_call([exec_str], shell=True, cwd='/Users/chris/Documents/science/code/SnowCast/v2/run_chm/')
+    exec_str = settings['chm_exec_str']
+    subprocess.check_call([exec_str], shell=True, cwd=os.path.join(settings['snowcast_base'],'run_chm'))

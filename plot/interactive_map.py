@@ -367,8 +367,6 @@ def make_map(settings, df):
     ROBUST_PERCENTILE = 0.02  # follows xarray's robust 98% - 2%
     layer_attr = 'University of Saskatchewan, Global Water Futures'
 
-
-
     for var in settings['plot_vars']:
 
         vmax = float(df.quantile(1.0 - ROBUST_PERCENTILE, dim=['time', 'y', 'x'])[var])
