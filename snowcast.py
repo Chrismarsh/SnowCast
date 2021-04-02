@@ -34,7 +34,61 @@ if __name__ == '__main__':
     # Assing to local variables
     settings = X.settings
 
+    ################################################
+    # Internal settings
+    # Likely do not need to be changed by the user
+    ################################################
+    # not currently used
+    settings['domain'] = 'west'
 
+    # Define HRDPS variables to download (names match file names in HRDPS system)
+    settings['hrdps_variables'] = [
+        # temperature at various mb (Kevlin)
+        'TMP_ISBL_1015', 'TMP_ISBL_1000', 'TMP_ISBL_0985', 'TMP_ISBL_0970', 'TMP_ISBL_0950', 'TMP_ISBL_0925',
+        'TMP_ISBL_0900',
+
+        # Geopotential Height of various mb (geopotential meter)
+        'HGT_ISBL_1015', 'HGT_ISBL_1000', 'HGT_ISBL_0985', 'HGT_ISBL_0970', 'HGT_ISBL_0950',
+        'HGT_ISBL_0925', 'HGT_ISBL_0900',
+
+        # geopotential of Model surface (geopotential meter)
+        'HGT_SFC_0',
+
+        'TMP_TGL_2',  # 2m air temp (kelvin)
+        'RH_TGL_2',  # 2m RH
+
+        # Wind speed, direction 10m (m/s)
+        'WIND_TGL_10', 'WDIR_TGL_10',
+
+        # Surface pressure  (Pa)
+        'PRES_SFC_0',
+
+        # Incoming surface longwave, accumulated flux (J/m^2)
+        'DLWRF_SFC_0',
+
+        # Downward incident solar flux (Accumulated), surface, (J/m^2(
+        'DSWRF_SFC_0',
+
+        # precipitation rate, surface (kg/m^2/s)
+        'PRATE_SFC_0',
+
+        # accumulated precipitation, surface (kg/m^2)
+        'APCP_SFC_0'
+    ]
+
+    settings['hrdps2chm_names'] = {
+        'orog': 'HGT_P0_L1_GST',
+        't2m': 't',
+        'r2': 'rh',
+        'si10': 'u',
+        'wdir10': 'vw_dir',
+        'sp': 'press',
+        'ssrd': 'Qsi',
+        'strd': 'Qli',
+        'prate': 'p'
+    }
+
+    #######################################################
 
     if not os.path.exists(settings['grib_dir']):
         os.mkdir(settings['grib_dir'])
