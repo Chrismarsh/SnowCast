@@ -126,7 +126,11 @@ def hrdps_grib2nc(settings):
 
     for doy in tqdm(hrdps_files.jd.unique()):
 
-        files = hrdps_files.query('jd == @doy & not var.str.contains(\'TMP_ISBL\') & not var.str.contains(\'HGT_ISBL\') ').file.tolist()
+        # engine=python is required to avoid this issue
+        # > For the poeple wondering why this bug appears for them and not for others (or vice versa):
+        # > If you do not have the numexpr package installed, then python will be automatically used as engine. Thus, you do not need to specify engine='python' in the query method.
+        # https://github.com/pandas-dev/pandas/issues/34251#issuecomment-732769686
+        files = hrdps_files.query('jd == @doy & not var.str.contains(\'TMP_ISBL\') & not var.str.contains(\'HGT_ISBL\') ',engine='python').file.tolist()
 
         d = pd.to_datetime(doy, origin='julian',unit='D')
 
