@@ -143,10 +143,10 @@ def hrdps_grib2nc(settings):
                                parallel=True,
                                engine='cfgrib')
 
-        UA_TMP = hrdps_files.query('jd == @doy & var.str.contains(\'TMP_ISBL\')').file.tolist()
+        UA_TMP = hrdps_files.query('jd == @doy & var.str.contains(\'TMP_ISBL\')',engine='python').file.tolist()
         ds_UA_T = load_GEM_4d_var(PresLevs, UA_TMP)
 
-        UA_HGT = hrdps_files.query('jd == @doy & var.str.contains(\'HGT_ISBL\')').file.tolist()
+        UA_HGT = hrdps_files.query('jd == @doy & var.str.contains(\'HGT_ISBL\')',engine='python').file.tolist()
         ds_UA_HGT = load_GEM_4d_var(PresLevs, UA_HGT)
 
         ds_UA = xr.merge([ds_UA_T, ds_UA_HGT])
