@@ -25,7 +25,7 @@ def find_hpfx_earliest_date():
     return date
 
 
-def data_download(url, outputDir, filename):
+def data_download(url, outputDir, filename, dryRun=False):
     ''' Function to download data from url, called by threading'''
     
     useThreading = False
@@ -41,12 +41,13 @@ def data_download(url, outputDir, filename):
             if response.status != 200:
                 return False
 
-            with open(outputFile, 'wb') as out:
-                while True:
-                    data = response.read(1024)
-                    if not data:
-                        break
-                    out.write(data)
+            if not dryRun:
+                with open(outputFile, 'wb') as out:
+                    while True:
+                        data = response.read(1024)
+                        if not data:
+                            break
+                        out.write(data)
 
             response.release_conn()
             # url = url.replace('&','&amp;')
@@ -95,7 +96,7 @@ def backfill_grib2(settings):
         return True
 
     missing = '\n'.join([str(d) for d in diff.to_list()])
-    print(f'Missing the following dates: \n{missing}')
+    # print(f'Missing the following dates: \n{missing}')
 
     leadTime = []
     for l in range(0, 48, 1):
@@ -104,7 +105,7 @@ def backfill_grib2(settings):
     grib_to_download = []
 
     for missing in diff.to_list():
-        print(f'Checking for date={missing} on hpfx archive...')
+        print(f'Missing grib2 for {missing} ... ', end = '')
 
         Ymd = missing.strftime('%Y%m%d')
 
@@ -112,13 +113,32 @@ def backfill_grib2(settings):
 
         for var in settings['hrdps_variables']:
             for lead_time in leadTime:
+
+                # these variables are not present at the 0h lead time as they are a rate or an accumulation
+                if var in ['HGT_SFC', 'PRATE_SFC', 'APCP_SFC'] and lead_time == '000':
+                    continue
+
                 filename = f'CMC_hrdps_west_{var}_ps2.5km_{Ymd}00_P{lead_time}-00.grib2'
+                url = f'{base_url}/{lead_time}/{filename}'
+
+                # only check hpfx availability on the first date
+                if lead_time == '000':
+                    avail = ''
+                    if not os.path.exists(os.path.join(settings['grib_dir'], filename)):
+                        ret = data_download(url, settings['grib_dir'], filename, True)
+
+                        if ret:
+                            avail = 'available on hpfx archive'
+                        else:
+                            avail = 'missing on hpfx archive'
+                    else:
+                        avail = 'available locally in grib_ar'
+
+                    print(avail)
 
                 # this let's us run the backfill before we do grib->nc, without accidentally downloading files we already have
                 if not os.path.exists( os.path.join(settings['grib_dir'],filename)):
-                    url = f'{base_url}/{lead_time}/{filename}'
-                    grib_to_download.append( (url,filename) )
-
+                    grib_to_download.append( (url, filename) )
 
     for grib in tqdm(grib_to_download):
         ret = data_download(grib[0], settings['grib_dir'], grib[1])

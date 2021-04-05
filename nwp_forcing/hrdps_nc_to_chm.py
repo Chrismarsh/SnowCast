@@ -60,8 +60,8 @@ def hrdps_nc_to_chm(settings):
                          end=end,
                          freq='1d').difference(df.date)
     if len(diff) > 0:
-        missing = ','.join([str(d) for d in diff.to_list()])
-        raise Exception(f'Missing the following dates: {missing}')
+        missing = '\n'.join([str(d) for d in diff.to_list()])
+        raise Exception(f'Missing the following dates:\n {missing}')
 
     # this is everything not including +24hr forecase
     ar_nc_path = os.path.join(settings['nc_chm_dir'], f'HRDPS_West_current.nc')
