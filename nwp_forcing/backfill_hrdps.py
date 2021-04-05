@@ -111,7 +111,9 @@ def backfill_grib2(settings):
 
         base_url = f'http://hpfx.collab.science.gc.ca/{Ymd}/WXO-DD/model_hrdps/west/grib2/00/'
 
+
         for var in settings['hrdps_variables']:
+
             for lead_time in leadTime:
 
                 # these variables are not present at the 0h lead time as they are a rate or an accumulation
@@ -121,20 +123,20 @@ def backfill_grib2(settings):
                 filename = f'CMC_hrdps_west_{var}_ps2.5km_{Ymd}00_P{lead_time}-00.grib2'
                 url = f'{base_url}/{lead_time}/{filename}'
 
-                # only check hpfx availability on the first date
-                if lead_time == '000':
-                    avail = ''
-                    if not os.path.exists(os.path.join(settings['grib_dir'], filename)):
-                        ret = data_download(url, settings['grib_dir'], filename, True)
+                print(f'\t[{var}@P{lead_time}] ', end='')
+                if not os.path.exists(os.path.join(settings['grib_dir'], filename)):
+                    ret = data_download(url, settings['grib_dir'], filename, True)
 
-                        if ret:
-                            avail = 'available on hpfx archive'
-                        else:
-                            avail = 'missing on hpfx archive'
+                    if ret:
+                        avail = 'available on hpfx archive'
                     else:
-                        avail = 'available locally in grib_ar'
+                        avail = f'missing on hpfx archive [error]'
 
-                    print(avail)
+                else:
+                    avail = 'available locally in grib_ar'
+
+                print(avail)
+
 
                 # this let's us run the backfill before we do grib->nc, without accidentally downloading files we already have
                 if not os.path.exists( os.path.join(settings['grib_dir'],filename)):
