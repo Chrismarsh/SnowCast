@@ -104,6 +104,7 @@ def backfill_grib2(settings):
 
     grib_to_download = []
 
+    missing_files_error = False
     for missing in diff.to_list():
         print(f'Missing grib2 for {missing} ... ', end = '\n')
 
@@ -117,7 +118,7 @@ def backfill_grib2(settings):
             for lead_time in leadTime:
 
                 # these variables are not present at the 0h lead time as they are a rate or an accumulation
-                if var in ['HGT_SFC', 'PRATE_SFC', 'APCP_SFC'] and lead_time == '000':
+                if var in ['HGT_SFC', 'PRATE_SFC', 'APCP_SFC'] and int(lead_time) == 0:
                     continue
 
                 filename = f'CMC_hrdps_west_{var}_ps2.5km_{Ymd}00_P{lead_time}-00.grib2'
@@ -128,10 +129,14 @@ def backfill_grib2(settings):
 
                     if not ret:
                         print(f'\t[{var}@P{lead_time}] missing on hpfx and local archive [error]')
+                        missing_files_error = True  # prepare to bail
 
                 # this let's us run the backfill before we do grib->nc, without accidentally downloading files we already have
                 if not os.path.exists( os.path.join(settings['grib_dir'],filename)):
                     grib_to_download.append( (url, filename) )
+
+    if missing_files_error:
+        raise Exception('Missing grib files and not available on hpfx or local cache')
 
     for grib in tqdm(grib_to_download):
         ret = data_download(grib[0], settings['grib_dir'], grib[1])
