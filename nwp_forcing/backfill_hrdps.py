@@ -105,7 +105,7 @@ def backfill_grib2(settings):
     grib_to_download = []
 
     for missing in diff.to_list():
-        print(f'Missing grib2 for {missing} ... ', end = '')
+        print(f'Missing grib2 for {missing} ... ', end = '\n')
 
         Ymd = missing.strftime('%Y%m%d')
 
@@ -123,13 +123,11 @@ def backfill_grib2(settings):
                 filename = f'CMC_hrdps_west_{var}_ps2.5km_{Ymd}00_P{lead_time}-00.grib2'
                 url = f'{base_url}/{lead_time}/{filename}'
 
-
                 if not os.path.exists(os.path.join(settings['grib_dir'], filename)):
                     ret = data_download(url, settings['grib_dir'], filename, True)
 
                     if not ret:
                         print(f'\t[{var}@P{lead_time}] missing on hpfx and local archive [error]')
-
 
                 # this let's us run the backfill before we do grib->nc, without accidentally downloading files we already have
                 if not os.path.exists( os.path.join(settings['grib_dir'],filename)):
