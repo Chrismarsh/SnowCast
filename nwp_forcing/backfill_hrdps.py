@@ -112,6 +112,7 @@ def backfill_grib2(settings):
 
         base_url = f'http://hpfx.collab.science.gc.ca/{Ymd}/WXO-DD/model_hrdps/west/grib2/00/'
 
+        is_ok=True
 
         for var in settings['hrdps_variables']:
 
@@ -130,16 +131,19 @@ def backfill_grib2(settings):
                     if not ret:
                         print(f'\n\t[{var}@P{lead_time}] missing on hpfx and local archive [error]')
                         missing_files_error = True  # prepare to bail
+                        is_ok = False
 
                 # this let's us run the backfill before we do grib->nc, without accidentally downloading files we already have
                 if not os.path.exists( os.path.join(settings['grib_dir'],filename)):
                     grib_to_download.append( (url, filename) )
 
+        if is_ok:
+            print(' ok ')
+
     if missing_files_error:
         raise Exception('Missing grib files and not available on hpfx or local cache')
-    else:
-        print(' ok ')
-        
+
+
     for grib in tqdm(grib_to_download):
         ret = data_download(grib[0], settings['grib_dir'], grib[1])
         if not ret:
