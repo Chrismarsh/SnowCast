@@ -106,7 +106,7 @@ def backfill_grib2(settings):
 
     missing_files_error = False
     for missing in diff.to_list():
-        print(f'Missing grib2 for {missing} ... ', end = '\n')
+        print(f'Missing grib2 for {missing} ... ', end = '')
 
         Ymd = missing.strftime('%Y%m%d')
 
@@ -128,7 +128,7 @@ def backfill_grib2(settings):
                     ret = data_download(url, settings['grib_dir'], filename, True)
 
                     if not ret:
-                        print(f'\t[{var}@P{lead_time}] missing on hpfx and local archive [error]')
+                        print(f'\n\t[{var}@P{lead_time}] missing on hpfx and local archive [error]')
                         missing_files_error = True  # prepare to bail
 
                 # this let's us run the backfill before we do grib->nc, without accidentally downloading files we already have
@@ -137,7 +137,9 @@ def backfill_grib2(settings):
 
     if missing_files_error:
         raise Exception('Missing grib files and not available on hpfx or local cache')
-
+    else:
+        print(' ok ')
+        
     for grib in tqdm(grib_to_download):
         ret = data_download(grib[0], settings['grib_dir'], grib[1])
         if not ret:
