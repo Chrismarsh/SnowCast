@@ -6,7 +6,7 @@ import re
 import xarray as xr
 
 
-def preprocess(x, keep_forecast=False):
+def preprocess(x, settings, keep_forecast=False):
     if len(x.datetime) < 48:
         raise Exception(f'Expected a nc with 48 timesteps. nc start = {x.datetime[0].values}')
 
@@ -33,6 +33,11 @@ def preprocess(x, keep_forecast=False):
 
     x = x.isel(datetime=np.arange(start_idx, stop_idx))
 
+    # we may have nc files created from a different set of grib and thus the variables in each nc might not match
+    # across all nc files. Drop anything that isn't explicitly requested/needed for CHM
+    data_vars_to_drop = set([f for f in x.data_vars]) - set([name for name in settings['hrdps2chm_names'].values()])
+    x = x.drop(data_vars_to_drop)
+
     return x
 
 
@@ -43,10 +48,10 @@ def hrdps_nc_to_chm(settings):
     date = []
     fname = []
     for f in all_files:
-        p = re.compile('([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})')
+        p = re.compile('([0-9]{4}-[0-9]{2}-[0-9]{2})')
         m = p.search(f)
 
-        d = pd.to_datetime(m.group(1), format='%Y-%m-%dT%H:%M:%S')
+        d = pd.to_datetime(m.group(1), format='%Y-%m-%d')
         date.append(d)
         fname.append(f)
 
@@ -54,8 +59,8 @@ def hrdps_nc_to_chm(settings):
     df = df.sort_values(by=['date'])
     df = df.reset_index()
 
-    start = df.date[0].strftime('%Y-%m-%d %H:%M')
-    end = df.date[len(df.date) - 1].strftime('%Y-%m-%d %H:%M')  # :-1 somehow returns the wrong item
+    start = df.date[0].strftime('%Y-%m-%d')
+    end = df.date[len(df.date) - 1].strftime('%Y-%m-%d')  # :-1 somehow returns the wrong item
     diff = pd.date_range(start=start,
                          end=end,
                          freq='1d').difference(df.date)
@@ -90,19 +95,20 @@ def hrdps_nc_to_chm(settings):
                            engine='netcdf4',
                            parallel=True,
                            lock=False,
-                           preprocess=lambda x: preprocess(x))
-    # ds = ds.rename_dims({'valid_time': 'datetime'})
+                           compat='override',
+                           coords='minimal',
+                           preprocess=lambda x: preprocess(x, settings))
 
     forecast = xr.open_mfdataset(df.file.tolist()[-1],
                                  concat_dim='datetime',
                                  engine='netcdf4',
                                  parallel=True,
+                                 compat='override',
+                                 coords='minimal',
                                  lock=False,
-                                 preprocess=lambda x: preprocess(x, keep_forecast=True))
-    # forecast = forecast.rename_dims({'valid_time': 'datetime'})
+                                 preprocess=lambda x: preprocess(x, settings, keep_forecast=True))
 
     # write out the archive
-    write_mode = 'w'
     if update_nc:
         existing_ar = xr.open_mfdataset([ar_nc_path],
                                         lock=False,

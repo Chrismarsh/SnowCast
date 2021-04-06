@@ -28,6 +28,11 @@ def preprocess(x):
     except ValueError as e:
         pass
 
+    try:
+        x = x.rename_vars({'HGT_P0_L1_GST0': 'HGT_P0_L1_GST'})
+    except ValueError as e:
+        pass
+
     return x
 
 

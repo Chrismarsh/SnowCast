@@ -67,10 +67,11 @@ def backfill_grib2(settings):
     all_files = glob.glob(os.path.join(settings['nc_ar_dir'],'*.nc'))
 
     for f in all_files:
-        p = re.compile('([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})')
+        # assumption that we have 1 nc per day, and each nc has T+Xhr of forecast in it
+        p = re.compile('([0-9]{4}-[0-9]{2}-[0-9]{2})')
         m = p.search(f)
 
-        d = pd.to_datetime(m.group(1), format='%Y-%m-%dT%H:%M:%S')
+        d = pd.to_datetime(m.group(1), format='%Y-%m-%d')
         date.append(d)
         fname.append(f)
 
@@ -81,11 +82,12 @@ def backfill_grib2(settings):
     start = None
     if len(df) == 0:
         print('No existing data found, using earliest available data on hpfx')
-        start = find_hpfx_earliest_date().strftime('%Y-%m-%d 00:00')
+        start = find_hpfx_earliest_date().strftime('%Y-%m-%d')
     else:
-        start = df.date[0].strftime('%Y-%m-%d %H:%M')
+        start = df.date[0].strftime('%Y-%m-%d')
 
-    end  = datetime.today().strftime('%Y-%m-%d 00:00') #df.date[len(df.date)-1].strftime('%Y-%m-%d %H:%M') # :-1 somehow returns the wrong item
+    end  = datetime.today().strftime('%Y-%m-%d') #df.date[len(df.date)-1].strftime('%Y-%m-%d %H:%M') # :-1 somehow returns the wrong item
+
     diff = pd.date_range(start = start,
                          end = end,
                          freq='1d').difference(df.date)
