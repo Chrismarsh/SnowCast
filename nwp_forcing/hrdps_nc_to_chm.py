@@ -87,14 +87,13 @@ def hrdps_nc_to_chm(settings):
 
         existing_ar.close()
         if len(df) == 0:
-            print(f"Archive has end date {end}, which matches most recent .nc chunks. No update needed")
+            print(f"Existing archive has end date {end}, which matches most recent .nc chunks. No update needed")
             return True
 
     ds = xr.open_mfdataset(df.file.tolist(),
                            concat_dim='datetime',
                            engine='netcdf4',
-                           parallel=True,
-                           lock=False,
+                           parallel=False,
                            compat='override',
                            coords='minimal',
                            preprocess=lambda x: preprocess(x, settings))
@@ -102,16 +101,14 @@ def hrdps_nc_to_chm(settings):
     forecast = xr.open_mfdataset(df.file.tolist()[-1],
                                  concat_dim='datetime',
                                  engine='netcdf4',
-                                 parallel=True,
+                                 parallel=False,
                                  compat='override',
                                  coords='minimal',
-                                 lock=False,
                                  preprocess=lambda x: preprocess(x, settings, keep_forecast=True))
 
     # write out the archive
     if update_nc:
         existing_ar = xr.open_mfdataset([ar_nc_path],
-                                        lock=False,
                                         engine='netcdf4')
         # update our archive of non-forecasts
         ds = xr.concat([existing_ar, ds],
