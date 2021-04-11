@@ -136,15 +136,14 @@ def backfill_grib2(settings):
                         is_ok = False
 
                 # this let's us run the backfill before we do grib->nc, without accidentally downloading files we already have
-                if not os.path.exists( os.path.join(settings['grib_dir'],filename)):
+                if not os.path.exists( os.path.join(settings['grib_dir'], filename)):
                     grib_to_download.append( (url, filename) )
 
         if is_ok:
-            print(' ok ')
+            print(' available on hpfx or local archive')
 
     if missing_files_error:
         raise Exception('Missing grib files and not available on hpfx or local cache')
-
 
     for grib in tqdm(grib_to_download):
         ret = data_download(grib[0], settings['grib_dir'], grib[1])

@@ -7,6 +7,10 @@ import xarray as xr
 
 
 def preprocess(x, settings, keep_forecast=False):
+
+    print(f'nc = {x.datetime[0].values}')
+
+
     if len(x.datetime) < 48:
         raise Exception(f'Expected a nc with 48 timesteps. nc start = {x.datetime[0].values}')
 
@@ -37,6 +41,24 @@ def preprocess(x, settings, keep_forecast=False):
     # across all nc files. Drop anything that isn't explicitly requested/needed for CHM
     data_vars_to_drop = set([f for f in x.data_vars]) - set([name for name in settings['hrdps2chm_names'].values()])
     x = x.drop(data_vars_to_drop)
+
+    isnan = np.isnan(x.max())
+    for v in isnan.data_vars:
+        if isnan[v]:
+            print(f'In file {x.datetime[0].values}, variable {v} has NaN values!')
+
+    # we need to check if we need to subtract 360 from the longitude values.
+    # !!!!!!  Snowcast currently assumes we are in the western hemisphere !!!!!!!!
+    # so,
+    # TODO: Have a better robustness check here. Maybe depending on the data source?
+    if x.gridlon_0.min().values > 0:
+        x['gridlon_0'] = x.gridlon_0 - 360
+
+    if x.gridlon_0.dtype == np.dtype('float64'):
+        x['gridlon_0'] = x.gridlon_0.astype('float32')
+
+    if x.gridlat_0.dtype == np.dtype('float64'):
+        x['gridlat_0'] = x.gridlat_0.astype('float32')
 
     return x
 
@@ -94,16 +116,12 @@ def hrdps_nc_to_chm(settings):
                            concat_dim='datetime',
                            engine='netcdf4',
                            parallel=False,
-                           compat='override',
-                           coords='minimal',
                            preprocess=lambda x: preprocess(x, settings))
 
     forecast = xr.open_mfdataset(df.file.tolist()[-1],
                                  concat_dim='datetime',
                                  engine='netcdf4',
                                  parallel=False,
-                                 compat='override',
-                                 coords='minimal',
                                  preprocess=lambda x: preprocess(x, settings, keep_forecast=True))
 
     # write out the archive
