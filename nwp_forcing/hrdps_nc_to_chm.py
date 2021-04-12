@@ -37,6 +37,12 @@ def preprocess(x, settings, keep_forecast=False):
 
     x = x.isel(datetime=np.arange(start_idx, stop_idx))
 
+    #really here for concating legacy nc files from Snowcast v1
+    try:
+        x = x.rename_vars({'HGT_P0_L1_GST0': 'HGT_P0_L1_GST'})
+    except ValueError as e:
+        pass
+
     # we may have nc files created from a different set of grib and thus the variables in each nc might not match
     # across all nc files. Drop anything that isn't explicitly requested/needed for CHM
     data_vars_to_drop = set([f for f in x.data_vars]) - set([name for name in settings['hrdps2chm_names'].values()])

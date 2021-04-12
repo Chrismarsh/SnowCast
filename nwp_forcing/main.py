@@ -27,5 +27,5 @@ def main(settings):
     for f in glob.glob( os.path.join(settings['grib_dir'], '*.idx') ):
         os.remove(f)
 
-    # print('Converting nc to CHM format')
+    print('Converting nc to CHM format')
     hrdps_nc_to_chm(settings)
