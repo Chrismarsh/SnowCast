@@ -101,9 +101,9 @@ def hrdps_nc_to_chm(settings):
             df = df[ df.date >= start]
     except:
         pass
-            
 
-    end = df.date[len(df.date) - 1].strftime('%Y-%m-%d')  # :-1 somehow returns the wrong item
+
+    end = df.date.iloc[-1].strftime('%Y-%m-%d')
     diff = pd.date_range(start=start,
                          end=end,
                          freq='1d').difference(df.date)
