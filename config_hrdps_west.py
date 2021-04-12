@@ -11,16 +11,16 @@ settings['webhook_url'] = slack_webhook.webhook_url
 settings['snowcast_base'] = os.getcwd()
 
 # Dir to put GEM grib2 files
-settings['grib_dir'] = os.path.join(settings['snowcast_base'], 'nwp_forcing/debug/grib_download')
+settings['grib_dir'] = os.path.join(settings['snowcast_base'], 'nwp_forcing/grib_download')
 
 # were to copy after we have processed. Not used, just kept "in case"
-settings['grib_ar_dir'] = os.path.join(settings['snowcast_base'], 'nwp_forcing/debug/grib_ar')
+settings['grib_ar_dir'] = os.path.join(settings['snowcast_base'], 'nwp_forcing/grib_ar')
 
 # Dir where output netcdf files go
-settings['nc_ar_dir'] = os.path.join(settings['snowcast_base'], 'nwp_forcing/debug/nc_ar')
+settings['nc_ar_dir'] = os.path.join(settings['snowcast_base'], 'nwp_forcing/nc_ar')
 
 # where to put the nc file CHM to use
-settings['nc_chm_dir'] = os.path.join(settings['snowcast_base'], 'nwp_forcing/debug')
+settings['nc_chm_dir'] = os.path.join(settings['snowcast_base'], 'nwp_forcing')
 
 # where the CHM output is
 settings['chm_outpath'] = os.path.join(settings['snowcast_base'], 'run_chm/output/meshes/SC.pvd')
