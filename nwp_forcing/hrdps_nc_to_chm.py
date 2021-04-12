@@ -19,6 +19,8 @@ def preprocess(x, settings, keep_forecast=False):
         raise Exception(f'Start hour is later than 1am and will break the indexing. Double check this is what you want. nc start = {x.datetime[0].values}')
 
     # standard mode, we aren't the last item, so throw away the +24h forecast
+    # this skips the first timestep because the accumulated values in that timestep are NaN and we can't use them
+    # So if we have a 1am this grabs 2am -> 1am + 1day
     start_idx = 1
     stop_idx = 25
 
@@ -27,13 +29,13 @@ def preprocess(x, settings, keep_forecast=False):
         stop_idx = 48
 
     # if we start at 1am, we need to shift the index back by one
-    if nc_start_hour == 1:
-        start_idx -= 1
-        stop_idx -= 1
-
-        if keep_forecast:
-            start_idx -= 1
-            stop_idx -= 1
+    # if nc_start_hour == 1:
+    #     start_idx -= 1
+    #     # stop_idx -= 1
+    #
+    #     if keep_forecast:
+    #         start_idx -= 1
+    #         stop_idx -= 1
 
     x = x.isel(datetime=np.arange(start_idx, stop_idx))
 
