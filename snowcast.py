@@ -13,7 +13,9 @@ from webupload import upload
 if __name__ == '__main__':
     cluster = dask.distributed.LocalCluster(threads_per_worker=1, n_workers=2)
     c = dask.distributed.Client(cluster)
-    dask.config.set(scheduler=c)
+    # dask.config.set(scheduler=c)
+
+    dask.config.set(**{'array.slicing.split_large_chunks': True})
 
     print("Started at =", datetime.now().strftime("%H:%M:%S"))
     # Load in config file
