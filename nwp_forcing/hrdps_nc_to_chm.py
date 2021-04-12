@@ -37,9 +37,15 @@ def preprocess(x, settings, keep_forecast=False):
 
     x = x.isel(datetime=np.arange(start_idx, stop_idx))
 
-    #really here for concating legacy nc files from Snowcast v1
+    # really here for concating legacy nc files from Snowcast v1
     try:
         x = x.rename_vars({'HGT_P0_L1_GST0': 'HGT_P0_L1_GST'})
+    except ValueError as e:
+        pass
+
+    # snowcast v2 nc come with an extra time coord
+    try:
+        x = x.drop('time')
     except ValueError as e:
         pass
 
