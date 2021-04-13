@@ -148,6 +148,14 @@ def hrdps_nc_to_chm(settings):
                            parallel=False,
                            preprocess=lambda x: preprocess(x, settings))
 
+    # if we have mixed 00h and 01h start times, we will have 1 duplicate timestep as we cross that bound
+    _, index = np.unique(ds['datetime'], return_index=True)
+
+    ndup = len(ds.datetime) - len(index)
+    if ndup > 0:
+        ds = ds.isel(datetime=index)
+        print(f'Dropped {ndup} duplicate timesteps after merge. This results from mixing 00h and 01h start times.')
+
     forecast = xr.open_mfdataset(df.file.tolist()[-1],
                                  concat_dim='datetime',
                                  engine='netcdf4',
