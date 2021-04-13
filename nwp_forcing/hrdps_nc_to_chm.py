@@ -65,7 +65,7 @@ def preprocess(x, settings, keep_forecast=False):
     # !!!!!!  Snowcast currently assumes we are in the western hemisphere !!!!!!!!
     # so,
     # TODO: Have a better robustness check here. Maybe depending on the data source?
-    if x.gridlon_0.min().values > 0:
+    if x.gridlon_0.min().values > 180:
         x['gridlon_0'] = x.gridlon_0 - 360
 
     if x.gridlon_0.dtype == np.dtype('float64'):
