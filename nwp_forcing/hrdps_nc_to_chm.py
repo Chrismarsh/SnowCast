@@ -80,7 +80,6 @@ def preprocess(x, settings, keep_forecast=False):
 def hrdps_nc_to_chm(settings):
     # Get all file names
     all_files = glob.glob(os.path.join(settings['nc_ar_dir'], '*.nc'))
-    nc_files = {}
     date = []
     fname = []
     for f in all_files:
