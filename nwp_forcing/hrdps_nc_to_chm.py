@@ -106,6 +106,14 @@ def hrdps_nc_to_chm(settings):
 
 
     end = df.date.iloc[-1].strftime('%Y-%m-%d')
+
+    try:
+        if settings['end_date'] is not None:
+            end = pd.to_datetime(settings['end_date'], format='%Y-%m-%d')
+            df = df[df.date <= end]
+    except:
+        pass
+
     diff = pd.date_range(start=start,
                          end=end,
                          freq='1d').difference(df.date)
