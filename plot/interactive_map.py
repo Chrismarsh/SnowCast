@@ -7,7 +7,6 @@ import os
 import pandas as pd
 import subprocess
 import xarray as xr
-import xarray as xr
 from branca.element import MacroElement
 from collections import OrderedDict
 from folium.utilities import parse_options
@@ -336,6 +335,18 @@ def make_colour_txt( var, vmin, vmax, n=12):
 
     return fname
 
+def _gdal_prefix():
+    try:
+        prefix = subprocess.run(["gdal-config","--prefix"], stdout=subprocess.PIPE).stdout.decode()
+        prefix = prefix.replace('\n', '')
+
+        return prefix
+
+    except FileNotFoundError as e:
+        raise(""" ERROR: Could not find the system install of GDAL. 
+                  Please install it via your package manage of choice.
+                """
+            )
 
 def make_geotiff(df, var=None, time=None):
 
@@ -346,9 +357,11 @@ def make_geotiff(df, var=None, time=None):
         d = df[var].rio.write_nodata(-9999)
         time = 'diff'
 
+    gdal_prefix = os.path.join(_gdal_prefix(),'bin','gdalwarp')
+
     tmp_tiff = f'{var}_wgs_{time}.tif'
     d.rio.to_raster(tmp_tiff)
-    exec = f"""/usr/local/bin/gdalwarp -t_srs EPSG:4326 -srcnodata '-9999' {tmp_tiff}  output_{var}_{time}.tif"""
+    exec = f"""{gdal_prefix} -t_srs EPSG:4326 -srcnodata '-9999' {tmp_tiff}  output_{var}_{time}.tif"""
     subprocess.check_call([exec], shell=True)
 
     os.remove(tmp_tiff)
