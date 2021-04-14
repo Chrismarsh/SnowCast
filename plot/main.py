@@ -8,7 +8,7 @@ def main(settings):
 
     print('Converting model output')
     df = filter_output(settings)
-    df = df.compute()
+    df = df.chunk({'time':-1,'x':-1,'y':-1})
     make_interactive(settings, df)
 
 
