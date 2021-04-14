@@ -357,11 +357,11 @@ def make_geotiff(df, var=None, time=None):
         d = df[var].rio.write_nodata(-9999)
         time = 'diff'
 
-    gdal_prefix = os.path.join(_gdal_prefix(),'bin','gdalwarp')
+    gdalwarp = os.path.join(_gdal_prefix(),'bin','gdalwarp')
 
     tmp_tiff = f'{var}_wgs_{time}.tif'
     d.rio.to_raster(tmp_tiff)
-    exec = f"""{gdal_prefix} -t_srs EPSG:4326 -srcnodata '-9999' {tmp_tiff}  output_{var}_{time}.tif"""
+    exec = f"""{gdalwarp} -t_srs EPSG:4326 -srcnodata '-9999' {tmp_tiff}  output_{var}_{time}.tif"""
     subprocess.check_call([exec], shell=True)
 
     os.remove(tmp_tiff)
@@ -461,7 +461,10 @@ def make_tiles(settings, tiff, var, time, vmax, vmin, minZoom, maxZoom):
     exec = f'gdaldem color-relief {tiff} {colormap} temp_color.vrt -alpha'
     subprocess.check_call([exec], shell=True)
     tile_path = os.path.join(settings['html_dir'], 'tiles', f'tiles_{var}_{time}')
-    exec = f'python /usr/local/bin/gdal2tiles.py temp_color.vrt -w leaflet -z {minZoom}-{maxZoom} {tile_path}'
+
+    gdal2tiles = os.path.join(_gdal_prefix(), 'bin', 'gdal2tiles.py')
+
+    exec = f'python {gdal2tiles} temp_color.vrt -w leaflet -z {minZoom}-{maxZoom} {tile_path}'
     subprocess.check_call([exec], shell=True)
     os.remove(tiff)
     os.remove('temp_color.vrt')
