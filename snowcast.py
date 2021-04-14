@@ -11,10 +11,15 @@ from run_chm import main as chm_main
 from webupload import upload
 
 if __name__ == '__main__':
-    cluster = dask.distributed.LocalCluster(threads_per_worker=1, n_workers=2)
-    c = dask.distributed.Client(cluster)
-    # dask.config.set(scheduler=c)
+    # cluster = dask.distributed.LocalCluster(threads_per_worker=1, n_workers=1)
+    # c = dask.distributed.Client(cluster)
+    if os.path.exists('.snowcast.lock'):
+        print('Snowcast is already running')
+        exit(0)
+    else:
+        open('.snowcast.lock','w')
 
+    dask.config.set(scheduler='single-threaded')
     dask.config.set(**{'array.slicing.split_large_chunks': True})
 
     print("Started at =", datetime.now().strftime("%H:%M:%S"))
@@ -139,3 +144,5 @@ if __name__ == '__main__':
     slack.send_slack_notifier(settings['webhook_url'], message, '')
 
     print(message)
+
+    os.remove('.snowcast.lock')

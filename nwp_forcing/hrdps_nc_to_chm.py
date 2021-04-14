@@ -132,7 +132,7 @@ def hrdps_nc_to_chm(settings):
                                       engine='netcdf4')
 
         # get time coverage of existing
-        end = existing_ar.datetime[len(existing_ar.datetime) - 1].values
+        end = existing_ar.datetime.values[-1]
 
         # only keep the input nc to append
         df = df[df.date > end]
