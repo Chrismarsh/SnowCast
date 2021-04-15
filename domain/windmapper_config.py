@@ -5,7 +5,7 @@
 res_wind = 150
 
 # Number of wind speed categories (every 360/ncat degrees)
-ncat = 2
+ncat = 8
 
 # Flag to use existing DEM (DEM must be in UTM for WindNinja)
 use_existing_dem = False
