@@ -106,7 +106,7 @@ def hrdps_nc_to_chm(settings):
 
             if len(df) == 0:
                 raise Exception(f"No files were selected based on your start date of {start}. Ensure it is correct.")
-    except:
+    except KeyError as e:
         pass
 
     end = df.date.iloc[-1].strftime('%Y-%m-%d')
@@ -118,7 +118,7 @@ def hrdps_nc_to_chm(settings):
 
             if len(df) == 0:
                 raise Exception(f"No files were selected based on your end date of {end}. Ensure it is correct.")
-    except:
+    except KeyError as e:
         pass
 
     diff = pd.date_range(start=start,
