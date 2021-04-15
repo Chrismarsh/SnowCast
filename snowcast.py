@@ -112,37 +112,37 @@ if __name__ == '__main__':
     slack.send_slack_notifier(settings['webhook_url'],'Snowcast run started :zap:','')
 
     try:
-        nwp_main.main(settings)
-    except:
-        message = 'Snowcast run failed during NWP processing :exclamation:'
+        try:
+            nwp_main.main(settings)
+        except:
+            message = 'Snowcast run failed during NWP processing :exclamation:'
+            slack.send_slack_notifier(settings['webhook_url'], message, '')
+            raise Exception(message)
+
+        try:
+            chm_main.main(settings)
+        except:
+            message = 'Snowcast run failed during CHM run :exclamation:'
+            slack.send_slack_notifier(settings['webhook_url'], message, '')
+            raise Exception(message)
+
+        try:
+            plot_main.main(settings)
+        except:
+            message = 'Snowcast run failed during plot generation :exclamation:'
+            slack.send_slack_notifier(settings['webhook_url'], message, '')
+            raise Exception(message)
+
+        try:
+            upload.upload(settings)
+        except:
+            message = 'Snowcast run failed during web upload :exclamation:'
+            slack.send_slack_notifier(settings['webhook_url'], message, '')
+            raise Exception(message)
+    finally:
+        message = "Finished at " + datetime.now().strftime("%H:%M:%S")
         slack.send_slack_notifier(settings['webhook_url'], message, '')
-        raise Exception(message)
 
-    try:
-        chm_main.main(settings)
-    except:
-        message = 'Snowcast run failed during CHM run :exclamation:'
-        slack.send_slack_notifier(settings['webhook_url'], message, '')
-        raise Exception(message)
+        print(message)
 
-    try:
-        plot_main.main(settings)
-    except:
-        message = 'Snowcast run failed during plot generation :exclamation:'
-        slack.send_slack_notifier(settings['webhook_url'], message, '')
-        raise Exception(message)
-
-    try:
-        upload.upload(settings)
-    except:
-        message = 'Snowcast run failed during web upload :exclamation:'
-        slack.send_slack_notifier(settings['webhook_url'], message, '')
-        raise Exception(message)
-
-
-    message = "Finished at " + datetime.now().strftime("%H:%M:%S")
-    slack.send_slack_notifier(settings['webhook_url'], message, '')
-
-    print(message)
-
-    os.remove('.snowcast.lock')
+        os.remove('.snowcast.lock')
