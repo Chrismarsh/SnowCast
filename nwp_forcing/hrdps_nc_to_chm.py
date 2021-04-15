@@ -94,15 +94,20 @@ def hrdps_nc_to_chm(settings):
     df = df.sort_values(by=['date'])
     df = df.reset_index()
 
+    if len(df) == 0:
+        raise Exception(f"There are no nc files in {settings['nc_ar_dir']}, ensure you have run grib2nc.")
+
     start = df.date[0].strftime('%Y-%m-%d')
 
     try:
         if settings['start_date'] is not None:
             start = pd.to_datetime(settings['start_date'], format='%Y-%m-%d')
             df = df[ df.date >= start]
+
+            if len(df) == 0:
+                raise Exception(f"No files were selected based on your start date of {start}. Ensure it is correct.")
     except:
         pass
-
 
     end = df.date.iloc[-1].strftime('%Y-%m-%d')
 
@@ -110,6 +115,9 @@ def hrdps_nc_to_chm(settings):
         if settings['end_date'] is not None:
             end = pd.to_datetime(settings['end_date'], format='%Y-%m-%d')
             df = df[df.date <= end]
+
+            if len(df) == 0:
+                raise Exception(f"No files were selected based on your end date of {end}. Ensure it is correct.")
     except:
         pass
 
