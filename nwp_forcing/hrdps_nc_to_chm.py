@@ -7,9 +7,10 @@ import xarray as xr
 
 
 def preprocess(x, settings, keep_forecast=False):
-
-    print(f'nc = {x.datetime[0].values}')
-
+    if keep_forecast:
+        print(f'Forceast nc = {x.datetime[0].values}')
+    else:
+        print(f'nc = {x.datetime[0].values}')
 
     if len(x.datetime) < 48:
         raise Exception(f'Expected a nc with 48 timesteps. nc start = {x.datetime[0].values}')
