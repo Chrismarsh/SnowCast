@@ -1,7 +1,7 @@
 import importlib.machinery
 import os
 import subprocess
-
+import shutil
 
 # Load in configuration file as module
 X = importlib.machinery.SourceFileLoader('config', os.path.join(os.getcwd(),'config.py'))
@@ -14,7 +14,7 @@ windmapper_config = """
 res_wind = 150
 
 # Number of wind speed categories (every 360/ncat degrees)
-ncat = 2
+ncat = 8
 
 # Flag to use existing DEM (DEM must be in UTM for WindNinja)
 use_existing_dem = False
@@ -39,7 +39,7 @@ targ_res = 1000
 with open('windmapper_config.py', 'w') as file:
     file.write(windmapper_config)
 
-# subprocess.check_call(['windmapper.py windmapper_config.py'], shell=True)
+subprocess.check_call(['windmapper.py windmapper_config.py'], shell=True)
 
 subprocess.check_call(['windmapper2mesher.py windmapper_config'], shell=True)
 with open('config_WN.txt','r') as file:
@@ -49,6 +49,13 @@ with open('config_WN.txt','r') as file:
 
 WN_output = WN_output[:-3]
 mesher_config = """
+def Tree_cover_2_Simple_Canopy(value):
+    if value >= 30:
+        value = 0
+    else:
+        value = 1
+    return value
+    
 dem_filename='windmapper_config/ref-DEM-utm.tif'
 
 max_area=5000**2
@@ -60,9 +67,9 @@ do_smoothing = True
 max_smooth_iter = 1
 smoothing_scaling_factor = 1
 
-simplify=False
+simplify=True
 simplify_tol=100
-simplify_buffer=-50
+simplify_buffer=-200
 write_shp=False
 write_vtu=True
 
@@ -83,10 +90,12 @@ wkt_out = "PROJCS[\\"North_America_Albers_Equal_Area_Conic\\"," \\
               "     UNIT[\\"Meter\\",1]," \\
               "     AUTHORITY[\\"EPSG\\",\\"102008\\"]]" 
               
-parameter_files = { %s }
+parameter_files = { 'landcover': {'file':'/Users/chris/Documents/science/data/Global/veg/60N_120W_treecover2010_v3.tif', 'method':'mean','classifier':Tree_cover_2_Simple_Canopy}, %s }
               """ % WN_output
 
 with open('mesher_config.py', 'w') as file:
     file.write(mesher_config)
 
 subprocess.check_call(['mesher.py mesher_config.py'], shell=True)
+
+os.remove('config_WN.txt')
