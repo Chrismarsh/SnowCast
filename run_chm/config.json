@@ -5,15 +5,15 @@
         "per_triangle_timeseries": "false",
         "ui": "false",
         "debug_level": "debug",
-        "prj_name": "Kananaskis",
-        "startdate": "20210128T010000"
-        // "enddate": "20170913T010000"
+        "prj_name": "Kananaskis"
+//        "startdate": "20210128T010000"
+//        "enddate": "20210326T030000"
     },
     "modules": [
         "solar",
-        // "WindNinja",
+        "WindNinja",
         // "iswr_from_nwp",
-        "Liston_wind",
+        // "Liston_wind",
         "iswr_from_obs",
         "lw_no_lapse",
         // "Longwave_from_obs",
@@ -25,9 +25,9 @@
         "t_monthly_lapse",
         "scale_wind_vert",
         "Harder_precip_phase",
-        // "Simple_Canopy",
+        "Simple_Canopy",
         "snobal",
-        // "snow_slide",
+        "snow_slide",
         "Richard_albedo",
         "fetchr"
 
@@ -37,17 +37,10 @@
         "Simple_Canopy": "snobal",
         "Richard_albedo": "snobal",
         "scale_wind_vert": "snobal",
-
-        "Simple_Canopy": "Lehning_snowpack",
-        "Richard_albedo": "Lehning_snowpack",
-        "scale_wind_vert": "Lehning_snowpack",
-
-        "scale_wind_vert": "FSM",
         "snow_slide": "snobal",
         "PBSM3D": "snobal",
-        "WindNinja": "snobal",
-        "WindNinja": "FSM",
-        "WindNinja": "Lehning_snowpack"
+        "WindNinja": "snobal"
+
     },
     "config": {
         "Richard_albedo": {
@@ -93,18 +86,18 @@
             "Max_spdup": "3.5",
             "ninja_recirc": "true",
             "compute_Sx": "true",
-            "Sx_crit": "20.0",
-            "L_avg": "1000"
+            "Sx_crit": "20.0"
+            // "L_avg": "1000"
         },
         "iswr": {
             "already_cosine_corrected": "true"
         }
     },
     "meshes": {
-        "mesh": "meshes/ref-DEM-utm.mesh_mesh.h5", 
-        "parameters": {
-            "file": "meshes/ref-DEM-utm.mesh_param.h5"
-        }
+         "mesh": "meshes/ref-DEM-utm.mesh_mesh.h5",
+         "parameters": {
+             "file": "meshes/ref-DEM-utm.mesh_param.h5"
+         }
     },
     "parameter_mapping": {
         "landcover": {
@@ -141,7 +134,7 @@
     "forcing": {
         "UTC_offset": "0",
         "use_netcdf": "true",
-        "file":"/Users/chris/Documents/science/code/SnowCast/v2/nwp_forcing/HRDPS_West_forecast.nc",
+        "file":"HRDPS_West_forecast.nc",
         "filter": {
             "scale_wind_speed": {
                 "Z_F": "40",
