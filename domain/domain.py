@@ -58,8 +58,8 @@ def Tree_cover_2_Simple_Canopy(value):
     
 dem_filename='windmapper_config/ref-DEM-utm.tif'
 
-max_area=5000**2
-max_tolerance=50
+max_area=2500**2
+max_tolerance=15
 min_area=50**2
 
 lloyd_itr = 1
