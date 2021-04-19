@@ -38,7 +38,8 @@ settings['force_nc_archive'] = False
 # doesn't impact grib processing, just the nc -> CHM step
 # if None, use earliest available
 # Format Y-M-D
-settings['start_date'] = '2021-10-01'
+settings['start_date'] = '2020-10-26'
+# settings['end_date'] = '2021-03-29'
 
 # regridding resolution
 settings['dxdy'] = 150

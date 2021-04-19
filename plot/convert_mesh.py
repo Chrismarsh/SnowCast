@@ -8,7 +8,7 @@ def filter_output(settings):
     df = pc.pvd_to_xarray(pvd, dxdy=dxdy)
 
     # get last 24 hr period
-    s = df.isel(time=[-23, -1])
+    s = df.isel(time=[-48, -1])
 
     # build up the list of variables we have
     all_var = set([x for x in s.data_vars.keys()])
