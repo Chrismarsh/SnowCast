@@ -56,11 +56,12 @@ def Tree_cover_2_Simple_Canopy(value):
         value = 1
     return value
     
-dem_filename='windmapper_config/ref-DEM-utm.tif'
+dem_filename='windmapper_config/ref-DEM-proj.tif'
+clip_to_shp ='windmapper_config/shp/user_bbox.shp'
 
 max_area=2500**2
-max_tolerance=15
-min_area=50**2
+max_tolerance=150
+min_area=500**2
 
 lloyd_itr = 1
 do_smoothing = True
