@@ -19,6 +19,8 @@ if __name__ == '__main__':
     else:
         open('.snowcast.lock','w')
 
+
+
     dask.config.set(scheduler='single-threaded')
     dask.config.set(**{'array.slicing.split_large_chunks': True})
 
@@ -109,34 +111,37 @@ if __name__ == '__main__':
     if not os.path.exists(settings['nc_chm_dir']):
         os.mkdir(settings['nc_chm_dir'])
 
-    slack.send_slack_notifier(settings['webhook_url'],'Snowcast run started :zap:','')
+    slack.send_slack_notifier(settings['webhook_url'], 'Snowcast run started :zap:', '')
 
     try:
         try:
             nwp_main.main(settings)
-        except:
-            message = 'Snowcast run failed during NWP processing :exclamation:'
+        except Exception as e:
+            open('.snowcast.lastrun_nwp_error.lock', 'w')
+
+            message = 'Snowcast run failed during NWP processing :exclamation:\ny' + str(e)
             slack.send_slack_notifier(settings['webhook_url'], message, '')
+
             raise Exception(message)
 
         try:
             chm_main.main(settings)
-        except:
-            message = 'Snowcast run failed during CHM run :exclamation:'
+        except Exception as e:
+            message = 'Snowcast run failed during CHM run :exclamation:\n' + str(e)
             slack.send_slack_notifier(settings['webhook_url'], message, '')
             raise Exception(message)
 
         try:
             plot_main.main(settings)
-        except:
-            message = 'Snowcast run failed during plot generation :exclamation:'
+        except Exception as e:
+            message = 'Snowcast run failed during plot generation :exclamation:\n' + str(e)
             slack.send_slack_notifier(settings['webhook_url'], message, '')
             raise Exception(message)
 
         try:
             upload.upload(settings)
-        except:
-            message = 'Snowcast run failed during web upload :exclamation:'
+        except Exception as e:
+            message = 'Snowcast run failed during web upload :exclamation:\n' + str(e)
             slack.send_slack_notifier(settings['webhook_url'], message, '')
             raise Exception(message)
     finally:
