@@ -1,4 +1,5 @@
 CHM>=1.0.5
+mesher >= 1.5.3
 pandas>=1.2
 urllib3
 tqdm
