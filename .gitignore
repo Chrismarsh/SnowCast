@@ -13,7 +13,9 @@ domain/windmapper_config.py
 nwp_forcing/grib_ar/
 nwp_forcing/nc_ar/
 nwp_forcing/grib_download/
+
 run_chm/output/
+run_chm/slurm-*
 
 www/tiles/
 www/index.html
