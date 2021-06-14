@@ -82,7 +82,15 @@ def backfill_grib2(settings):
     start = None
     if len(df) == 0:
         print('No existing data found, using earliest available data on hpfx')
-        start = find_hpfx_earliest_date().strftime('%Y-%m-%d')
+        start = find_hpfx_earliest_date()
+
+        user_date = pd.to_datetime(settings['start_date'], format='%Y-%m-%d')
+        if user_date  > start: #userdate comes /after/ hpfx start
+            print('Earliest date on hpfx is older than configuration start date, using configuration start date: ' + settings['start_date'])
+            start = user_date 
+
+        start = start.strftime('%Y-%m-%d')
+
     else:
         start = df.date[0].strftime('%Y-%m-%d')
 
