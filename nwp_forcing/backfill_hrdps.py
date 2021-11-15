@@ -66,14 +66,19 @@ def backfill_grib2(settings):
     # first, build a list
     all_files = glob.glob(os.path.join(settings['nc_ar_dir'],'*.nc'))
 
+    config_start = pd.to_datetime(settings['start_date'], format='%Y-%m-%d')
+
     for f in all_files:
         # assumption that we have 1 nc per day, and each nc has T+Xhr of forecast in it
         p = re.compile('([0-9]{4}-[0-9]{2}-[0-9]{2})')
         m = p.search(f)
 
         d = pd.to_datetime(m.group(1), format='%Y-%m-%d')
-        date.append(d)
-        fname.append(f)
+
+        # don't both looking for grib files if we have a partial archive that pre-dates our config start time
+        if d >= config_start:
+            date.append(d)
+            fname.append(f)
 
     df = pd.DataFrame({'date':date, 'file':fname})
     df = df.sort_values(by=['date'])

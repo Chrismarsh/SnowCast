@@ -74,42 +74,63 @@ def hrdps_grib2nc(settings):
 
     hrdps_files = {}
 
-    for var in settings['hrdps_variables']:
-        # print(var)
-        files = glob.glob( os.path.join(settings['grib_dir'],f'*_{var}_*.grib2'))
+    # we need to ensure that if we are looking for grib files to process we have everything asked for in hrdps
+    # thus we need the two passes
+    have_files_to_process = False
+    files = glob.glob( os.path.join(settings['grib_dir'],f'*_.grib2'))
+    if len(files) != 0:
+        have_files_to_process = True
 
-        date = []
-        P = []
-        fname = []
-        v = []
+    if have_files_to_process:
+        for var in settings['hrdps_variables']:
+            # print(var)
+            files = glob.glob( os.path.join(settings['grib_dir'],f'*_{var}_*.grib2'))
 
-        if len(files) == 0:
-            continue
+            date = []
+            P = []
+            fname = []
+            v = []
 
-        for f in files:
-            p = re.compile('([0-9]{10})_P([0-9]{3})')
-            m = p.search(f)
+            if len(files) == 0:
+                raise Exception(f'We are processing grib files but are missing grib files for {var}')
 
-            d = pd.to_datetime(m.group(1),format='%Y%m%d%H%M')
-            date.append(d)
-            P.append(int(m.group(2)))
-            fname.append(f)
-            v.append(var)
+            for f in files:
+                p = re.compile('([0-9]{10})_P([0-9]{3})')
+                m = p.search(f)
 
-        jd = pd.DatetimeIndex(date).to_julian_date().values
+                d = pd.to_datetime(m.group(1),format='%Y%m%d%H%M')
+                date.append(d)
+                P.append(int(m.group(2)))
+                fname.append(f)
+                v.append(var)
 
-        df = pd.DataFrame({'date':date, 'P':P,'file':fname,'jd':jd,'var':v})
-        df = df.sort_values(by=['date','P'])
-        df = df.reset_index()
-        df = df.drop(['index'],axis=1)
+            jd = pd.DatetimeIndex(date).to_julian_date().values
 
-        df = df[ df['date'].dt.hour == 0] # only deal with the midnight forecasts for now
-        # at this point we have all the files, however we want to discard the 12hr+ forecast if we have the next day's
-        # archive = df[ df['P'] < 24 ]
-        # forecast = df[ (df['P'] > 23) & (df['date'] == df['date'].max()) ]
-        # df = pd.concat([archive, forecast])
+            df = pd.DataFrame({'date':date, 'P':P,'file':fname,'jd':jd,'var':v})
+            df = df.sort_values(by=['date','P'])
+            df = df.reset_index()
+            df = df.drop(['index'],axis=1)
 
-        hrdps_files[var]=df
+
+            df = df[ df['date'].dt.hour == 0] # only deal with the midnight forecasts for now
+            # at this point we have all the files, however we want to discard the 12hr+ forecast if we have the next day's
+            # archive = df[ df['P'] < 24 ]
+            # forecast = df[ (df['P'] > 23) & (df['date'] == df['date'].max()) ]
+            # df = pd.concat([archive, forecast])
+
+            start = df.date[0].strftime('%Y-%m-%d')
+            end = df.date[-1].strftime('%Y-%m-%d')
+            diff = pd.date_range(start=start,
+                                 end=end,
+                                 freq='1d').difference(df.date)
+
+            if len(diff) != 0:
+                print(f'The grib files for {var} are missing dates:')
+                print(diff)
+                raise Exception('Missing grib files')
+
+
+            hrdps_files[var]=df
 
 
         # enables outputting what variables go with what gribs
@@ -118,13 +139,13 @@ def hrdps_grib2nc(settings):
     #     print(f'\'{var}\':\'{data_vars}\'')
     # exit(0)
     if len(hrdps_files) == 0:
-        print('No grib2 files found')
+        print('No grib2 files found to process')
         return False
 
     hrdps_files = pd.concat(hrdps_files)
 
     if len(hrdps_files) == 0:
-        print('No grib2 files found')
+        print('No grib2 files found to process')
         return False
 
     # import and combine all grib2 files
