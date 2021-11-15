@@ -5,8 +5,8 @@
         "per_triangle_timeseries": "false",
         "ui": "false",
         "debug_level": "debug",
-        "prj_name": "Kananaskis"
-//        "startdate": "20210128T010000"
+        "prj_name": "SnowCast",
+        "startdate": "20211001T010000"
 //        "enddate": "20210326T030000"
     },
     "modules": [
@@ -17,7 +17,7 @@
         "iswr_from_obs",
         "lw_no_lapse",
         // "Longwave_from_obs",
-
+//        "PBSM3D",
         "fast_shadow",
         "iswr",
         "kunkel_rh",
@@ -128,7 +128,9 @@
         "output_dir": "output",
         "mesh": {
             "base_name": "SC",
-            "write_parameters": "false"
+            "write_parameters": "false",
+            "only_last_n":"48",
+            "variables":["swe","snowdepthavg"]
         }
     },
     "forcing": {

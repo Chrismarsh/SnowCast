@@ -151,3 +151,4 @@ if __name__ == '__main__':
         print(message)
 
         os.remove('.snowcast.lock')
+        
