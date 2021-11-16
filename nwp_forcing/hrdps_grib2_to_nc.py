@@ -228,4 +228,4 @@ def hrdps_grib2nc(settings):
 
         ds.to_netcdf(nc_file_out, engine='netcdf4')
 
-
+    return True
