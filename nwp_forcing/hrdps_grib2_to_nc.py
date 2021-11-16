@@ -77,7 +77,7 @@ def hrdps_grib2nc(settings):
     # we need to ensure that if we are looking for grib files to process we have everything asked for in hrdps
     # thus we need the two passes
     have_files_to_process = False
-    files = glob.glob( os.path.join(settings['grib_dir'],f'*_.grib2'))
+    files = glob.glob( os.path.join(settings['grib_dir'],'*.grib2'))
     if len(files) != 0:
         have_files_to_process = True
 
