@@ -119,7 +119,7 @@ def hrdps_grib2nc(settings):
             # df = pd.concat([archive, forecast])
 
             start = df.date[0].strftime('%Y-%m-%d')
-            end = df.date[-1].strftime('%Y-%m-%d')
+            end = list(df.date)[-1].strftime('%Y-%m-%d')
             diff = pd.date_range(start=start,
                                  end=end,
                                  freq='1d').difference(df.date)
