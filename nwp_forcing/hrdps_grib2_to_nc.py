@@ -118,18 +118,6 @@ def hrdps_grib2nc(settings):
             # forecast = df[ (df['P'] > 23) & (df['date'] == df['date'].max()) ]
             # df = pd.concat([archive, forecast])
 
-            start = df.date[0].strftime('%Y-%m-%d')
-            end = list(df.date)[-1].strftime('%Y-%m-%d')
-            diff = pd.date_range(start=start,
-                                 end=end,
-                                 freq='1d').difference(df.date)
-
-            if len(diff) != 0:
-                print(f'The grib files for {var} are missing dates:')
-                print(diff)
-                raise Exception('Missing grib files')
-
-
             hrdps_files[var]=df
 
 
