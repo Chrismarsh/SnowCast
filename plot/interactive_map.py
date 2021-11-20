@@ -444,7 +444,7 @@ def make_map(settings, df):
         m.add_child(BindColormapTileLayer(TL, colormap))
 
     # GroupedLayerControl(collapsed=False,exclusiveGroups=['Forecasts']).add_to(m)
-    m.add_child(Sidebar(m))
+    # m.add_child(Sidebar(m))
     m.add_child(FavIcon())
 
     folium.LayerControl(collapsed=False).add_to(m)
