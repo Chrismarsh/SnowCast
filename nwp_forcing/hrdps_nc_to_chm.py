@@ -12,8 +12,11 @@ def preprocess(x, settings, keep_forecast=False):
     else:
         print(f'nc = {x.datetime[0].values}')
 
-    if len(x.datetime) < 48:
-        raise Exception(f'Expected a nc with 48 timesteps. nc start = {x.datetime[0].values}')
+    #we only need 48 if we are producing the forceast (ie this is the last file to process)
+    if keep_forecast and len(x.datetime) < 48:
+        raise Exception(f'Expected a nc with 48 timesteps to produce a forecase. nc start = {x.datetime[0].values}')
+    elif len(x.datetime) < 25:
+        raise Exception(f'Expected a nc with 25 timesteps. nc start = {x.datetime[0].values}')
 
     nc_start_hour = pd.to_datetime(x.datetime.values[0], format='%Y-%m-%dT%H:%M:%S').hour
     if nc_start_hour > 1:
@@ -204,3 +207,22 @@ def hrdps_nc_to_chm(settings):
                  )
 
     return True
+
+if __name__ == '__main__':
+    settings = {}
+    settings['hrdps2chm_names'] = {
+        'orog': 'HGT_P0_L1_GST',
+        't2m': 't',
+        'r2': 'rh',
+        'si10': 'u',
+        'wdir10': 'vw_dir',
+        'sp': 'press',
+        'ssrd': 'Qsi',
+        'strd': 'Qli',
+        'prate': 'p'
+    }
+
+    settings['nc_ar_dir'] = os.path.join(os.getcwd(), 'nc_ar')
+    settings['nc_chm_dir'] = os.getcwd()
+
+    hrdps_nc_to_chm(settings)
