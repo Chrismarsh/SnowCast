@@ -25,12 +25,31 @@ def preprocess(x, settings, keep_forecast=False):
     # standard mode, we aren't the last item, so throw away the +24h forecast
     # this skips the first timestep because the accumulated values in that timestep are NaN and we can't use them
     # So if we have a 1am this grabs 2am -> 1am + 1day
-    start_idx = 1
-    stop_idx = 25
 
-    if keep_forecast:
-        start_idx = 25
-        stop_idx = 48
+    start_idx = None
+    stop_idx = None
+
+    if nc_start_hour == 0:
+        start_idx = 1
+        stop_idx = 25
+
+        if keep_forecast:
+            start_idx = 25
+            stop_idx = 48
+
+    elif nc_start_hour == 1:
+        # 1 am start case
+        start_idx = 0
+        stop_idx = 25
+
+        if keep_forecast:
+            start_idx = 24
+            stop_idx = 48
+
+
+
+
+
 
     # if we start at 1am, we need to shift the index back by one
     # if nc_start_hour == 1:
@@ -132,7 +151,7 @@ def hrdps_nc_to_chm(settings):
         missing = '\n'.join([str(d) for d in diff.to_list()])
         raise Exception(f'Missing the following dates:\n {missing}')
 
-    # this is everything not including +24hr forecase
+    # this is everything not including +24hr forecast
     ar_nc_path = os.path.join(settings['nc_chm_dir'], f'HRDPS_West_current.nc')
     forecast_nc_path = os.path.join(settings['nc_chm_dir'], f'HRDPS_West_forecast.nc')
 
@@ -177,6 +196,7 @@ def hrdps_nc_to_chm(settings):
 
     # write out the archive
     if update_nc:
+        print('Updating HRDPS_West_current.nc...')
         existing_ar = xr.open_mfdataset([ar_nc_path],
                                         engine='netcdf4')
         # update our archive of non-forecasts
@@ -189,6 +209,7 @@ def hrdps_nc_to_chm(settings):
         os.remove(ar_nc_path)
         os.rename(ar_nc_path + '.tmp', ar_nc_path)
     else:
+        print('Writting new HRDPS_West_current.nc')
         ds.to_netcdf(ar_nc_path,
                      mode='w',
                      engine='netcdf4'
@@ -202,6 +223,7 @@ def hrdps_nc_to_chm(settings):
     except OSError as e:
         pass
 
+    print('Writing HRDPS_West_forecast.nc')
     ds.to_netcdf(forecast_nc_path,
                  engine='netcdf4'
                  )
@@ -222,7 +244,7 @@ if __name__ == '__main__':
         'prate': 'p'
     }
 
-    settings['nc_ar_dir'] = os.path.join(os.getcwd(), 'nc_ar')
+    settings['nc_ar_dir'] = os.path.join(os.getcwd(), 'nc_ar_offset')
     settings['nc_chm_dir'] = os.getcwd()
 
     hrdps_nc_to_chm(settings)
