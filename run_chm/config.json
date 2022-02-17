@@ -17,7 +17,7 @@
         "iswr_from_obs",
         "lw_no_lapse",
         // "Longwave_from_obs",
-//        "PBSM3D",
+        "PBSM3D",
         "fast_shadow",
         "iswr",
         "kunkel_rh",
@@ -94,10 +94,11 @@
         }
     },
     "meshes": {
-         "mesh": "meshes/ref-DEM-utm.mesh_mesh.h5",
-         "parameters": {
-             "file": "meshes/ref-DEM-utm.mesh_param.h5"
-         }
+        "mesh": "ref-DEM-proj.metis.448_mesh.np448.partition"
+//         "mesh": "meshes/ref-DEM-utm.mesh_mesh.h5",
+//         "parameters": {
+//             "file": "meshes/ref-DEM-utm.mesh_param.h5"
+//         }
     },
     "parameter_mapping": {
         "landcover": {
