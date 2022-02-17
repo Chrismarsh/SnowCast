@@ -149,11 +149,15 @@ def backfill_grib2(settings):
                 url_hpfx = f'{base_url_hpfx}/{lead_time}/{filename}'
                 url_dd   = f'{base_url_dd}/{lead_time}/{filename}'
 
+                url_for_download = url_hpfx
+
                 if not os.path.exists(os.path.join(settings['grib_dir'], filename)):
                     ret = data_download(url_hpfx, settings['grib_dir'], filename, True)
 
                     if not ret:
                         ret = data_download(url_dd, settings['grib_dir'], filename, True)
+                        if ret:
+                            url_for_download = url_dd
 
                     if not ret:
                         print(f'\n\t[{var}@P{lead_time}] missing on hpfx, dd, and local archive [error]')
@@ -162,18 +166,24 @@ def backfill_grib2(settings):
 
                 # this let's us run the backfill before we do grib->nc, without accidentally downloading files we already have
                 if not os.path.exists( os.path.join(settings['grib_dir'], filename)):
-                    # can only backfill off hpfx so don't check dd here
-                    grib_to_download.append( ( url_hpfx, filename) )
+                    # can only backfill off the right URL
+                    grib_to_download.append( ( url_for_download, filename) )
 
         if is_ok:
-            print(' available on hpfx or local archive')
+            print(' available on hpfx, dd, or local archive')
 
     if missing_files_error:
         raise Exception('Missing grib files and not available on hpfx or local cache')
 
+    download_failed = False
     for grib in tqdm(grib_to_download):
         ret = data_download(grib[0], settings['grib_dir'], grib[1])
         if not ret:
             print(f'Unable to obtain date {grib[1]}')
+            download_failed = True
 
-    return False # we had to backfill
+    # last ditched sanity check
+    if download_failed:
+        raise Exception('Missing grib files and not available on hpfx, dd, or local cache')
+
+    return False  # we had to backfill
