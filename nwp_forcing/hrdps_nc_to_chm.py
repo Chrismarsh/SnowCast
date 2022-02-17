@@ -175,6 +175,7 @@ def hrdps_nc_to_chm(settings):
             return True
 
     ds = xr.open_mfdataset(df.file.tolist(),
+                           combine='nested',
                            concat_dim='datetime',
                            engine='netcdf4',
                            parallel=False,

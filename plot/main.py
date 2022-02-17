@@ -9,7 +9,7 @@ def main(settings):
     dask.config.set(scheduler='processes')
     print('Converting model output')
     df = filter_output(settings)
-    # df = df.chunk({'time':-1,'x':-1,'y':-1})
+    df = df.chunk({'time':-1,'x':-1,'y':-1})
     make_interactive(settings, df)
 
 
