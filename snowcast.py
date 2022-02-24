@@ -13,7 +13,7 @@ from webupload import upload
 import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("-b", "--no-backfill", required=False, dest="backfill", action="store_false", help="(Back)fill met data")
-parser.add_argument("-r", "--no-CHM", required=False, dest='CHM',action="store_false", help="Run CHM")
+parser.add_argument("-r", "--no-chm", required=False, dest='CHM',action="store_false", help="Run CHM")
 parser.add_argument("-p", "--no-plot", required=False, dest='plot', action="store_false", help="Do plot")
 parser.add_argument("-u", "--no-upload", required=False, dest='upload', action="store_false", help="Upload")
 parser.add_argument("-c", "--config", required=True, default='', type=str,
