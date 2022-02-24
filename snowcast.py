@@ -10,6 +10,15 @@ from plot import main as plot_main
 from run_chm import main as chm_main
 from webupload import upload
 
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument("-b", "--no-backfill", required=False, dest="backfill", action="store_false", help="(Back)fill met data")
+parser.add_argument("-r", "--no-CHM", required=False, dest='CHM',action="store_false", help="Run CHM")
+parser.add_argument("-p", "--no-plot", required=False, dest='plot', action="store_false", help="Do plot")
+parser.add_argument("-u", "--no-upload", required=False, dest='upload', action="store_false", help="Upload")
+parser.add_argument("-c", "--config", required=True, default='', type=str,
+                help="Config file to use")
+
 if __name__ == '__main__':
     # cluster = dask.distributed.LocalCluster(threads_per_worker=1, n_workers=1)
     # c = dask.distributed.Client(cluster)
@@ -19,6 +28,12 @@ if __name__ == '__main__':
     else:
         open('.snowcast.lock','w')
 
+    args = vars(parser.parse_args())
+
+    step_backfill = args['backfill']
+    step_CHM = args['CHM']
+    step_plot = args['plot']
+    step_upload = args['upload']
 
 
     dask.config.set(scheduler='single-threaded')
@@ -27,14 +42,9 @@ if __name__ == '__main__':
     print("Started at =", datetime.now().strftime("%H:%M:%S"))
     # Load in config file
 
-    # Check user defined configuraiton file
-    # Comment from Kevin
-    if len(sys.argv) == 1:
-        raise ValueError('snowcast.py requires one argument [configuration file] (i.e. python '
-                         'snowcast.py forcing_config.py')
 
     # Get name of configuration file/module
-    configfile = sys.argv[-1]
+    configfile = args['config']
 
     # Load in configuration file as module
     X = importlib.machinery.SourceFileLoader('config', configfile)
@@ -115,7 +125,8 @@ if __name__ == '__main__':
 
     try:
         try:
-            nwp_main.main(settings)
+            if step_backfill:
+                nwp_main.main(settings)
         except Exception as e:
             open('.snowcast.lastrun_nwp_error.lock', 'w')
 
@@ -125,21 +136,24 @@ if __name__ == '__main__':
             raise Exception(message)
 
         try:
-            chm_main.main(settings)
+            if step_CHM:
+                chm_main.main(settings)
         except Exception as e:
             message = 'Snowcast run failed during CHM run :exclamation:\n' + str(e)
             slack.send_slack_notifier(settings['webhook_url'], message, '')
             raise Exception(message)
 
         try:
-            plot_main.main(settings)
+            if step_plot:
+                plot_main.main(settings)
         except Exception as e:
             message = 'Snowcast run failed during plot generation :exclamation:\n' + str(e)
             slack.send_slack_notifier(settings['webhook_url'], message, '')
             raise Exception(message)
 
         try:
-            upload.upload(settings)
+            if step_upload:
+                upload.upload(settings)
         except Exception as e:
             message = 'Snowcast run failed during web upload :exclamation:\n' + str(e)
             slack.send_slack_notifier(settings['webhook_url'], message, '')

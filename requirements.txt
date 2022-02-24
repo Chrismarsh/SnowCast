@@ -18,3 +18,4 @@ Jinja2
 requests
 cfgrib
 metpx-sarracenia
+rioxarray

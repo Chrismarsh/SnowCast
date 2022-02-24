@@ -7,12 +7,16 @@ import os
 import pandas as pd
 import subprocess
 import xarray as xr
+import time as timer
 from branca.element import MacroElement
 from collections import OrderedDict
 from folium.utilities import parse_options
 from jinja2 import Template
+import rioxarray as rio
 
 import plot.plot_settings as plot_settings
+
+ROBUST_PERCENTILE = 0.02  # follows xarray's robust 98% - 2%
 
 class LinearColormap(cm.LinearColormap):
     def __init__(self, colors, index=None, vmin=0., vmax=1., caption=''):
@@ -348,47 +352,71 @@ def _gdal_prefix():
                 """
             )
 
-def make_geotiff(df, var=None, time=None):
+def get_geotiff_name(df, var, time):
 
-    if time is not None:
-        d = df[var].isel(time=time).rio.write_nodata(-9999)
-    else:
-        # if a diff comes in it won't have a time axis
-        d = df[var].rio.write_nodata(-9999)
-        time = 'diff'
+    time = str(df.time.values[time]).split('.')[0]
+    dxdy = df.coords['dxdy'].values
+    tiff = f'{var}_{dxdy}x{dxdy}_{time}.tif'
 
-    gdalwarp = os.path.join(_gdal_prefix(),'bin','gdalwarp')
+    return tiff
 
-    tmp_tiff = f'{var}_wgs_{time}.tif'
-    d.rio.to_raster(tmp_tiff)
-    exec = f"""{gdalwarp} -t_srs EPSG:4326 -srcnodata '-9999' {tmp_tiff}  output_{var}_{time}.tif"""
-    subprocess.check_call([exec], shell=True)
+# def make_diff_geotiff(df, var=None):
+#
+#     # if a diff comes in it won't have a time axis
+#     d = df.rio.write_nodata(-9999)
+#     time = 'diff'
+#
+#     gdalwarp = os.path.join(_gdal_prefix(),'bin','gdalwarp')
+#
+#     tmp_tiff = f'{var}_wgs_diff.tif'
+#     d.rio.to_raster(tmp_tiff)
+#     exec = f"""{gdalwarp} -t_srs EPSG:4326 -srcnodata '-9999' {tmp_tiff}  output_{var}_{time}.tif"""
+#     subprocess.check_call([exec], shell=True)
+#
+#     os.remove(tmp_tiff)
+#
+#     return f'output_{var}_{time}.tif'
 
-    os.remove(tmp_tiff)
+# Gets the robust percentile range across multiple tiffs
+def get_vmin_vmax(df, var):
 
-    return f'output_{var}_{time}.tif'
+    files = [get_geotiff_name(df, var=var, time=t) for t in [0,-1] ]
+    rasters = [rio.open_rasterio(x, chunks={'x': None, 'y': None}) for x in files]
+    ds = xr.concat(rasters, dim='time')
+    ds = ds.chunk({'time': -1})
+
+    vmax = float(ds.quantile(1.0 - ROBUST_PERCENTILE, dim=['time', 'y', 'x']))
+    vmin = float(ds.quantile(ROBUST_PERCENTILE, dim=['time', 'y', 'x']))
+
+    return vmin,vmax
+
 
 def make_map(settings, df):
 
-    minZoom = 7
+    minZoom = 3
     maxZoom = 12
 
     # the lat long in the df isn't /quite/ right but close enough for this
     m = folium.Map(location=[df.lat.mean(), df.lon.mean()], zoom_start=9, tiles=None, control_scale=True ,zoom_control=True, max_zoom=maxZoom, min_zoom=minZoom)
     folium.TileLayer('Stamen Terrain', control=False, overlay=True, max_zoom=maxZoom, min_zoom=minZoom).add_to(m) # overlay=True is important to allow it to be drawn over and not replaced
 
-    ROBUST_PERCENTILE = 0.02  # follows xarray's robust 98% - 2%
+
     layer_attr = 'University of Saskatchewan, Global Water Futures'
+
+    print('Converting pvd to tiff')
+    start = timer.time()
+    df.chm.to_raster(crs_out='EPSG:4326')
+    end = timer.time()
+    print("Took %fs" % (end - start) )
 
     for var in settings['plot_vars']:
 
-        vmax = float(df.quantile(1.0 - ROBUST_PERCENTILE, dim=['time', 'y', 'x'])[var])
-        vmin = float(df.quantile(ROBUST_PERCENTILE, dim=['time', 'y', 'x'])[var])
+        vmin, vmax = get_vmin_vmax(df, var)
 
         for time in [0, -1]:
 
             # convert to geotiff and reporject
-            tiff = make_geotiff(df, var=var, time=time)
+            tiff = get_geotiff_name(df, var=var, time=time)
 
             make_tiles(settings, tiff, var, time, vmax, vmin, minZoom, maxZoom )
 
@@ -416,16 +444,24 @@ def make_map(settings, df):
             m.add_child(colormap)
             m.add_child(BindColormapTileLayer(TL, colormap))
 
-        diff = df.isel(time=-1) - df.isel(time=0)
-        vmax = float(diff.quantile(1.0 - ROBUST_PERCENTILE, dim=['y', 'x'])[var])
-        vmin = float(diff.quantile(ROBUST_PERCENTILE, dim=['y', 'x'])[var])
+        a = rio.open_rasterio(get_geotiff_name(df, var=var, time=0))
+        b = rio.open_rasterio(get_geotiff_name(df, var=var, time=-1))
+        diff = b - a
+
+
+        vmax = float(diff.quantile(1.0 - ROBUST_PERCENTILE, dim=['y', 'x']))
+        vmin = float(diff.quantile(ROBUST_PERCENTILE, dim=['y', 'x']))
 
         # because this is a difference it should be centred around zero
         max_range = np.max([abs(vmax), abs(vmin)])
         vmax = np.sign(vmax) * max_range
         vmin = np.sign(vmin) * max_range
 
-        tiff = make_geotiff(diff, var=var, time=None)
+        diff = diff.rio.write_nodata(-9999)
+        tiff = f'output_{var}_diff.tif'
+        diff.rio.to_raster(tiff)
+
+        # tiff = make_geotiff(diff, var=var, time=None)
         make_tiles(settings, tiff, var, 'diff', vmax, vmin, minZoom, maxZoom)
 
         name = 'Predicted change in ' + plot_settings.get_title(var)
@@ -465,6 +501,7 @@ def make_tiles(settings, tiff, var, time, vmax, vmin, minZoom, maxZoom):
     gdal2tiles = os.path.join(_gdal_prefix(), 'bin', 'gdal2tiles.py')
 
     exec = f'python {gdal2tiles} temp_color.vrt -w leaflet -z {minZoom}-{maxZoom} {tile_path}'
+
     subprocess.check_call([exec], shell=True)
     os.remove(tiff)
     os.remove('temp_color.vrt')
