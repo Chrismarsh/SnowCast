@@ -355,6 +355,7 @@ def _gdal_prefix():
 def get_geotiff_name(df, var, time):
 
     time = str(df.time.values[time]).split('.')[0]
+    time = time.replace(':', '')
     dxdy = df.coords['dxdy'].values
     tiff = f'{var}_{dxdy}x{dxdy}_{time}.tif'
 
@@ -393,7 +394,7 @@ def get_vmin_vmax(df, var):
 
 def make_map(settings, df):
 
-    minZoom = 3
+    minZoom = 1
     maxZoom = 12
 
     # the lat long in the df isn't /quite/ right but close enough for this
@@ -503,7 +504,7 @@ def make_tiles(settings, tiff, var, time, vmax, vmin, minZoom, maxZoom):
     exec = f'python {gdal2tiles} temp_color.vrt -w leaflet -z {minZoom}-{maxZoom} {tile_path}'
 
     subprocess.check_call([exec], shell=True)
-    os.remove(tiff)
+    # os.remove(tiff)
     os.remove('temp_color.vrt')
     os.remove(colormap)
 
