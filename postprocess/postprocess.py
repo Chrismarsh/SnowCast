@@ -5,6 +5,8 @@ import time
 
 def main(settings):
     dask.config.set(scheduler='processes')
+    dask.config.set(**{'array.slicing.split_large_chunks': True})
+    
     print('Converting model output')
 
     print('Reading pvd')
