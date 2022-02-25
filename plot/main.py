@@ -28,7 +28,7 @@ def main(settings):
     print('AB gov output starting')
     df = pc.pvd_to_xarray(settings['chm_outpath'],
                           dxdy=2500,
-                          variables=settings['swe'])
+                          variables=['swe'])
     df = df.isel(time=[-48])
 
     start = time.time()
