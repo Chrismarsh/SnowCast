@@ -22,13 +22,15 @@ parser.add_argument("-c", "--config", required=True, default='', type=str,
 if __name__ == '__main__':
     # cluster = dask.distributed.LocalCluster(threads_per_worker=1, n_workers=1)
     # c = dask.distributed.Client(cluster)
+    args = vars(parser.parse_args())
+    
     if os.path.exists('.snowcast.lock'):
         print('Snowcast is already running')
         exit(0)
     else:
         open('.snowcast.lock','w')
 
-    args = vars(parser.parse_args())
+
 
     step_backfill = args['backfill']
     step_CHM = args['CHM']
