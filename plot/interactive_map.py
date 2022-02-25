@@ -404,12 +404,6 @@ def make_map(settings, df):
 
     layer_attr = 'University of Saskatchewan, Global Water Futures'
 
-    print('Converting pvd to tiff')
-    start = timer.time()
-    df.chm.to_raster(crs_out='EPSG:4326')
-    end = timer.time()
-    print("Took %fs" % (end - start) )
-
     for var in settings['plot_vars']:
 
         vmin, vmax = get_vmin_vmax(df, var)

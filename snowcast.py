@@ -1,4 +1,4 @@
-import dask
+# import dask
 import importlib
 import os
 import sys
@@ -9,12 +9,14 @@ from nwp_forcing import main as nwp_main
 from plot import main as plot_main
 from run_chm import main as chm_main
 from webupload import upload
+from postprocess import postprocess
 
 import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("-b", "--no-backfill", required=False, dest="backfill", action="store_false", help="(Back)fill met data")
 parser.add_argument("-r", "--no-chm", required=False, dest='CHM',action="store_false", help="Run CHM")
 parser.add_argument("-p", "--no-plot", required=False, dest='plot', action="store_false", help="Do plot")
+parser.add_argument("-a", "--no-postprocess", required=False, dest='postprocess', action="store_false", help="Post process CHM->TIFF")
 parser.add_argument("-u", "--no-upload", required=False, dest='upload', action="store_false", help="Upload")
 parser.add_argument("-c", "--config", required=True, default='', type=str,
                 help="Config file to use")
@@ -23,7 +25,7 @@ if __name__ == '__main__':
     # cluster = dask.distributed.LocalCluster(threads_per_worker=1, n_workers=1)
     # c = dask.distributed.Client(cluster)
     args = vars(parser.parse_args())
-    
+
     if os.path.exists('.snowcast.lock'):
         print('Snowcast is already running')
         exit(0)
@@ -36,10 +38,11 @@ if __name__ == '__main__':
     step_CHM = args['CHM']
     step_plot = args['plot']
     step_upload = args['upload']
+    step_postprocess = args['postprocess']
 
 
-    dask.config.set(scheduler='single-threaded')
-    dask.config.set(**{'array.slicing.split_large_chunks': True})
+    # dask.config.set(scheduler='single-threaded')
+    # dask.config.set(**{'array.slicing.split_large_chunks': True})
 
     print("Started at =", datetime.now().strftime("%H:%M:%S"))
     # Load in config file
@@ -145,9 +148,19 @@ if __name__ == '__main__':
             slack.send_slack_notifier(settings['webhook_url'], message, '')
             raise Exception(message)
 
+#TODO: Replace this with just time offsets
+        df = None
+        try:
+            if step_postprocess:
+                df = postprocess.main(settings)
+        except Exception as e:
+            message = 'Snowcast run failed during post processing :exclamation:\n' + str(e)
+            slack.send_slack_notifier(settings['webhook_url'], message, '')
+            raise Exception(message)
+
         try:
             if step_plot:
-                plot_main.main(settings)
+                plot_main.main(settings, df)
         except Exception as e:
             message = 'Snowcast run failed during plot generation :exclamation:\n' + str(e)
             slack.send_slack_notifier(settings['webhook_url'], message, '')
