@@ -382,7 +382,7 @@ def get_geotiff_name(df, var, time):
 def get_vmin_vmax(df, var):
 
     files = [get_geotiff_name(df, var=var, time=t) for t in [0,-1] ]
-    rasters = [rio.open_rasterio(x, chunks={'x': None, 'y': None}) for x in files]
+    rasters = [rio.open_rasterio(x, chunks={'x': None, 'y': None}, masked=True) for x in files]
     ds = xr.concat(rasters, dim='time')
     ds = ds.chunk({'time': -1})
 
@@ -395,10 +395,10 @@ def get_vmin_vmax(df, var):
 def make_map(settings, df):
 
     minZoom = 1
-    maxZoom = 12
+    maxZoom = 13
 
     # the lat long in the df isn't /quite/ right but close enough for this
-    m = folium.Map(location=[df.lat.mean(), df.lon.mean()], zoom_start=9, tiles=None, control_scale=True ,zoom_control=True, max_zoom=maxZoom, min_zoom=minZoom)
+    m = folium.Map(location=[df.lat.mean(), df.lon.mean()], zoom_start=8, tiles=None, control_scale=True ,zoom_control=True, max_zoom=maxZoom, min_zoom=minZoom)
     folium.TileLayer('Stamen Terrain', control=False, overlay=True, max_zoom=maxZoom, min_zoom=minZoom).add_to(m) # overlay=True is important to allow it to be drawn over and not replaced
 
 
@@ -445,8 +445,8 @@ def make_map(settings, df):
             m.add_child(colormap)
             m.add_child(BindColormapTileLayer(TL, colormap))
 
-        a = rio.open_rasterio(get_geotiff_name(df, var=var, time=0))
-        b = rio.open_rasterio(get_geotiff_name(df, var=var, time=-1))
+        a = rio.open_rasterio(get_geotiff_name(df, var=var, time=0), masked=True)
+        b = rio.open_rasterio(get_geotiff_name(df, var=var, time=-1), masked=True)
         diff = b - a
 
 
