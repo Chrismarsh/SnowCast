@@ -6,7 +6,7 @@ import time
 def main(settings):
     dask.config.set(scheduler='processes')
     dask.config.set(**{'array.slicing.split_large_chunks': True})
-    
+
     print('Converting model output')
 
     print('Reading pvd')
@@ -14,6 +14,7 @@ def main(settings):
     df = pc.pvd_to_xarray(settings['chm_outpath'],
                           dxdy=settings['dxdy'],
                           variables=settings['plot_vars'])
+    df = df.isel(time=[-48, -1])
     end = time.time()
     print("Took %fs" % (end - start))
 
