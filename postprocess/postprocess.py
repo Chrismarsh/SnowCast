@@ -24,7 +24,10 @@ def main(settings):
     end = time.time()
     print("Took %fs" % (end - start) )
 
-    df = df.isel(time=[-48, -1])
+
+    # timestamps = df.time.values
+    #
+    # df = None
 
     print('Creating 2.5km TIFFs...')
     df_ab = pc.pvd_to_xarray(settings['chm_outpath'],
