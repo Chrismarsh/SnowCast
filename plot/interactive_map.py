@@ -386,7 +386,7 @@ def get_geotiff_name(df_times, var, time, dxdy):
 # Gets the robust percentile range across multiple tiffs
 def get_vmin_vmax(df, var, dxdy):
 
-    files = [get_geotiff_name(df, var=var, time=t, dxdy) for t in [0,-1] ]
+    files = [get_geotiff_name(df, var=var, time=t, dxdy=dxdy) for t in [0,-1] ]
     rasters = [rio.open_rasterio(x, chunks={'x': None, 'y': None}, masked=True) for x in files]
     ds = xr.concat(rasters, dim='time')
     ds = ds.chunk({'time': -1})
