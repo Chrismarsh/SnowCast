@@ -5,7 +5,7 @@ import os
 
 def upload(settings):
 
-    tiff_path = os.join(settings['html_dir'],'tiff')
+    tiff_path = os.path.join(settings['html_dir'],'tiff')
     shutil.rmtree(tiff_path, ignore_errors = True)
 
     os.makedirs(tiff_path, exist_ok=True)
