@@ -1,4 +1,5 @@
 import itertools
+import uuid
 from concurrent import futures
 from functools import partial
 
@@ -327,10 +328,10 @@ class Sidebar(MacroElement):
         
         """)  # noqa
 
-def make_colour_txt( var, vmin, vmax, n=12):
+def make_colour_txt( var, vmin, vmax, mangle, n=12):
     colors = plot_settings.get_cmap(var)
     r = np.linspace(vmin, vmax, n)
-    fname = f'color_{var}.txt'
+    fname = f'color_{var}_{mangle}.txt'
     with open(fname, 'w') as file:
         for elev, c in zip(r, colors):
             if isinstance(c, str):
@@ -426,7 +427,7 @@ def make_diff_tiles_future(settings, df, minZoom, maxZoom, dxdy, var_times):
 
 def make_map(settings, df):
 
-    minZoom = 11
+    minZoom = 3
     maxZoom = 12
 
     # the lat long in the df isn't /quite/ right but close enough for this
@@ -532,21 +533,23 @@ def make_map(settings, df):
 
 def make_tiles(settings, tiff, var, time, vmax, vmin, minZoom, maxZoom):
     colormap = None
+    mangle = uuid.uuid4().hex[:8]
+
     if time == 'diff':
-        colormap = make_colour_txt(f'{var}_diff', vmin, vmax, n=12)
+        colormap = make_colour_txt(f'{var}_diff', vmin, vmax, mangle, n=12)
     else:
-        colormap = make_colour_txt(var, vmin, vmax, n=12)
-    exec = f'gdaldem color-relief {tiff} {colormap} temp_color.vrt -alpha'
+        colormap = make_colour_txt(var, vmin, vmax, mangle, n=12)
+    exec = f'gdaldem color-relief {tiff} {colormap} temp_color_{mangle}.vrt -alpha'
     subprocess.check_call([exec], shell=True)
     tile_path = os.path.join(settings['html_dir'], 'tiles', f'tiles_{var}_{time}')
 
     gdal2tiles = os.path.join(_gdal_prefix(), 'bin', 'gdal2tiles.py')
 
-    exec = f'python {gdal2tiles} temp_color.vrt -w leaflet -z {minZoom}-{maxZoom} {tile_path}'
+    exec = f'python {gdal2tiles} temp_color_{mangle}.vrt -w leaflet -z {minZoom}-{maxZoom} {tile_path}'
 
     subprocess.check_call([exec], shell=True)
     # os.remove(tiff)
-    os.remove('temp_color.vrt')
+    os.remove(f'temp_color_{mangle}.vrt')
     os.remove(colormap)
 
 
