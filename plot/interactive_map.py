@@ -394,8 +394,8 @@ def get_vmin_vmax(df, var):
 
 def make_map(settings, df):
 
-    minZoom = 1
-    maxZoom = 13
+    minZoom = 11
+    maxZoom = 12
 
     # the lat long in the df isn't /quite/ right but close enough for this
     m = folium.Map(location=[df.lat.mean(), df.lon.mean()], zoom_start=8, tiles=None, control_scale=True ,zoom_control=True, max_zoom=maxZoom, min_zoom=minZoom)
