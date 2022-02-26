@@ -357,11 +357,11 @@ def _gdal_prefix():
                 """
             )
 
-def get_geotiff_name(df, var, time):
+def get_geotiff_name(df_times, var, time, dxdy):
 
-    time = str(df.time.values[time]).split('.')[0]
+    time = str(df_times[time]).split('.')[0]
     time = time.replace(':', '')
-    dxdy = df.coords['dxdy'].values
+    # dxdy = df.coords['dxdy'].values
     tiff = f'{var}_{dxdy}x{dxdy}_{time}.tif'
 
     return tiff
@@ -384,9 +384,9 @@ def get_geotiff_name(df, var, time):
 #     return f'output_{var}_{time}.tif'
 
 # Gets the robust percentile range across multiple tiffs
-def get_vmin_vmax(df, var):
+def get_vmin_vmax(df, var, dxdy):
 
-    files = [get_geotiff_name(df, var=var, time=t) for t in [0,-1] ]
+    files = [get_geotiff_name(df, var=var, time=t, dxdy) for t in [0,-1] ]
     rasters = [rio.open_rasterio(x, chunks={'x': None, 'y': None}, masked=True) for x in files]
     ds = xr.concat(rasters, dim='time')
     ds = ds.chunk({'time': -1})
@@ -397,17 +397,17 @@ def get_vmin_vmax(df, var):
     return vmin,vmax
 
 
-def make_tiles_future(settings, df, minZoom, maxZoom, var_times):
+def make_tiles_future(settings, df, minZoom, maxZoom, dxdy, var_times):
     var, time, = var_times
-    vmin, vmax = get_vmin_vmax(df, var)
-    tiff = get_geotiff_name(df, var=var, time=time)
+    vmin, vmax = get_vmin_vmax(df, var, dxdy)
+    tiff = get_geotiff_name(df, var=var, time=time, dxdy=dxdy)
 
     make_tiles(settings, tiff, var, time, vmax, vmin, minZoom, maxZoom)
 
-def make_diff_tiles_future(settings, df, minZoom, maxZoom, var_times):
+def make_diff_tiles_future(settings, df, minZoom, maxZoom, dxdy, var_times):
     var, time, = var_times
-    a = rio.open_rasterio(get_geotiff_name(df, var=var, time=0), masked=True)
-    b = rio.open_rasterio(get_geotiff_name(df, var=var, time=-1), masked=True)
+    a = rio.open_rasterio(get_geotiff_name(df, var=var, time=0, dxdy=dxdy), masked=True)
+    b = rio.open_rasterio(get_geotiff_name(df, var=var, time=-1, dxdy=dxdy), masked=True)
     diff = b - a
 
     vmax = float(diff.quantile(1.0 - ROBUST_PERCENTILE, dim=['y', 'x']))
@@ -433,6 +433,8 @@ def make_map(settings, df):
     m = folium.Map(location=[df.lat.mean(), df.lon.mean()], zoom_start=8, tiles=None, control_scale=True ,zoom_control=True, max_zoom=maxZoom, min_zoom=minZoom)
     folium.TileLayer('Stamen Terrain', control=False, overlay=True, max_zoom=maxZoom, min_zoom=minZoom).add_to(m) # overlay=True is important to allow it to be drawn over and not replaced
 
+    df_times = df.time.values
+    dxdy = df.coords['dxdy'].values
 
     layer_attr = 'University of Saskatchewan, Global Water Futures'
 
@@ -441,11 +443,11 @@ def make_map(settings, df):
     var_time = [p for p in var_time]
 
     with futures.ProcessPoolExecutor(max_workers=4) as executor:
-        res = list(tqdm(executor.map(partial(make_tiles_future, settings, df, minZoom, maxZoom), var_time), total=len(var_time)))
+        res = list(tqdm(executor.map(partial(make_tiles_future, settings, df_times, minZoom, maxZoom, dxdy), var_time), total=len(var_time)))
 
     for var in settings['plot_vars']:
 
-        vmin, vmax = get_vmin_vmax(df, var)
+        vmin, vmax = get_vmin_vmax(df_times, var, dxdy)
 
         for time in [0, -1]:
 
@@ -454,7 +456,7 @@ def make_map(settings, df):
 
             # make_tiles(settings, tiff, var, time, vmax, vmin, minZoom, maxZoom )
 
-            model_time = pd.to_datetime(df.time.values[time])
+            model_time = pd.to_datetime(df_times[time])
             model_time = model_time.strftime('%Y/%m/%d %H:00 UTC')
 
             name = plot_settings.get_title(var)
@@ -483,7 +485,7 @@ def make_map(settings, df):
     var_time = [p for p in var_time]
 
     with futures.ProcessPoolExecutor(max_workers=4) as executor:
-        res = list(tqdm(executor.map(partial(make_diff_tiles_future, settings, df, minZoom, maxZoom), settings['plot_vars']), total=len(var_time)))
+        res = list(tqdm(executor.map(partial(make_diff_tiles_future, settings, df_times, minZoom, maxZoom, dxdy), settings['plot_vars']), total=len(var_time)))
 
     for var in settings['plot_vars']:
         # a = rio.open_rasterio(get_geotiff_name(df, var=var, time=0), masked=True)
