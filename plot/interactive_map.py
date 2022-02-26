@@ -486,7 +486,7 @@ def make_map(settings, df):
     var_time = [p for p in var_time]
 
     with futures.ProcessPoolExecutor(max_workers=4) as executor:
-        res = list(tqdm(executor.map(partial(make_diff_tiles_future, settings, df_times, minZoom, maxZoom, dxdy), settings['plot_vars']), total=len(var_time)))
+        res = list(tqdm(executor.map(partial(make_diff_tiles_future, settings, df_times, minZoom, maxZoom, dxdy), var_time), total=len(var_time)))
 
     for var in settings['plot_vars']:
         # a = rio.open_rasterio(get_geotiff_name(df, var=var, time=0), masked=True)
