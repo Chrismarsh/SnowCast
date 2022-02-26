@@ -1,3 +1,7 @@
+import itertools
+from concurrent import futures
+from functools import partial
+
 import branca
 import branca.colormap as cm
 import folium
@@ -13,6 +17,7 @@ from collections import OrderedDict
 from folium.utilities import parse_options
 from jinja2 import Template
 import rioxarray as rio
+from tqdm import tqdm
 
 import plot.plot_settings as plot_settings
 
@@ -392,6 +397,33 @@ def get_vmin_vmax(df, var):
     return vmin,vmax
 
 
+def make_tiles_future(settings, df, minZoom, maxZoom, var_times):
+    var, time, = var_times
+    vmin, vmax = get_vmin_vmax(df, var)
+    tiff = get_geotiff_name(df, var=var, time=time)
+
+    make_tiles(settings, tiff, var, time, vmax, vmin, minZoom, maxZoom)
+
+def make_diff_tiles_future(settings, df, minZoom, maxZoom, var_times):
+    var, time, = var_times
+    a = rio.open_rasterio(get_geotiff_name(df, var=var, time=0), masked=True)
+    b = rio.open_rasterio(get_geotiff_name(df, var=var, time=-1), masked=True)
+    diff = b - a
+
+    vmax = float(diff.quantile(1.0 - ROBUST_PERCENTILE, dim=['y', 'x']))
+    vmin = float(diff.quantile(ROBUST_PERCENTILE, dim=['y', 'x']))
+
+    # because this is a difference it should be centred around zero
+    max_range = np.max([abs(vmax), abs(vmin)])
+    vmax = np.sign(vmax) * max_range
+    vmin = np.sign(vmin) * max_range
+
+    diff = diff.rio.write_nodata(-9999)
+    tiff = f'output_{var}_diff.tif'
+    diff.rio.to_raster(tiff)
+
+    make_tiles(settings, tiff, var, 'diff', vmax, vmin, minZoom, maxZoom)
+
 def make_map(settings, df):
 
     minZoom = 11
@@ -404,16 +436,23 @@ def make_map(settings, df):
 
     layer_attr = 'University of Saskatchewan, Global Water Futures'
 
+    var_time = itertools.product([var for var in settings['plot_vars']],
+                                 [time for time in [0, -1]])
+    var_time = [p for p in var_time]
+
+    with futures.ProcessPoolExecutor(max_workers=4) as executor:
+        res = list(tqdm(executor.map(partial(make_tiles_future, settings, df, minZoom, maxZoom), var_time), total=len(var_time)))
+
     for var in settings['plot_vars']:
 
         vmin, vmax = get_vmin_vmax(df, var)
 
         for time in [0, -1]:
 
-            # convert to geotiff and reporject
-            tiff = get_geotiff_name(df, var=var, time=time)
+            # convert to geotiff and reproject
+            # tiff = get_geotiff_name(df, var=var, time=time)
 
-            make_tiles(settings, tiff, var, time, vmax, vmin, minZoom, maxZoom )
+            # make_tiles(settings, tiff, var, time, vmax, vmin, minZoom, maxZoom )
 
             model_time = pd.to_datetime(df.time.values[time])
             model_time = model_time.strftime('%Y/%m/%d %H:00 UTC')
@@ -439,25 +478,31 @@ def make_map(settings, df):
             m.add_child(colormap)
             m.add_child(BindColormapTileLayer(TL, colormap))
 
-        a = rio.open_rasterio(get_geotiff_name(df, var=var, time=0), masked=True)
-        b = rio.open_rasterio(get_geotiff_name(df, var=var, time=-1), masked=True)
-        diff = b - a
+    var_time = itertools.product([var for var in settings['plot_vars']],
+                                 [time for time in ['diff']])
+    var_time = [p for p in var_time]
 
+    with futures.ProcessPoolExecutor(max_workers=4) as executor:
+        res = list(tqdm(executor.map(partial(make_diff_tiles_future, settings, df, minZoom, maxZoom), settings['plot_vars']), total=len(var_time)))
 
-        vmax = float(diff.quantile(1.0 - ROBUST_PERCENTILE, dim=['y', 'x']))
-        vmin = float(diff.quantile(ROBUST_PERCENTILE, dim=['y', 'x']))
-
-        # because this is a difference it should be centred around zero
-        max_range = np.max([abs(vmax), abs(vmin)])
-        vmax = np.sign(vmax) * max_range
-        vmin = np.sign(vmin) * max_range
-
-        diff = diff.rio.write_nodata(-9999)
-        tiff = f'output_{var}_diff.tif'
-        diff.rio.to_raster(tiff)
-
-        # tiff = make_geotiff(diff, var=var, time=None)
-        make_tiles(settings, tiff, var, 'diff', vmax, vmin, minZoom, maxZoom)
+    for var in settings['plot_vars']:
+        # a = rio.open_rasterio(get_geotiff_name(df, var=var, time=0), masked=True)
+        # b = rio.open_rasterio(get_geotiff_name(df, var=var, time=-1), masked=True)
+        # diff = b - a
+        #
+        # vmax = float(diff.quantile(1.0 - ROBUST_PERCENTILE, dim=['y', 'x']))
+        # vmin = float(diff.quantile(ROBUST_PERCENTILE, dim=['y', 'x']))
+        #
+        # # because this is a difference it should be centred around zero
+        # max_range = np.max([abs(vmax), abs(vmin)])
+        # vmax = np.sign(vmax) * max_range
+        # vmin = np.sign(vmin) * max_range
+        #
+        # diff = diff.rio.write_nodata(-9999)
+        # tiff = f'output_{var}_diff.tif'
+        # diff.rio.to_raster(tiff)
+        #
+        # make_tiles(settings, tiff, var, 'diff', vmax, vmin, minZoom, maxZoom)
 
         name = 'Predicted change in ' + plot_settings.get_title(var)
         TL = folium.raster_layers.TileLayer(
