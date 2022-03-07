@@ -2,7 +2,7 @@ import dask
 import CHM as pc
 import time
 
-from . import vtu_to_nc as tonc
+import vtu_to_nc as tonc
 
 
 def main(settings):
@@ -24,8 +24,7 @@ def main(settings):
     start = time.time()
     df.chm.to_raster(crs_out='EPSG:4326')
     end = time.time()
-    print("Took %fs" % (end - start) )
-
+    print("Took %fs" % (end - start))
 
     # timestamps = df.time.values
     #
@@ -33,8 +32,8 @@ def main(settings):
 
     print('Creating 2.5km TIFFs...')
     df_ab = pc.pvd_to_xarray(settings['chm_outpath'],
-                          dxdy=2500,
-                          variables=['swe'])
+                             dxdy=2500,
+                             variables=['swe'])
     df_ab = df_ab.isel(time=[-48])
 
     start = time.time()
@@ -42,8 +41,10 @@ def main(settings):
     end = time.time()
     print("Took %fs" % (end - start))
 
-
-    print('Creating nc file for today')
-    tonc.pvd_to_nc(settings['chm_outpath'], variables=['swe'])
+    try:
+        print('Creating nc file for today')
+        tonc.pvd_to_nc(settings['chm_outpath'], variables=['swe'])
+    except:
+        print('Creating nc failed')
 
     return df
