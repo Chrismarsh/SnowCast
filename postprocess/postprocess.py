@@ -3,6 +3,7 @@ import CHM as pc
 import time
 
 import vtu_to_nc as tonc
+import clip_nodata as clipnodata
 
 
 def main(settings):
@@ -26,9 +27,11 @@ def main(settings):
     end = time.time()
     print("Took %fs" % (end - start))
 
-    # timestamps = df.time.values
-    #
-    # df = None
+    try:
+        print('Creating nc file for today')
+        tonc.pvd_to_nc(settings['chm_outpath'], variables=['swe'])
+    except:
+        print('Creating nc failed')
 
     print('Creating 2.5km TIFFs...')
     df_ab = pc.pvd_to_xarray(settings['chm_outpath'],
@@ -41,10 +44,9 @@ def main(settings):
     end = time.time()
     print("Took %fs" % (end - start))
 
-    try:
-        print('Creating nc file for today')
-        tonc.pvd_to_nc(settings['chm_outpath'], variables=['swe'])
-    except:
-        print('Creating nc failed')
+    t = str(df_ab.time.values[0]).split('.')[0]
+    t = t.replace(':', '')
+    todays_tiff = f'swe_2500x2500_{t}.tif'
+    clipnodata.clip_no_data(settings, todays_tiff)
 
     return df
