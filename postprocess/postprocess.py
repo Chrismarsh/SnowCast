@@ -2,8 +2,8 @@ import dask
 import CHM as pc
 import time
 
-from . vtu_to_nc as tonc
-from . clip_nodata as clipnodata
+from . import vtu_to_nc as tonc
+from . import clip_nodata as clipnodata
 
 
 def main(settings):
