@@ -2,6 +2,8 @@ import dask
 import CHM as pc
 import time
 
+from . import vtu_to_nc as tonc
+
 
 def main(settings):
     dask.config.set(scheduler='processes')
@@ -41,5 +43,7 @@ def main(settings):
     print("Took %fs" % (end - start))
 
 
+    print('Creating nc file for today')
+    tonc.pvd_to_nc(settings['chm_outpath'], variables=['swe'])
 
     return df
