@@ -18,7 +18,7 @@ def _gdal_prefix():
 
 def clip_no_data(settings, dem_filename ):
 
-    gdal_prefix = os.path.join(_gdal_prefix(),'bin')
+    gdal_prefix = os.path.join(_gdal_prefix(),'bin')+'/'
     user_output_dir = settings['snowcast_base']
     tmp_dir = 'tmp_clip'
 
