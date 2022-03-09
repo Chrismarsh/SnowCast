@@ -1,6 +1,7 @@
 import dask
 import CHM as pc
 import time
+import pandas as pd
 
 from . import vtu_to_nc as tonc
 from . import clip_nodata as clipnodata
@@ -40,12 +41,18 @@ def main(settings):
     df_ab = df_ab.isel(time=[-48])
 
     start = time.time()
-    df_ab.chm.to_raster(crs_out='EPSG:4326')
+    df_ab.chm.to_raster(crs_out='EPSG:4326',timefrmtstr='%Y%m%d%H%M')  #yyyyMMddHHmm
     end = time.time()
     print("Took %fs" % (end - start))
 
-    t = str(df_ab.time.values[0]).split('.')[0]
-    t = t.replace(':', '')
+    try:
+        t = df_ab.time.values[0]
+    except IndexError as e:
+        t = df_ab.time.values
+
+    t = pd.to_datetime(str(t))
+    t = t.strftime('%Y%m%d%H%M')
+
     todays_tiff = f'swe_2500x2500_{t}.tif'
     clipnodata.clip_no_data(settings, todays_tiff)
 
