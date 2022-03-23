@@ -2,10 +2,10 @@ import dask
 import CHM as pc
 import time
 import pandas as pd
+import subprocess
 
 from . import vtu_to_nc as tonc
 from . import clip_nodata as clipnodata
-
 
 def main(settings):
     dask.config.set(scheduler='processes')
@@ -51,9 +51,14 @@ def main(settings):
         t = df_ab.time.values
 
     t = pd.to_datetime(str(t))
-    t = t.strftime('%Y%m%d%H%M')
+    tt = t.strftime('%Y%m%d%H%M')
 
-    todays_tiff = f'swe_2500x2500_{t}.tif'
+    todays_tiff = f'swe_2500x2500_{tt}.tif'
     clipnodata.clip_no_data(settings, todays_tiff)
+
+    tt = t.strftime('%Y%m%d%H%M%S')
+    todays_asc = f'swe_{tt}.asc'
+
+    clipnodata.to_ascii(settings, todays_tiff, todays_asc)
 
     return df

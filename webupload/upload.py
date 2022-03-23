@@ -3,14 +3,27 @@ import shutil
 import glob
 import os
 
+
 def upload(settings):
 
-    tiff_path = os.path.join(settings['html_dir'],'tiff')
-    shutil.rmtree(tiff_path, ignore_errors = True)
+    tiff_path = os.path.join(settings['html_dir'], 'asc')
+    shutil.rmtree(tiff_path, ignore_errors=True)
 
     os.makedirs(tiff_path, exist_ok=True)
 
-    for file in glob.glob(r'*2500x2500*.tif'):
+    # clean up the old files
+    files = glob.glob('swe_*.asc')
+    files.sort()
+
+    # keep a rolling 7 day archive
+    to_keep = files[-7:]
+
+    # remove older files
+    for f in files:
+        if f not in to_keep:
+            os.remove(f)
+
+    for file in glob.glob(r'swe_*.asc'):
         print(f'Copying {file} for webupload')
         shutil.copy2(file, tiff_path)
 

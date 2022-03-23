@@ -99,3 +99,11 @@ def clip_no_data(settings, dem_filename ):
     shutil.rmtree(os.path.join(user_output_dir,tmp_dir),ignore_errors=True)
 
     
+def to_ascii(settings, in_filename, out_filename):
+
+    gdal_prefix = os.path.join(_gdal_prefix(), 'bin')+'/'
+    user_output_dir = settings['snowcast_base']
+
+    exec_str = f"""{gdal_prefix}gdal_translate -b 1 {in_filename} {out_filename} """
+    subprocess.check_call([exec_str],  shell=True)
+
