@@ -406,7 +406,7 @@ def make_tiles_future(settings, df, minZoom, maxZoom, dxdy, var_times):
     make_tiles(settings, tiff, var, time, vmax, vmin, minZoom, maxZoom)
 
 def make_diff_tiles_future(settings, df, minZoom, maxZoom, dxdy, var_times):
-    var, time, = var_times
+    var, time = var_times
     a = rio.open_rasterio(get_geotiff_name(df, var=var, time=0, dxdy=dxdy), masked=True)
     b = rio.open_rasterio(get_geotiff_name(df, var=var, time=-1, dxdy=dxdy), masked=True)
     diff = b - a
@@ -424,6 +424,9 @@ def make_diff_tiles_future(settings, df, minZoom, maxZoom, dxdy, var_times):
     diff.rio.to_raster(tiff)
 
     make_tiles(settings, tiff, var, 'diff', vmax, vmin, minZoom, maxZoom)
+
+    return {var: (vmin, vmax)}
+
 
 def make_map(settings, df):
 
@@ -488,6 +491,10 @@ def make_map(settings, df):
     with futures.ProcessPoolExecutor(max_workers=4) as executor:
         res = list(tqdm(executor.map(partial(make_diff_tiles_future, settings, df_times, minZoom, maxZoom, dxdy), var_time), total=len(var_time)))
 
+    vmin_vmax = {}
+    for d in res:
+        vmin_vmax.update(d)
+
     for var in settings['plot_vars']:
         # a = rio.open_rasterio(get_geotiff_name(df, var=var, time=0), masked=True)
         # b = rio.open_rasterio(get_geotiff_name(df, var=var, time=-1), masked=True)
@@ -517,6 +524,8 @@ def make_map(settings, df):
             overlay=False,
             tms=True,
             show=False).add_to(m)
+
+        vmin, vmax = vmin_vmax[var]
         colormap = cm.LinearColormap(colors=plot_settings.get_cmap(f'{var}_diff'), vmin=vmin, vmax=vmax)
         colormap.caption = '%s (%s)' % (plot_settings.get_title(var), plot_settings.get_unit(var))
         m.add_child(colormap)
