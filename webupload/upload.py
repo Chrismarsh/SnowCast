@@ -11,21 +11,22 @@ def upload(settings):
 
     os.makedirs(tiff_path, exist_ok=True)
 
-    # clean up the old files
-    files = glob.glob('swe_*.asc')
-    files.sort()
+    for file_type in ['.asc', '.prj']:
+        # clean up the old files
+        files = glob.glob('swe_*'+file_type)
+        files.sort()
 
-    # keep a rolling 7 day archive
-    to_keep = files[-7:]
+        # keep a rolling 7 day archive
+        to_keep = files[-7:]
 
-    # remove older files
-    for f in files:
-        if f not in to_keep:
-            os.remove(f)
+        # remove older files
+        for f in files:
+            if f not in to_keep:
+                os.remove(f)
 
-    for file in glob.glob(r'swe_*.asc'):
-        print(f'Copying {file} for webupload')
-        shutil.copy2(file, tiff_path)
+        for file in to_keep:
+            print(f'Copying {file} for webupload')
+            shutil.copy2(file, tiff_path)
 
     print('Uploading to webhost...')
 
