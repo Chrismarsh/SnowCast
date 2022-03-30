@@ -4,29 +4,37 @@ import glob
 import os
 
 
+def _rolling_copy(file_type, path):
+
+    shutil.rmtree(path, ignore_errors=True)
+    os.makedirs(path, exist_ok=True)
+
+    files = glob.glob('swe_*' + file_type)
+    files.sort()
+
+    # keep a rolling 7 day archive
+    to_keep = files[-7:]
+
+    # remove older files
+    for f in files:
+        if f not in to_keep:
+            os.remove(f)
+
+    for file in to_keep:
+        print(f'Copying {file} for webupload')
+        shutil.copy2(file, path)
+
+
 def upload(settings):
 
-    tiff_path = os.path.join(settings['html_dir'], 'asc')
-    shutil.rmtree(tiff_path, ignore_errors=True)
-
-    os.makedirs(tiff_path, exist_ok=True)
+    tiff_path = os.path.join(settings['html_dir'], 'tif')
+    asc_path = os.path.join(settings['html_dir'], 'asc')
 
     for file_type in ['.asc', '.prj']:
-        # clean up the old files
-        files = glob.glob('swe_*'+file_type)
-        files.sort()
+        _rolling_copy(file_type, asc_path)
 
-        # keep a rolling 7 day archive
-        to_keep = files[-7:]
+    _rolling_copy('.tif', tiff_path)
 
-        # remove older files
-        for f in files:
-            if f not in to_keep:
-                os.remove(f)
-
-        for file in to_keep:
-            print(f'Copying {file} for webupload')
-            shutil.copy2(file, tiff_path)
 
     print('Uploading to webhost...')
 
