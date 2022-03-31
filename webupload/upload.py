@@ -3,11 +3,14 @@ import shutil
 import glob
 import os
 
-
-def _rolling_copy(filemask, path, ntokeep=7):
+def _cleanup_dir(path):
 
     shutil.rmtree(path, ignore_errors=True)
     os.makedirs(path, exist_ok=True)
+
+def _rolling_copy(filemask, path, ntokeep=7):
+
+
 
     files = glob.glob(filemask)
     files.sort()
@@ -29,6 +32,9 @@ def upload(settings):
 
     tiff_path = os.path.join(settings['html_dir'], 'tif')
     asc_path = os.path.join(settings['html_dir'], 'asc')
+
+    _cleanup_dir(tiff_path)
+    _cleanup_dir(asc_path)
 
     for file_type in ['swe_*.asc', 'swe_*.prj']:
         _rolling_copy(file_type, asc_path)
