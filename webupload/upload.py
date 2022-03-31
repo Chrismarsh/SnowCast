@@ -4,16 +4,16 @@ import glob
 import os
 
 
-def _rolling_copy(file_type, path):
+def _rolling_copy(filemask, path, ntokeep=7):
 
     shutil.rmtree(path, ignore_errors=True)
     os.makedirs(path, exist_ok=True)
 
-    files = glob.glob('swe_*' + file_type)
+    files = glob.glob(filemask)
     files.sort()
 
     # keep a rolling 7 day archive
-    to_keep = files[-7:]
+    to_keep = files[-ntokeep:]
 
     # remove older files
     for f in files:
@@ -30,10 +30,12 @@ def upload(settings):
     tiff_path = os.path.join(settings['html_dir'], 'tif')
     asc_path = os.path.join(settings['html_dir'], 'asc')
 
-    for file_type in ['.asc', '.prj']:
+    for file_type in ['swe_*.asc', 'swe_*.prj']:
         _rolling_copy(file_type, asc_path)
 
-    _rolling_copy('.tif', tiff_path)
+    for file_type in ['swe_150x150*.tif', 'swe_2500x2500*.tif']:
+        _rolling_copy(file_type, tiff_path, 3)
+
 
 
     print('Uploading to webhost...')
