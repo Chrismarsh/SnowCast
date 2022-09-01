@@ -26,31 +26,21 @@
         "scale_wind_vert",
         "Harder_precip_phase",
         "Simple_Canopy",
-        "snobal",
+        "FSM",
         "snow_slide",
-        "Richard_albedo",
         "fetchr"
 
 
     ],
     "remove_depency": {
-        "Simple_Canopy": "snobal",
-        "Richard_albedo": "snobal",
-        "scale_wind_vert": "snobal",
-        "snow_slide": "snobal",
-        "PBSM3D": "snobal",
-        "WindNinja": "snobal"
+        "Simple_Canopy": "FSM",
+        "scale_wind_vert": "FSM",
+        "snow_slide": "FSM",
+        "PBSM3D": "FSM",
+        "WindNinja": "FSM"
 
     },
     "config": {
-        "Richard_albedo": {
-            "min_swe_refresh": "10",
-            "init_albedo_snow": "0.8",
-            "a2": "3.6e5"
-        },
-        "snobal": {
-            "param_snow_compaction": "1"
-        },
         "Thornton_p": {
             "apply_cosine_correction": "true"
         },
@@ -94,11 +84,7 @@
         }
     },
     "meshes": {
-        "mesh": "ref-DEM-proj.metis.448_mesh.np448.partition"
-//         "mesh": "meshes/ref-DEM-utm.mesh_mesh.h5",
-//         "parameters": {
-//             "file": "meshes/ref-DEM-utm.mesh_param.h5"
-//         }
+        "mesh": "FABDEM.metis.384_mesh.np384.partition"
     },
     "parameter_mapping": {
         "landcover": {
@@ -108,7 +94,7 @@
             //            2 = gap
 
             "0": {
-                "canopyType": "3",
+                "canopyType": "1",
                 "is_water": "false",
                 "LAI": "0",
                 "CanopyHeight": "0.1"
@@ -157,91 +143,91 @@
             },
             // Value 7, Tropical or sub-tropical shrubland
             "7": {
-                "canopyType": "3",
+                "canopyType": "0",
                 "is_water": "false",
                 "LAI": "1",
                 "CanopyHeight": "0.5"
             },
             // Value 8, Temperate or sub-polar shrubland
             "8": {
-                "canopyType": "3",
+                "canopyType": "0",
                 "is_water": "false",
                 "LAI": "1",
                 "CanopyHeight": "0.5"
             },
             // Value 9, Tropical or sub-tropical grassland
             "9": {
-                "canopyType": "3",
+                "canopyType": "1",
                 "is_water": "false",
                 "LAI": "1",
                 "CanopyHeight": "0.2"
             },
             // Value 10, Temperate or sub-polar grassland
             "10": {
-                "canopyType": "3",
+                "canopyType": "1",
                 "is_water": "false",
                 "LAI": "1",
                 "CanopyHeight": "0.2"
             },
             // Value 11, Sub-polar or polar shrubland-lichen-moss
             "11": {
-                "canopyType": "3",
+                "canopyType": "1",
                 "is_water": "false",
                 "LAI": "1",
                 "CanopyHeight": "0.1"
             },
             // Value 12, Sub-polar or polar grassland-lichen-moss
             "12": {
-                "canopyType": "3",
+                "canopyType": "1",
                 "is_water": "false",
                 "LAI": "1",
                 "CanopyHeight": "0.1"
             },
             // Value 13, Sub-polar or polar barren-lichen-moss
             "13": {
-                "canopyType": "3",
+                "canopyType": "1",
                 "is_water": "false",
                 "LAI": "1",
                 "CanopyHeight": "0.1"
             },
             // Value 14, Wetland
             "14": {
-                "canopyType": "3",
+                "canopyType": "1",
                 "is_water": "true",
                 "LAI": "0",
                 "CanopyHeight": "0"
             },
             // Value 15, Cropland
             "15": {
-                "canopyType": "3",
+                "canopyType": "1",
                 "is_water": "false",
                 "LAI": "1",
                 "CanopyHeight": "0.3"
             },
             // Value 16, Barren lands
             "16": {
-                "canopyType": "3",
+                "canopyType": "1",
                 "is_water": "false",
                 "LAI": "0.1",
                 "CanopyHeight": "0.05"
             },
             // Value 17, Urban
             "17": {
-                "canopyType": "3",
+                "canopyType": "1",
                 "is_water": "false",
                 "LAI": "0",
                 "CanopyHeight": "0"
             },
             // Value 18, Water
             "18": {
-                "canopyType": "3",
+                "canopyType": "1",
                 "is_water": "true",
                 "LAI": "0",
                 "CanopyHeight": "0"
             },
             // Value 19, Snow and Ice
             "19": {
-                "canopyType": "3",
+                "canopyType": "1",
                 "is_water": "false",
                 "LAI": "0.1",
                 "CanopyHeight": "0.1"
