@@ -102,27 +102,152 @@
     },
     "parameter_mapping": {
         "landcover": {
+            // Used in Canopy Module
+            // canopyType 0 = canopy
+            //            1 = clearing
+            //            2 = gap
+
+            "0": {
+                "canopyType": "3",
+                "is_water": "false",
+                "LAI": "0",
+                "CanopyHeight": "0.1"
+            },
+            // Value 1, Temperate or sub-polar needleleaf forest
             "1": {
-                "canopyType": "1",
+                "canopyType": "0",
+                "is_water": "false",
+                "LAI": "3",
+                "CanopyHeight": "15"
+            },
+            // Value 2, Sub-polar taiga needleleaf forest
+            "2": {
+                "canopyType": "0",
+                "is_water": "false",
+                "LAI": "3",
+                "CanopyHeight": "15"
+            },
+            // Value 3, Tropical or sub-tropical broadleaf evergreen forest
+            "3": {
+                "canopyType": "0",
+                "is_water": "false",
+                "LAI": "3",
+                "CanopyHeight": "15"
+            },
+            // Value 4, Tropical or sub-tropical broadleaf deciduous forest
+            "4": {
+                "canopyType": "0",
+                "is_water": "false",
+                "LAI": "3",
+                "CanopyHeight": "15"
+            },
+            // Value 5, Temperate or sub-polar broadleaf deciduous forest
+            "5": {
+                "canopyType": "0",
+                "is_water": "false",
+                "LAI": "3",
+                "CanopyHeight": "15"
+            },
+            // Value 6, Mixed forest
+            "6": {
+                "canopyType": "0",
+                "is_water": "false",
+                "LAI": "3",
+                "CanopyHeight": "15"
+            },
+            // Value 7, Tropical or sub-tropical shrubland
+            "7": {
+                "canopyType": "3",
+                "is_water": "false",
+                "LAI": "1",
+                "CanopyHeight": "0.5"
+            },
+            // Value 8, Temperate or sub-polar shrubland
+            "8": {
+                "canopyType": "3",
+                "is_water": "false",
+                "LAI": "1",
+                "CanopyHeight": "0.5"
+            },
+            // Value 9, Tropical or sub-tropical grassland
+            "9": {
+                "canopyType": "3",
+                "is_water": "false",
+                "LAI": "1",
+                "CanopyHeight": "0.2"
+            },
+            // Value 10, Temperate or sub-polar grassland
+            "10": {
+                "canopyType": "3",
+                "is_water": "false",
+                "LAI": "1",
+                "CanopyHeight": "0.2"
+            },
+            // Value 11, Sub-polar or polar shrubland-lichen-moss
+            "11": {
+                "canopyType": "3",
+                "is_water": "false",
+                "LAI": "1",
+                "CanopyHeight": "0.1"
+            },
+            // Value 12, Sub-polar or polar grassland-lichen-moss
+            "12": {
+                "canopyType": "3",
+                "is_water": "false",
+                "LAI": "1",
+                "CanopyHeight": "0.1"
+            },
+            // Value 13, Sub-polar or polar barren-lichen-moss
+            "13": {
+                "canopyType": "3",
+                "is_water": "false",
+                "LAI": "1",
+                "CanopyHeight": "0.1"
+            },
+            // Value 14, Wetland
+            "14": {
+                "canopyType": "3",
+                "is_water": "true",
                 "LAI": "0",
                 "CanopyHeight": "0"
             },
-            "0": {
-                "canopyType": "0",
-                "LAI": "3",
-                "CanopyHeight": "10"
+            // Value 15, Cropland
+            "15": {
+                "canopyType": "3",
+                "is_water": "false",
+                "LAI": "1",
+                "CanopyHeight": "0.3"
             },
-            "2": {
-                "canopyType": "2",
-                "LAI": "3",
-                "CanopyHeight": "10"
+            // Value 16, Barren lands
+            "16": {
+                "canopyType": "3",
+                "is_water": "false",
+                "LAI": "0.1",
+                "CanopyHeight": "0.05"
             },
-            "3": {
+            // Value 17, Urban
+            "17": {
+                "canopyType": "3",
+                "is_water": "false",
+                "LAI": "0",
+                "CanopyHeight": "0"
+            },
+            // Value 18, Water
+            "18": {
                 "canopyType": "3",
                 "is_water": "true",
-                "LAI": "3",
-                "CanopyHeight": "10"
+                "LAI": "0",
+                "CanopyHeight": "0"
+            },
+            // Value 19, Snow and Ice
+            "19": {
+                "canopyType": "3",
+                "is_water": "false",
+                "LAI": "0.1",
+                "CanopyHeight": "0.1"
             }
+
+
         }
     },
     "output": {
