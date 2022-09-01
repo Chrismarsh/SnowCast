@@ -29,7 +29,8 @@ settings['chm_outpath'] = os.path.join(settings['snowcast_base'], 'run_chm/outpu
 settings['html_dir'] = os.path.join(settings['snowcast_base'], 'www')
 
 # how should CHM be called?
-settings['chm_exec_str'] = 'mpirun -np 2 %s -f config.json' % os.path.join(settings['snowcast_base'], 'run_chm/CHM')
+# settings['chm_exec_str'] = 'mpirun -np 2 %s -f config.json' % os.path.join(settings['snowcast_base'], 'run_chm/CHM')
+settings['chm_exec_str'] = './submit_to_prioQ.sh'
 
 # force a regeneration of the complete nc archieve
 settings['force_nc_archive'] = False
@@ -38,8 +39,9 @@ settings['force_nc_archive'] = False
 # doesn't impact grib processing, just the nc -> CHM step
 # if None, use earliest available
 # Format Y-M-D
-settings['start_date'] = '2020-10-26'
+# settings['start_date'] = '2020-10-26'
 # settings['end_date'] = '2021-03-29'
+settings['start_date'] = '2022-09-01'
 
 # regridding resolution
 settings['dxdy'] = 150
