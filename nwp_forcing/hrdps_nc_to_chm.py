@@ -6,7 +6,15 @@ import re
 import xarray as xr
 
 
-def preprocess(x, settings, keep_forecast=False):
+def preprocess(x, settings, keep_forecast=False, keep_all=False):
+    """
+    Converts various names and sanity checks that the merging files are in the right format
+    :param x:
+    :param settings:
+    :param keep_forecast: Keeps just the forecast portion of a file
+    :param keep_all: Keeps all of the file. Used in the checkpointing workflow.
+    :return:
+    """
     if keep_forecast:
         print(f'Forceast nc = {x.datetime[0].values}')
     else:
@@ -14,7 +22,7 @@ def preprocess(x, settings, keep_forecast=False):
 
     #we only need 48 if we are producing the forceast (ie this is the last file to process)
     if keep_forecast and len(x.datetime) < 48:
-        raise Exception(f'Expected a nc with 48 timesteps to produce a forecase. nc start = {x.datetime[0].values}')
+        raise Exception(f'Expected a nc with 48 timesteps to produce a forecast. nc start = {x.datetime[0].values}')
     elif len(x.datetime) < 25:
         raise Exception(f'Expected a nc with 25 timesteps. nc start = {x.datetime[0].values}')
 
@@ -31,7 +39,7 @@ def preprocess(x, settings, keep_forecast=False):
 
     if nc_start_hour == 0:
         start_idx = 1
-        stop_idx = 25
+        stop_idx = 48 if keep_all else 25
 
         if keep_forecast:
             start_idx = 25
@@ -40,15 +48,11 @@ def preprocess(x, settings, keep_forecast=False):
     elif nc_start_hour == 1:
         # 1 am start case
         start_idx = 0
-        stop_idx = 25
+        stop_idx = 48 if keep_all else 25
 
         if keep_forecast:
             start_idx = 24
             stop_idx = 48
-
-
-
-
 
 
     # if we start at 1am, we need to shift the index back by one
@@ -190,7 +194,7 @@ def hrdps_nc_to_chm(settings):
         print(f'Dropped {ndup} duplicate timesteps after merge. This results from mixing 00h and 01h start times.')
 
     forecast = xr.open_mfdataset(df.file.tolist()[-1],
-                                 concat_dim='datetime',
+                                 # concat_dim='datetime',
                                  engine='netcdf4',
                                  parallel=False,
                                  preprocess=lambda x: preprocess(x, settings, keep_forecast=True))

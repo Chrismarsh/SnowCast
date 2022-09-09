@@ -48,9 +48,9 @@ def load_GEM_4d_var(PresLevs, UA_files):
         cfiles = [x for x in UA_files if '_' + cP in x]  # Underscore needed to exclude patterns in date
 
         ds = xr.open_mfdataset(cfiles,
-                                 concat_dim='valid_time',
-                                 data_vars='minimal',
-                                 coords='minimal',
+                                 # concat_dim='valid_time',
+                                 # data_vars='minimal',
+                                 # coords='minimal',
                                  preprocess=lambda x: preprocess(x),
                                  parallel=True,
                                  engine='cfgrib')
@@ -73,6 +73,10 @@ def hrdps_grib2nc(settings):
 
 
     hrdps_files = {}
+
+    # list of the paths of the nc files we processed.
+    # Required for the checkpointing code
+    processed_nc_files = []
 
     # we need to ensure that if we are looking for grib files to process we have everything asked for in hrdps
     # thus we need the two passes
@@ -128,13 +132,13 @@ def hrdps_grib2nc(settings):
     # exit(0)
     if len(hrdps_files) == 0:
         print('No grib2 files found to process')
-        return False
+        return False, None
 
     hrdps_files = pd.concat(hrdps_files)
 
     if len(hrdps_files) == 0:
         print('No grib2 files found to process')
-        return False
+        return False, None
 
     # import and combine all grib2 files
     print('Opening all grib2 data files')
@@ -155,8 +159,10 @@ def hrdps_grib2nc(settings):
 
 
         ds = xr.open_mfdataset(files,
-                               concat_dim='valid_time',
-                               data_vars='minimal', coords='minimal',
+                               # concat_dim='valid_time',
+                               # combine='nested',
+                               # data_vars='minimal',
+                               # coords='minimal',
                                # compat='override',
                                preprocess=lambda x: preprocess(x),
                                parallel=True,
@@ -179,6 +185,7 @@ def hrdps_grib2nc(settings):
         # Export to netcdf
         nc_file_out = os.path.join(settings['nc_ar_dir'], 'GEM_2_5km_' + settings['domain'] + '_' + str(ds.valid_time[0].values) + '.nc')
         print(f'Writing netcdf file {nc_file_out}')
+        processed_nc_files.append(nc_file_out)
 
         ds = ds.rename_dims({'valid_time': 'datetime', 'x':'xgrid_0', 'y':'ygrid_0'})
         ds = ds.rename({'valid_time': 'datetime'}) # also ensure the coordinate gets renamed
@@ -216,4 +223,4 @@ def hrdps_grib2nc(settings):
 
         ds.to_netcdf(nc_file_out, engine='netcdf4')
 
-    return True
+    return True, processed_nc_files

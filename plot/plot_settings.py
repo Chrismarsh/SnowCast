@@ -11,6 +11,8 @@ def get_var_ranges(variable):
     return var_min_delta[variable]
 
 def get_unit(variable):
+    if '_diff' in variable:
+        variable = variable.rsplit('_diff')[0]
     ylabel_unit = {'ilwr_out': 'W m-2',
                    'G': 'W m-2',
                    'T_s_0': 'C',
@@ -50,7 +52,10 @@ def get_cmap(variable):
                             "#ffc6c2"
                         ],
                  'snowdepthavg_diff': sns.diverging_palette(10, 240, n=12), # sns.color_palette("RdBu", 12),
-                 'swe_diff': sns.diverging_palette(10, 240, n=12)} # sns.color_palette("RdBu", 12)}
+                 'swe_diff': sns.diverging_palette(10, 240, n=12),
+                 't_diff': sns.diverging_palette(10, 240, n=12),
+                 't': sns.color_palette("Reds", 12)
+                 } # sns.color_palette("RdBu", 12)}
 
     return cmap_dict[variable]
 
@@ -59,7 +64,9 @@ def get_title(variable):
                   'swe': 'SWE',
                   'p_snow': 'Snowfall',
                   'p_rain': 'Rainfall',
-                  'snowdepthavg_diff': 'Snowdepth change',
-                  'swe_diff': 'SWE change'}
+                  't': 'Air temperature'}
+
+    if '_diff' in variable:
+        variable = variable.rsplit('_diff')[0]
 
     return title_dict[variable]

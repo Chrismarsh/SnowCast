@@ -1,64 +1,130 @@
-import dask
 import CHM as pc
 import time
 import pandas as pd
 import subprocess
+import sys
+import os
+import xarray as xr
+import  itertools
 
-from . import vtu_to_nc as tonc
-from . import clip_nodata as clipnodata
+from . import AEP as AEP
+
+
+from mpi4py import MPI
 
 def main(settings):
-    dask.config.set(scheduler='processes')
-    dask.config.set(**{'array.slicing.split_large_chunks': True})
 
     print('Converting model output')
 
     print('Reading pvd')
+
+    df = pc.open_pvd(settings['chm_outpath'])
+    df = df.iloc[[0, -1]] #start of forecast and the future
+
+    print('Creating ugrid...')
     start = time.time()
-    df = pc.pvd_to_xarray(settings['chm_outpath'],
-                          dxdy=settings['dxdy'],
-                          variables=settings['plot_vars'])
-    df = df.isel(time=[-48, -1])
+
+    timestamp = df.iloc[[0]].datetime[0].strftime('%Y%m%d%H%M')
+    timestamp_ISO = df.iloc[[0]].datetime[0].strftime('%Y%m%dT%H%M%S') # need the ISO time to match ugrid2tiff
+
+    # build up a meta data dataframe to return to use in the map generation.
+
+
+    ugrid_fname = f'ugrid_{timestamp}.nc'
+    ugrid_diff_fname = ugrid_fname[:-3] + '_diff.nc'
+
+    if os.path.isfile(ugrid_fname):
+        os.remove(ugrid_fname)
+
+    if os.path.isfile(ugrid_diff_fname):
+        os.remove(ugrid_diff_fname)
+
+    pc.vtu_to_ugrid(df,
+                    ugrid_fname,
+                    settings['plot_vars'])
+
+    # creates the difference ugrid for today
+    xr.set_options(keep_attrs=True) # don't mangle the attrs that are critical for ugrid to work
+    ds = xr.open_mfdataset(ugrid_fname)
+
+
+
+    diff = ds.isel(time=0) - ds.isel(time=-1)
+
+    # the subsctraion will have mangled these so reset them
+    diff['Mesh2_face_nodes'] = ds['Mesh2_face_nodes']
+    diff['Mesh2_node_x'] = ds['Mesh2_node_x']
+    diff['Mesh2_node_y'] = ds['Mesh2_node_y']
+    diff['global_id'] = ds['global_id']
+
+    ugridvars = set(ds.data_vars) - set(
+        ['Mesh2', 'Mesh2_face_nodes', 'Mesh2_node_x', 'Mesh2_node_y', 'Mesh2_face_x', 'Mesh2_face_y', 'time',
+         'global_id'])
+
+    # add back a time coord+dim
+    diff = diff.assign_coords(time=("time", [ds.time[0].data]))
+
+    rename_dic = {}
+    for v in ugridvars:
+        diff[v] = diff[v].expand_dims('time')
+
+        rename_dic[v] = f'{v}_diff'
+
+    diff = diff.rename_vars(rename_dic)
+
+    diff.to_netcdf(ugrid_diff_fname,
+                   encoding={'time': {'dtype': 'int32'}} #required otherwise it writes as int64 which ESMF can't handle
+                   )
+    diff.close()
+    diff = None
+
+    # holds information about what was done during the post processing step
+    dt = df['datetime'].dt.strftime('%Y%m%dT%H%M%S')
+
+    ugridvars = list(ugridvars)
+
+    product = [x for x in itertools.product(ugridvars, dt)]
+
+    # diffs are only valid as named by the starting ts, so we need a seperate list for their product
+    product.extend([x for x in itertools.product([f'{v}_diff' for v in ugridvars], [dt[0]])])
+
+    df = pd.DataFrame(product, columns=['var', 'datetime'])
+
+    df['time'] = pd.to_datetime(df.datetime)
+    df['dxdy'] = settings['dxdy'] # TODO: doesn't actually control anything in the regridding step!
+    #used in the plot centering step
+    df['lon'] = ds.Mesh2_node_x.mean().values
+    df['lat'] = ds.Mesh2_node_y.mean().values
+    # build up the list of tiffs we processed
+    df['tiff'] = df.apply(lambda row: f"""{row['var']}-{row['dxdy']}x{row['dxdy']}_{row['datetime']}.tiff""", axis=1)
+    df = df.set_index(['var', 'time'])
+    df = df.sort_index(axis=1)
+
+    ds.close()
+    ds = None
+
+
     end = time.time()
     print("Took %fs" % (end - start))
+
 
     print('Creating 50m TIFFs...')
     start = time.time()
-    df.chm.to_raster(crs_out='EPSG:4326')
+
+    ### CALL PARALLEL MPI REGRIDDING
+
+    comm = MPI.COMM_SELF.Spawn(sys.executable,
+                               args=['/Users/cmarsh/Documents/science/code/SnowCast/postprocess/MPI_to_tiff.py',
+                                     timestamp],
+                               maxprocs=settings['postprocess_maxprocs'])
+
+    comm.Disconnect()
     end = time.time()
     print("Took %fs" % (end - start))
 
-    try:
-        print('Creating nc file for today')
-        tonc.pvd_to_nc(settings['chm_outpath'], variables=['swe'])
-    except:
-        print('Creating nc failed')
-
-    print('Creating 2.5km TIFFs...')
-    df_ab = pc.pvd_to_xarray(settings['chm_outpath'],
-                             dxdy=2500,
-                             variables=['swe'])
-    df_ab = df_ab.isel(time=[-48])
-
-    start = time.time()
-    df_ab.chm.to_raster(crs_out='EPSG:4326',timefrmtstr='%Y%m%d%H%M')  #yyyyMMddHHmm
-    end = time.time()
-    print("Took %fs" % (end - start))
-
-    try:
-        t = df_ab.time.values[0]
-    except IndexError as e:
-        t = df_ab.time.values
-
-    t = pd.to_datetime(str(t))
-    tt = t.strftime('%Y%m%d%H%M')
-
-    todays_tiff = f'swe_2500x2500_{tt}.tif'
-    clipnodata.clip_no_data(settings, todays_tiff)
-
-    tt = t.strftime('%Y%m%d%H%M%S')
-    todays_asc = f'swe_{tt}.asc'
-
-    clipnodata.to_ascii(settings, todays_tiff, todays_asc)
+    # Make the ~2.5km asc raster for AEP
+    todays_tiff = f't-0.036x0.036_{timestamp_ISO}.tiff'
+    todays_asc = f'swe_{timestamp}.asc'
+    AEP.to_ascii(settings, f'{todays_tiff}', todays_asc)
 
     return df

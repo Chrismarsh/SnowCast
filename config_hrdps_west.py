@@ -5,6 +5,9 @@ import os
 
 settings = dict()
 
+# Should snowcast run in a mode that allows CHM to checkpoint. Requires a slightly differently handling of the met files
+settings['checkpoint_mode'] = True
+
 # the URL to use for the slack webhook. This is a secret
 settings['webhook_url'] = slack_webhook.webhook_url
 
@@ -22,6 +25,12 @@ settings['nc_ar_dir'] = os.path.join(settings['snowcast_base'], 'nwp_forcing/nc_
 # where to put the nc file CHM to use
 settings['nc_chm_dir'] = os.path.join(settings['snowcast_base'], 'nwp_forcing')
 
+#where to put the standalone nc files for use with the checkpointing mode
+settings['checkpoint_nc_chm_dir'] = os.path.join(settings['snowcast_base'], 'nwp_forcing/ckp_nc')
+
+#active configuration path
+settings['chm_config_path'] = os.path.join(settings['snowcast_base'], 'run_chm/config.json')
+
 # where the CHM output is
 settings['chm_outpath'] = os.path.join(settings['snowcast_base'], 'run_chm/output/meshes/SC.pvd')
 
@@ -29,8 +38,8 @@ settings['chm_outpath'] = os.path.join(settings['snowcast_base'], 'run_chm/outpu
 settings['html_dir'] = os.path.join(settings['snowcast_base'], 'www')
 
 # how should CHM be called?
-# settings['chm_exec_str'] = 'mpirun -np 2 %s -f config.json' % os.path.join(settings['snowcast_base'], 'run_chm/CHM')
-settings['chm_exec_str'] = './submit_to_prioQ.sh'
+settings['chm_exec_str'] = '%s -f config.json.chkp.json' % os.path.join(settings['snowcast_base'], 'run_chm/CHM')
+# settings['chm_exec_str'] = './submit_to_prioQ.sh'
 
 # force a regeneration of the complete nc archieve
 settings['force_nc_archive'] = False
@@ -44,10 +53,12 @@ settings['force_nc_archive'] = False
 settings['start_date'] = '2022-09-01'
 
 # regridding resolution
-settings['dxdy'] = 150
+settings['dxdy'] = 0.002
+
+settings['postprocess_maxprocs'] = 8
 
 #variables to plot (implicitly includes the difference between these)
-settings['plot_vars'] = ['swe', 'snowdepthavg']
+settings['plot_vars'] = ['swe', 'snowdepthavg', 't']
 
 # Offset from UTM to local time (i.e. Mountain standard time = -7)
 # CHM forcing files will be in this time zone

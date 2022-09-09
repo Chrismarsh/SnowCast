@@ -2,7 +2,7 @@ import itertools
 import uuid
 from concurrent import futures
 from functools import partial
-
+import sys
 import branca
 import branca.colormap as cm
 import folium
@@ -19,6 +19,10 @@ from folium.utilities import parse_options
 from jinja2 import Template
 import rioxarray as rio
 from tqdm import tqdm
+
+
+
+from mpi4py import MPI
 
 import plot.plot_settings as plot_settings
 
@@ -328,7 +332,7 @@ class Sidebar(MacroElement):
         
         """)  # noqa
 
-def make_colour_txt( var, vmin, vmax, mangle, n=12):
+def make_colour_txt(var, vmin, vmax, mangle, n=12):
     colors = plot_settings.get_cmap(var)
     r = np.linspace(vmin, vmax, n)
     fname = f'color_{var}_{mangle}.txt'
@@ -355,77 +359,7 @@ def _gdal_prefix():
     except FileNotFoundError as e:
         raise(""" ERROR: Could not find the system install of GDAL. 
                   Please install it via your package manage of choice.
-                """
-            )
-
-def get_geotiff_name(df_times, var, time, dxdy):
-
-    time = str(df_times[time]).split('.')[0]
-    time = time.replace(':', '')
-    # dxdy = df.coords['dxdy'].values
-    tiff = f'{var}_{dxdy}x{dxdy}_{time}.tif'
-
-    return tiff
-
-# def make_diff_geotiff(df, var=None):
-#
-#     # if a diff comes in it won't have a time axis
-#     d = df.rio.write_nodata(-9999)
-#     time = 'diff'
-#
-#     gdalwarp = os.path.join(_gdal_prefix(),'bin','gdalwarp')
-#
-#     tmp_tiff = f'{var}_wgs_diff.tif'
-#     d.rio.to_raster(tmp_tiff)
-#     exec = f"""{gdalwarp} -t_srs EPSG:4326 -srcnodata '-9999' {tmp_tiff}  output_{var}_{time}.tif"""
-#     subprocess.check_call([exec], shell=True)
-#
-#     os.remove(tmp_tiff)
-#
-#     return f'output_{var}_{time}.tif'
-
-# Gets the robust percentile range across multiple tiffs
-def get_vmin_vmax(df, var, dxdy):
-
-    files = [get_geotiff_name(df, var=var, time=t, dxdy=dxdy) for t in [0,-1] ]
-    rasters = [rio.open_rasterio(x, chunks={'x': None, 'y': None}, masked=True) for x in files]
-    ds = xr.concat(rasters, dim='time')
-    ds = ds.chunk({'time': -1})
-
-    vmax = float(ds.quantile(1.0 - ROBUST_PERCENTILE, dim=['time', 'y', 'x']))
-    vmin = float(ds.quantile(ROBUST_PERCENTILE, dim=['time', 'y', 'x']))
-
-    return vmin,vmax
-
-
-def make_tiles_future(settings, df, minZoom, maxZoom, dxdy, var_times):
-    var, time, = var_times
-    vmin, vmax = get_vmin_vmax(df, var, dxdy)
-    tiff = get_geotiff_name(df, var=var, time=time, dxdy=dxdy)
-
-    make_tiles(settings, tiff, var, time, vmax, vmin, minZoom, maxZoom)
-
-def make_diff_tiles_future(settings, df, minZoom, maxZoom, dxdy, var_times):
-    var, time = var_times
-    a = rio.open_rasterio(get_geotiff_name(df, var=var, time=0, dxdy=dxdy), masked=True)
-    b = rio.open_rasterio(get_geotiff_name(df, var=var, time=-1, dxdy=dxdy), masked=True)
-    diff = b - a
-
-    vmax = float(diff.quantile(1.0 - ROBUST_PERCENTILE, dim=['y', 'x']))
-    vmin = float(diff.quantile(ROBUST_PERCENTILE, dim=['y', 'x']))
-
-    # because this is a difference it should be centred around zero
-    max_range = np.max([abs(vmax), abs(vmin)])
-    vmax = np.sign(vmax) * max_range
-    vmin = np.sign(vmin) * max_range
-
-    diff = diff.rio.write_nodata(-9999)
-    tiff = f'output_{var}_diff.tif'
-    diff.rio.to_raster(tiff)
-
-    make_tiles(settings, tiff, var, 'diff', vmax, vmin, minZoom, maxZoom)
-
-    return {var: (vmin, vmax)}
+                """)
 
 
 def make_map(settings, df):
@@ -434,105 +368,71 @@ def make_map(settings, df):
     maxZoom = 12
 
     # the lat long in the df isn't /quite/ right but close enough for this
-    m = folium.Map(location=[df.lat.mean(), df.lon.mean()], zoom_start=8, tiles=None, control_scale=True ,zoom_control=True, max_zoom=maxZoom, min_zoom=minZoom)
+    m = folium.Map(location=[df.lat.mean(), df.lon.mean()], zoom_start=8, tiles=None, control_scale=True, zoom_control=True, max_zoom=maxZoom, min_zoom=minZoom)
     folium.TileLayer('Stamen Terrain', control=False, overlay=True, max_zoom=maxZoom, min_zoom=minZoom).add_to(m) # overlay=True is important to allow it to be drawn over and not replaced
-
-    df_times = df.time.values
-    dxdy = df.coords['dxdy'].values
 
     layer_attr = 'University of Saskatchewan, Global Water Futures'
 
-    var_time = itertools.product([var for var in settings['plot_vars']],
-                                 [time for time in [0, -1]])
-    var_time = [p for p in var_time]
+    # figure out the vmin/vmax for plotting
+    for var in list(df.index.levels[0].values):
+        tiffs = list(df.loc[var].tiff.values)
 
-    with futures.ProcessPoolExecutor(max_workers=4) as executor:
-        res = list(tqdm(executor.map(partial(make_tiles_future, settings, df_times, minZoom, maxZoom, dxdy), var_time), total=len(var_time)))
+        rasters = [rio.open_rasterio(x, masked=True, chunks=True, lock=False) for x in tiffs]
+        ds = xr.concat(rasters, dim='time')
 
-    for var in settings['plot_vars']:
+        # fixes
+        # dimension time on 0th function argument to apply_ufunc with dask='parallelized' consists of multiple chunks, but is also a core dimension.
+        ds = ds.chunk(dict(time=-1))
 
-        vmin, vmax = get_vmin_vmax(df_times, var, dxdy)
+        # Gets the robust percentile range across multiple tiffs, follows mpl's routine
+        vmax = float(ds.quantile(1.0 - ROBUST_PERCENTILE, dim=['time', 'y', 'x']))
+        vmin = float(ds.quantile(ROBUST_PERCENTILE, dim=['time', 'y', 'x']))
 
-        for time in [0, -1]:
+        if '_diff' in var:
+            # because this is a difference it should be centred around zero
+            max_range = np.max([abs(vmax), abs(vmin)])
+            vmax = np.sign(vmax) * max_range
+            vmin = np.sign(vmin) * max_range
 
-            # convert to geotiff and reproject
-            # tiff = get_geotiff_name(df, var=var, time=time)
+        df.loc[var, 'vmin'] = vmin
+        df.loc[var, 'vmax'] = vmax
 
-            # make_tiles(settings, tiff, var, time, vmax, vmin, minZoom, maxZoom )
 
-            model_time = pd.to_datetime(df_times[time])
-            model_time = model_time.strftime('%Y/%m/%d %H:00 UTC')
+    for idx, row in df.iterrows():
 
+        #this has the MPI call in it
+        make_tiles(settings, row['tiff'], idx[0], row['datetime'], row['vmax'], row['vmin'], minZoom=0, maxZoom=12)
+
+        vmin = row.vmin
+        vmax = row.vmax
+
+        model_time = idx[1].strftime('%Y/%m/%d %H:00 UTC')
+        var = idx[0]
+
+        if '_diff' in var:
+            name = 'Predicted change in ' + plot_settings.get_title(var) + (' (%s)' % plot_settings.get_unit(var))
+        else:
             name = plot_settings.get_title(var)
-            if time == 0:
-                name = '%s - Current %s' % (name, model_time)
+            if idx[1].hour == 1: # "now" is 01h, future is 23h
+                name = '%s (%s) - Current %s' % (name, plot_settings.get_unit(var), model_time)
             else:
-                name = '%s - Forecast for %s' % (name, model_time)
+                name = '%s (%s) - Forecast for %s' % (name, plot_settings.get_unit(var), model_time)
 
-            TL = folium.raster_layers.TileLayer(
-                os.path.join('./tiles', f'tiles_{var}_{time}','{z}/{x}/{y}.png'),
-                minZoom=minZoom, maxZoom=maxZoom,
-                attr=layer_attr,
-                name=name,
-                opacity=0.6,
-                overlay=False,
-                tms=True,
-                show=True if time == 0 and var == 'snowdepthavg' else False).add_to(m)
-            colormap = LinearColormap(colors=plot_settings.get_cmap(var), vmin=vmin, vmax=vmax)
-            colormap.caption = '%s (%s)' % (plot_settings.get_title(var), plot_settings.get_unit(var))
-
-            m.add_child(colormap)
-            m.add_child(BindColormapTileLayer(TL, colormap))
-
-    var_time = itertools.product([var for var in settings['plot_vars']],
-                                 [time for time in ['diff']])
-    var_time = [p for p in var_time]
-
-    with futures.ProcessPoolExecutor(max_workers=4) as executor:
-        res = list(tqdm(executor.map(partial(make_diff_tiles_future, settings, df_times, minZoom, maxZoom, dxdy), var_time), total=len(var_time)))
-
-    vmin_vmax = {}
-    for d in res:
-        vmin_vmax.update(d)
-
-    for var in settings['plot_vars']:
-        # a = rio.open_rasterio(get_geotiff_name(df, var=var, time=0), masked=True)
-        # b = rio.open_rasterio(get_geotiff_name(df, var=var, time=-1), masked=True)
-        # diff = b - a
-        #
-        # vmax = float(diff.quantile(1.0 - ROBUST_PERCENTILE, dim=['y', 'x']))
-        # vmin = float(diff.quantile(ROBUST_PERCENTILE, dim=['y', 'x']))
-        #
-        # # because this is a difference it should be centred around zero
-        # max_range = np.max([abs(vmax), abs(vmin)])
-        # vmax = np.sign(vmax) * max_range
-        # vmin = np.sign(vmin) * max_range
-        #
-        # diff = diff.rio.write_nodata(-9999)
-        # tiff = f'output_{var}_diff.tif'
-        # diff.rio.to_raster(tiff)
-        #
-        # make_tiles(settings, tiff, var, 'diff', vmax, vmin, minZoom, maxZoom)
-
-        name = 'Predicted change in ' + plot_settings.get_title(var)
         TL = folium.raster_layers.TileLayer(
-            os.path.join('./tiles', f'tiles_{var}_diff', '{z}/{x}/{y}.png'),
+            os.path.join('./tiles', f"""tiles_{var}_{row['datetime']}""",'{z}/{x}/{y}.png'),
             minZoom=minZoom, maxZoom=maxZoom,
             attr=layer_attr,
             name=name,
             opacity=0.6,
             overlay=False,
             tms=True,
-            show=False).add_to(m)
-
-        vmin, vmax = vmin_vmax[var]
-        colormap = cm.LinearColormap(colors=plot_settings.get_cmap(f'{var}_diff'), vmin=vmin, vmax=vmax)
+            show=True if idx[1].hour == 1 and var == 't' else False).add_to(m) #snowdepthavg
+        colormap = LinearColormap(colors=plot_settings.get_cmap(var), vmin=vmin, vmax=vmax)
         colormap.caption = '%s (%s)' % (plot_settings.get_title(var), plot_settings.get_unit(var))
+
         m.add_child(colormap)
         m.add_child(BindColormapTileLayer(TL, colormap))
 
-    # GroupedLayerControl(collapsed=False,exclusiveGroups=['Forecasts']).add_to(m)
-    # m.add_child(Sidebar(m))
     m.add_child(FavIcon())
 
     folium.LayerControl(collapsed=False).add_to(m)
@@ -552,75 +452,18 @@ def make_tiles(settings, tiff, var, time, vmax, vmin, minZoom, maxZoom):
     subprocess.check_call([exec], shell=True)
     tile_path = os.path.join(settings['html_dir'], 'tiles', f'tiles_{var}_{time}')
 
-    gdal2tiles = os.path.join(_gdal_prefix(), 'bin', 'gdal2tiles.py')
+    comm = MPI.COMM_SELF.Spawn(sys.executable,
+                               args=['plot/MPI_gdal2tiles.py',
+                                     f'temp_color_{mangle}.vrt',
+                                     '--mpi',
+                                     '-w', 'leaflet',
+                                     '-z', f'{minZoom}-{maxZoom}',
+                                     tile_path],
+                               maxprocs=settings['postprocess_maxprocs'])
 
-    exec = f'python {gdal2tiles} temp_color_{mangle}.vrt -w leaflet -z {minZoom}-{maxZoom} {tile_path}'
+    comm.Disconnect()
 
-    subprocess.check_call([exec], shell=True)
-    # os.remove(tiff)
+
     os.remove(f'temp_color_{mangle}.vrt')
     os.remove(colormap)
-
-
-
-def get_var(df, var, time):
-    d = None
-    has_time = True
-
-    if time is not None:
-        d = df[var].isel(time=time).rio.write_nodata(-9999)
-    else:
-        d = df[var].rio.write_nodata(-9999) # if a diff comes in it won't have a time axis
-        time = 'diff'
-        has_time = False
-
-    d.rio.to_raster(f'{var}_wgs_{time}.tif')
-    exec = f"""/usr/local/bin/gdalwarp -t_srs EPSG:4326 -srcnodata '-9999' {var}_wgs_{time}.tif  output_{var}_{time}.tif"""
-    subprocess.check_call([exec], shell=True)
-
-    #
-    # if time is None:
-    #     time='diff'
-    #     has_time = False
-
-
-    da = xr.open_rasterio(f'output_{var}_{time}.tif')
-
-    # Select data2plot, lat and lon
-    data2plot = da.values[0, :]
-    data2plot[data2plot == -9999] = np.nan
-
-    lat = da.y.values
-    lon = da.x.values
-
-    v=var
-    if not has_time:
-        v = f'{var}_diff'
-    colormap = plot_settings.colormap(v)
-
-    # Function to normalize SWE between 0 and 200
-    ROBUST_PERCENTILE = 2.0
-    vmax = np.nanpercentile(data2plot, 100 - ROBUST_PERCENTILE)
-    vmin = np.nanpercentile(data2plot, ROBUST_PERCENTILE)
-
-    # Remove SWE values lower than 0.1 mm so that these values appear as empty value on the map
-    # data2plot[data2plot < vmin] = np.nan
-    # Remove large values
-    # data2plot[data2plot > vmax] = np.nan
-
-    norm_var = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
-
-    # Generate normalized  data
-    normed_data = norm_var(data2plot).data
-    # Generate colors corresponding to the normalized  data
-    colored_data = colormap(normed_data)
-
-    model_time=''
-    if has_time and d is not None:
-        model_time = pd.to_datetime(d.time.values)
-        model_time = model_time.strftime('%Y/%m/%d %H')
-
-    return colored_data, lat, lon, vmax, vmin, model_time
-
-
 

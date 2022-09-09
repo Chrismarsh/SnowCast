@@ -3,7 +3,7 @@ import importlib
 import os
 import sys
 from datetime import datetime
-
+import pickle
 from notifier import slack
 from nwp_forcing import main as nwp_main
 from plot import main as plot_main
@@ -128,10 +128,18 @@ if __name__ == '__main__':
 
     slack.send_slack_notifier(settings['webhook_url'], 'Snowcast run started :zap:', '')
 
+    #if we are running in checkpoint mode, this will hold the list of today's (but maybe >1 day!) set of processed
+    # nc files
+    processed_nc_files = None
+
     try:
         try:
             if step_backfill:
-                nwp_main.main(settings)
+                processed_nc_files = nwp_main.main(settings)
+
+                with open('processed_nc_files', 'wb') as f:
+                    pickle.dump(processed_nc_files, f)
+
         except Exception as e:
             open('.snowcast.lastrun_nwp_error.lock', 'w')
 
@@ -142,7 +150,11 @@ if __name__ == '__main__':
 
         try:
             if step_CHM:
-                chm_main.main(settings)
+                if not step_backfill:
+                    with open('processed_nc_files', 'rb') as f:
+                        processed_nc_files = pickle.load(f)
+
+                chm_main.main(settings, processed_nc_files)
         except Exception as e:
             message = 'Snowcast run failed during CHM run :exclamation:\n' + str(e)
             slack.send_slack_notifier(settings['webhook_url'], message, '')
@@ -153,6 +165,9 @@ if __name__ == '__main__':
         try:
             if step_postprocess:
                 df = postprocess.main(settings)
+                with open('postprocess_df', 'wb') as f:
+                    pickle.dump(df, f)
+
         except Exception as e:
             message = 'Snowcast run failed during post processing :exclamation:\n' + str(e)
             slack.send_slack_notifier(settings['webhook_url'], message, '')
@@ -160,6 +175,10 @@ if __name__ == '__main__':
 
         try:
             if step_plot:
+                if not step_postprocess:
+                    with open('postprocess_df', 'rb') as f:
+                        df = pickle.load(f)
+
                 plot_main.main(settings, df)
         except Exception as e:
             message = 'Snowcast run failed during plot generation :exclamation:\n' + str(e)
