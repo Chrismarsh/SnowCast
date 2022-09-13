@@ -4,6 +4,7 @@ import os
 import pandas as pd
 import re
 import xarray as xr
+import shutil
 
 
 def preprocess(x, settings, keep_forecast=False, keep_all=False):
@@ -158,6 +159,25 @@ def hrdps_nc_to_chm(settings):
     # this is everything not including +24hr forecast
     ar_nc_path = os.path.join(settings['nc_chm_dir'], f'HRDPS_West_current.nc')
     forecast_nc_path = os.path.join(settings['nc_chm_dir'], f'HRDPS_West_forecast.nc')
+
+    # we might have updated the settings[start_time] to a date that is midway into an existing 'HRDPS_West_current' file
+    # if this is the case we need to archieve the existing file to start a new one
+
+    if os.path.exists(ar_nc_path) and not settings['force_nc_archive']:
+        existing_ar = xr.open_dataset(ar_nc_path,
+                                      engine='netcdf4')
+
+        if start > existing_ar.datetime.values[0]:
+            print(f"""start_date={start} occurs after the start of the existing HRDPS_West_current.nc file ({existing_ar.datetime.values[0]}).\n
+             A copy of {ar_nc_path} will be made as backup so duplicate times are not added.\n
+             A new HRDPS_West_current.nc will be generated.""")
+
+            s = str(existing_ar.datetime[0].dt.strftime('%Y%m%d').values)
+            e = str(existing_ar.datetime[-1].dt.strftime('%Y%m%d').values)
+            new_ar_file = f'HRDPS_West_current_{s}-{end}.nc'
+
+            shutil.move(ar_nc_path,
+                        os.path.join(settings['nc_chm_dir'], new_ar_file))
 
     update_nc = False  # are we just going to update/append to an existing nc or regen the whole thing?
     if os.path.exists(ar_nc_path) and not settings['force_nc_archive']:
