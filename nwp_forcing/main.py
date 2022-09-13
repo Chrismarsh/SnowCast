@@ -16,8 +16,8 @@ def main(settings):
     # check to see if we need to backfill. This is a bit of a sanity check in case something went super wrong the previous
     # day. This checks if grib_dir already has the files, so won't redownload existing files
 
-    # print('Running backfill')
-    backfill_ret = True # backfill_grib2(settings)
+    print('Running backfill')
+    backfill_ret = backfill_grib2(settings)
 
     # Assume there is a new forecast so convert it
     print('Running grib to nc')
