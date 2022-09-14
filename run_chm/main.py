@@ -111,9 +111,9 @@ def main(settings, processed_nc_files):
             js = json.dumps(config, indent=2)
             f.write(js)
 
-        # exec_str = settings['chm_exec_str']
-        exec_str = '%s -f config.json.chkp.json' % os.path.join(settings['snowcast_base'], 'run_chm/CHM')
-        # print(subprocess.run(exec_str, check=True, capture_output=True, shell=True,  text=True, cwd=os.path.join(settings['snowcast_base'], 'run_chm')).stdout)
+        exec_str = settings['chm_exec_str']
+        # exec_str = '%s -f config.json.chkp.json' % os.path.join(settings['snowcast_base'], 'run_chm/CHM')
+        subprocess.run(exec_str, check=True, capture_output=True, shell=True,  text=True, cwd=os.path.join(settings['snowcast_base'], 'run_chm'))
 
         # house keeping on the last run
         if last:
