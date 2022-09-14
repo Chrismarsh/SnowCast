@@ -26,7 +26,8 @@ def hrdps_nc_to_chm_checkpoint(settings, processed_nc_files):
         fname = os.path.join( settings['checkpoint_nc_chm_dir'], os.path.basename(file) )
 
         ds.to_netcdf(fname,
-                     engine='netcdf4'
+                     engine='netcdf4',
+                     encoding={'datetime': {'dtype': 'int64'}}
                      )
         print(f'Processed hrdps_nc_to_chm_checkpoint for {fname}')
         processed_ckpt_nc_files.append(fname)
