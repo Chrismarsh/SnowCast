@@ -114,7 +114,7 @@ def main(settings):
     ### CALL PARALLEL MPI REGRIDDING
 
     comm = MPI.COMM_SELF.Spawn(sys.executable,
-                               args=['/Users/cmarsh/Documents/science/code/SnowCast/postprocess/MPI_to_tiff.py',
+                               args=[os.path.join('postprocess','MPI_to_tiff.py'),
                                      timestamp],
                                maxprocs=settings['postprocess_maxprocs'])
 

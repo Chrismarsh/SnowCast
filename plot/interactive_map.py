@@ -453,7 +453,7 @@ def make_tiles(settings, tiff, var, time, vmax, vmin, minZoom, maxZoom):
     tile_path = os.path.join(settings['html_dir'], 'tiles', f'tiles_{var}_{time}')
 
     comm = MPI.COMM_SELF.Spawn(sys.executable,
-                               args=['plot/MPI_gdal2tiles.py',
+                               args=[os.path.join('plot','MPI_gdal2tiles.py'),
                                      f'temp_color_{mangle}.vrt',
                                      '--mpi',
                                      '-w', 'leaflet',
