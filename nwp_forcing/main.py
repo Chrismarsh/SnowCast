@@ -36,7 +36,7 @@ def main(settings):
 
     # even in chechk point mode still build the mega nc file so-as to be able to easily run a full model sim
     print('Converting nc to CHM format')
-    hrdps_nc_to_chm(settings)
+    processed_nc_files = hrdps_nc_to_chm(settings)
 
     if settings['checkpoint_mode']:
         if processed_nc_files is None:

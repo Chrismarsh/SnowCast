@@ -253,7 +253,10 @@ def hrdps_nc_to_chm(settings):
                  engine='netcdf4'
                  )
 
-    return True
+    processed_nc_files = None
+    if len(df.file.tolist()) > 0:
+        processed_nc_files = df.file.tolist()
+    return True, processed_nc_files
 
 if __name__ == '__main__':
     settings = {}
