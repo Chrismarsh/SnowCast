@@ -22,6 +22,7 @@ www/index.html
 
 slack_webhook.py
 
+*.asc*
 *.png
 *.vtu
 *.log
@@ -37,40 +38,8 @@ slack_webhook.py
 *.nc
 *.ESMF_LogFile
 *.ipynb
+*.tiff
+*.prj
 
 CHM
-
-v1/crontab_operational.txt
-v1/CHM_Configs/chm_run_configs.txt
-
-v1/CHM_Configs/FRG.txt
-v1/CHM_Configs/Fortress_forcing_FRG.json
-v1/CHM_Configs/GDPS_Current/
-v1/CHM_Configs/HRDPS_CHM_Current_BS.json
-v1/CHM_Configs/HRDPS_Current_BS/
-v1/CHM_Configs/HRDPS_Current_Snowpack/
-v1/CHM_Configs/HRDPS_Historical/
-v1/CHM_Configs/meshes/
-v1/CHM_Configs/test.json
-v1/CHM_Configs/test/
-
-v1/In_Situ_Data/logs/
-v1/In_Situ_Data/test_data.py
-
-v1/forecast_CRHO_spinup
-
-v1/NWP_Forcing/Download/send_mail.py
-v1/NWP_Forcing/GRIB2_to_NETCDF/send_mail.py
-v1/NWP_Forcing/Util/send_mail.py
-v1/NWP_Forcing/__init__.py
-v1/NWP_Forcing/logs/
-
-v1/Post_Processing/main.py
-v1/Post_Processing/plot_scripts/OLD_git/
-v1/Post_Processing/vtu_config/
-v1/Post_Processing/KML_files/SC*
-
-v1/docs/build/
-
-v1/Remote_Data/ERROR.txt
 

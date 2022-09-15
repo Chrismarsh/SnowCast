@@ -1,6 +1,7 @@
 
 import xarray as xr
 import os
+import shutil
 
 # reuse this xarray preprocessor to conver the grid -> nc files to a format that CHM will tolerate
 from nwp_forcing.hrdps_nc_to_chm import preprocess as preprocess
@@ -14,6 +15,9 @@ def hrdps_nc_to_chm_checkpoint(settings, processed_nc_files):
     :param processed_nc_files: The list of grib -> nc processed files. These are the files that need to be moved and processed
     :return:
     """
+
+    # make sure this exists
+    os.makedirs(settings['checkpoint_nc_chm_dir'], exist_ok=True)
 
     processed_ckpt_nc_files = []
     for file in processed_nc_files:

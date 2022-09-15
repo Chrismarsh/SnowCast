@@ -157,8 +157,8 @@ def hrdps_nc_to_chm(settings):
         raise Exception(f'Missing the following dates:\n {missing}')
 
     # this is everything not including +24hr forecast
-    ar_nc_path = os.path.join(settings['nc_chm_dir'], f'HRDPS_West_current.nc')
-    forecast_nc_path = os.path.join(settings['nc_chm_dir'], f'HRDPS_West_forecast.nc')
+    ar_nc_path = os.path.join(settings['nc_chm_dir'], f"""HRDPS_{settings['hrdps_domain']}_current.nc""")
+    forecast_nc_path = os.path.join(settings['nc_chm_dir'], f"""HRDPS_{settings['hrdps_domain']}_forecast.nc""")
 
     # we might have updated the settings[start_time] to a date that is midway into an existing 'HRDPS_West_current' file
     # if this is the case we need to archieve the existing file to start a new one
@@ -168,13 +168,13 @@ def hrdps_nc_to_chm(settings):
                                       engine='netcdf4')
 
         if start > existing_ar.datetime.values[0]:
-            print(f"""start_date={start} occurs after the start of the existing HRDPS_West_current.nc file ({existing_ar.datetime.values[0]}).\n
+            print(f"""start_date={start} occurs after the start of the existing HRDPS_{settings['hrdps_domain']}_current.nc file ({existing_ar.datetime.values[0]}).\n
              A copy of {ar_nc_path} will be made as backup so duplicate times are not added.\n
-             A new HRDPS_West_current.nc will be generated.""")
+             A new HRDPS_{settings['hrdps_domain']}_current.nc will be generated.""")
 
             s = str(existing_ar.datetime[0].dt.strftime('%Y%m%d').values)
             e = str(existing_ar.datetime[-1].dt.strftime('%Y%m%d').values)
-            new_ar_file = f'HRDPS_West_current_{s}-{end}.nc'
+            new_ar_file = f"""HRDPS_{settings['hrdps_domain']}_current_{s}-{end}.nc"""
 
             shutil.move(ar_nc_path,
                         os.path.join(settings['nc_chm_dir'], new_ar_file))
@@ -221,7 +221,7 @@ def hrdps_nc_to_chm(settings):
 
     # write out the archive
     if update_nc:
-        print('Updating HRDPS_West_current.nc...')
+        print(f"""Updating HRDPS_{settings['hrdps_domain']}_current.nc...""")
         existing_ar = xr.open_mfdataset([ar_nc_path],
                                         engine='netcdf4')
         # update our archive of non-forecasts
@@ -234,7 +234,7 @@ def hrdps_nc_to_chm(settings):
         os.remove(ar_nc_path)
         os.rename(ar_nc_path + '.tmp', ar_nc_path)
     else:
-        print('Writting new HRDPS_West_current.nc')
+        print(f"""Writting new HRDPS_{settings['hrdps_domain']}_current.nc""")
         ds.to_netcdf(ar_nc_path,
                      mode='w',
                      engine='netcdf4'
@@ -248,7 +248,7 @@ def hrdps_nc_to_chm(settings):
     except OSError as e:
         pass
 
-    print('Writing HRDPS_West_forecast.nc')
+    print(f"""Writing HRDPS_{settings['hrdps_domain']}_forecast.nc""")
     ds.to_netcdf(forecast_nc_path,
                  engine='netcdf4'
                  )

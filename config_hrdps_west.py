@@ -13,6 +13,8 @@ settings['webhook_url'] = slack_webhook.webhook_url
 
 settings['snowcast_base'] = os.getcwd()
 
+settings['hrdps_domain'] = 'continental'
+
 # Dir to put GEM grib2 files
 settings['grib_dir'] = os.path.join(settings['snowcast_base'], 'nwp_forcing/grib_download')
 
@@ -50,7 +52,7 @@ settings['force_nc_archive'] = False
 # Format Y-M-D
 # settings['start_date'] = '2020-10-26'
 # settings['end_date'] = '2021-03-29'
-settings['start_date'] = '2022-09-01'
+settings['start_date'] = '2022-09-14'
 
 # regridding resolution
 settings['dxdy'] = 0.002
@@ -61,11 +63,11 @@ settings['dxdy'] = 0.002
 # the ESMF regridder can expand to a whole cluster via MPI. This allows for calling it via, e.g, slurm
 # if this key is not present it will default to local node MPI using postprocess_maxprocs processors
 # if postprocess_exec_str is defined, postprocess_maxprocs is ignored
-settings['postprocess_exec_str'] = './submit_to_prioQ.sh job.sh'
+# settings['postprocess_exec_str'] = './submit_to_prioQ.sh postprocess/job.sh'
 settings['postprocess_maxprocs'] = 8
 
 #same as above but for plot generation
-settings['plotgen_exec_str'] = './submit_to_prioQ.sh job.sh'
+# settings['plotgen_exec_str'] = './submit_to_prioQ.sh plot/job.sh'
 settings['plotgen_maxprocs'] = 8
 
 #variables to plot (implicitly includes the difference between these)
