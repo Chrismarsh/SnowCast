@@ -12,4 +12,4 @@ module restore snowcast-prod
 source /globalhome/cbm038/HPC/venv/snowcast-prod/bin/activate
 cd /globalhome/cbm038/HPC/project/SnowCast/
 
-srun --label python plot/MPI_gdal2tiles.py "$@"
+srun --label --unbuffered python plot/MPI_gdal2tiles.py "$@"
