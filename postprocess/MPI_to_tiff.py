@@ -3,8 +3,13 @@
 import CHM as pc
 import sys
 from mpi4py import MPI
-import os
 
+
+def str2bool(s: str) -> bool:
+    if s.lower() == 'true':
+        return True
+
+    return False
 
 def main(timestamp: str,
          disconnect: bool,
@@ -13,7 +18,12 @@ def main(timestamp: str,
          save_weights: bool,
          load_weights: bool):
 
-    print(f"""in main: {timestamp} {disconnect} {weight_002} {weight_036} {save_weights} {load_weights}""")
+    # if called from SLURM, etc, these cli are coming in as strings
+    if isinstance(disconnect, str):
+        disconnect = str2bool(disconnect)
+        save_weights = str2bool(save_weights)
+        load_weights = str2bool(load_weights)
+
     # this should go in a sbatch job.sh
     # https://www.opendem.info/arc2meters.html
     pc.ugrid2tiff(f'ugrid_{timestamp}.nc',
