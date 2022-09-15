@@ -39,7 +39,7 @@ settings['html_dir'] = os.path.join(settings['snowcast_base'], 'www')
 
 # how should CHM be called?
 settings['chm_exec_str'] = '%s -f config.json.chkp.json' % os.path.join(settings['snowcast_base'], 'run_chm/CHM')
-# settings['chm_exec_str'] = './submit_to_prioQ.sh'
+# settings['chm_exec_str'] = './submit_to_prioQ.sh job.sh'
 
 # force a regeneration of the complete nc archieve
 settings['force_nc_archive'] = False
@@ -55,7 +55,18 @@ settings['start_date'] = '2022-09-01'
 # regridding resolution
 settings['dxdy'] = 0.002
 
+# post processing settings
+# these are using the pvd -> tiff step
+
+# the ESMF regridder can expand to a whole cluster via MPI. This allows for calling it via, e.g, slurm
+# if this key is not present it will default to local node MPI using postprocess_maxprocs processors
+# if postprocess_exec_str is defined, postprocess_maxprocs is ignored
+settings['postprocess_exec_str'] = './submit_to_prioQ.sh job.sh'
 settings['postprocess_maxprocs'] = 8
+
+#same as above but for plot generation
+settings['plotgen_exec_str'] = './submit_to_prioQ.sh job.sh'
+settings['plotgen_maxprocs'] = 8
 
 #variables to plot (implicitly includes the difference between these)
 settings['plot_vars'] = ['swe', 'snowdepthavg', 't']

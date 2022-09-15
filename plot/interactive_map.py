@@ -452,16 +452,21 @@ def make_tiles(settings, tiff, var, time, vmax, vmin, minZoom, maxZoom):
     subprocess.check_call([exec], shell=True)
     tile_path = os.path.join(settings['html_dir'], 'tiles', f'tiles_{var}_{time}')
 
-    comm = MPI.COMM_SELF.Spawn(sys.executable,
+    if 'plotgen_exec_str' in settings:
+        exec_str = f"""{settings['plotgen_exec_str']} temp_color_{mangle}.vrt --mpi -w leaflet -z {minZoom}-{maxZoom} {tile_path} False"""
+        print(exec_str)
+        subprocess.check_call([exec_str], shell=True, cwd=os.path.join(settings['snowcast_base']))
+    else:
+        comm = MPI.COMM_SELF.Spawn(sys.executable,
                                args=[os.path.join('plot','MPI_gdal2tiles.py'),
                                      f'temp_color_{mangle}.vrt',
                                      '--mpi',
                                      '-w', 'leaflet',
                                      '-z', f'{minZoom}-{maxZoom}',
                                      tile_path],
-                               maxprocs=settings['postprocess_maxprocs'])
+                               maxprocs=settings['plotgen_maxprocs'])
 
-    comm.Disconnect()
+        comm.Disconnect()
 
 
     os.remove(f'temp_color_{mangle}.vrt')
