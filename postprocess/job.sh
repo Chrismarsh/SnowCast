@@ -12,6 +12,6 @@ module load gcc/9.3.0
 module restore snowcast-prod
 
 source /globalhome/cbm038/HPC/venv/snowcast-prod/bin/activate
-cd /globalhome/cbm038/HPC/project/SnowCast
+cd /globalhome/cbm038/HPC/project/SnowCast/
 
-srun --label python MPI_to_tiff.py "$@"
+srun --label python postprocess/MPI_to_tiff.py "$@"
