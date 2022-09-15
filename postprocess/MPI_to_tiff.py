@@ -6,12 +6,14 @@ from mpi4py import MPI
 import os
 
 
-def main(timestamp, disconnect,
-         weight_002='weight_0.002_BILINEAR.nc',
-         weight_036='weight_0.036_BILINEAR.nc',
-         save_weights=True,
-         load_weights=False):
+def main(timestamp: str,
+         disconnect: bool,
+         weight_002: str,
+         weight_036: str,
+         save_weights: bool,
+         load_weights: bool):
 
+    print(f"""in main: {timestamp} {disconnect} {weight_002} {weight_036} {save_weights} {load_weights}""")
     # this should go in a sbatch job.sh
     # https://www.opendem.info/arc2meters.html
     pc.ugrid2tiff(f'ugrid_{timestamp}.nc',

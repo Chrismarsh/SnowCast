@@ -124,7 +124,7 @@ def main(settings):
 
 
     if 'postprocess_exec_str' in settings:
-        exec_str = f"""{settings['postprocess_exec_str']} {timestamp} {True} {weight_002} {weight_036} {save_weights} {load_weights}"""
+        exec_str = f"""{settings['postprocess_exec_str']} {timestamp} {False} {weight_002} {weight_036} {save_weights} {load_weights}"""
         print(exec_str)
         subprocess.check_call([exec_str], shell=True, cwd=os.path.join(settings['snowcast_base']))
     else:
