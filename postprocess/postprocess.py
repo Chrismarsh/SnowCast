@@ -125,11 +125,11 @@ def main(settings):
 
     if 'postprocess_exec_str' in settings:
         exec_str = """f{settings['postprocess_exec_str']} {timestamp} {True} {weight_002} {weight_036} {save_weights} {load_weights}"""
-        subprocess.check_call([exec_str], shell=True, cwd=os.path.join(settings['snowcast_base'], 'postprocess]'))
+        subprocess.check_call([exec_str], shell=True, cwd=os.path.join(settings['snowcast_base'], 'postprocess'))
     else:
         comm = MPI.COMM_SELF.Spawn(sys.executable,
                                    args=[os.path.join('postprocess', 'MPI_to_tiff.py'),
-                                         timestamp, True, weight_002, weight_036,save_weights, load_weights ],
+                                         timestamp, True, weight_002, weight_036, save_weights, load_weights],
                                    maxprocs=settings['postprocess_maxprocs'])
 
         comm.Disconnect()
