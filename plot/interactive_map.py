@@ -459,7 +459,7 @@ def make_tiles(settings, tiff, var, time, vmax, vmin, minZoom, maxZoom):
                                      '-w', 'leaflet',
                                      '-z', f'{minZoom}-{maxZoom}',
                                      tile_path],
-                               maxprocs=max(1, settings['postprocess_maxprocs']-4))
+                               maxprocs=settings['postprocess_maxprocs'])
 
     comm.Disconnect()
 
