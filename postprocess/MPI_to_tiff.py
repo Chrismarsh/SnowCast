@@ -6,16 +6,11 @@ from mpi4py import MPI
 import os
 
 
-def main(timestamp):
-
-    weight_002 = 'weight_0.002_BILINEAR.nc'
-    weight_036 = 'weight_0.036_BILINEAR.nc'
-
-    load_weights = False
-    save_weights = True
-    if os.path.isfile(weight_002) and os.path.isfile(weight_036):
-        save_weights = False
-        load_weights = True
+def main(timestamp, disconnect,
+         weight_002='weight_0.002_BILINEAR.nc',
+         weight_036='weight_0.036_BILINEAR.nc',
+         save_weights=True,
+         load_weights=False):
 
     # this should go in a sbatch job.sh
     # https://www.opendem.info/arc2meters.html
@@ -42,8 +37,10 @@ def main(timestamp):
                   load_weights_file=weight_002 if load_weights else None
                   )
 
-    comm = MPI.Comm.Get_parent()
-    comm.Disconnect()
+    # have been run from the MPI.spawn, so disconnect. But we we came from SLURM, etc dont' do this
+    if disconnect:
+        comm = MPI.Comm.Get_parent()
+        comm.Disconnect()
 
 if __name__ == '__main__':
-    main(sys.argv[1])
+    main(*sys.argv[1:])

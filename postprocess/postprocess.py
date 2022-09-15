@@ -108,17 +108,31 @@ def main(settings):
     print("Took %fs" % (end - start))
 
 
-    print('Creating 50m TIFFs...')
+    print('Creating TIFFs...')
     start = time.time()
 
     ### CALL PARALLEL MPI REGRIDDING
 
-    comm = MPI.COMM_SELF.Spawn(sys.executable,
-                               args=[os.path.join('postprocess','MPI_to_tiff.py'),
-                                     timestamp],
-                               maxprocs=settings['postprocess_maxprocs'])
+    weight_002 = 'weight_0.002_BILINEAR.nc'
+    weight_036 = 'weight_0.036_BILINEAR.nc'
 
-    comm.Disconnect()
+    load_weights = False
+    save_weights = True
+    if os.path.isfile(weight_002) and os.path.isfile(weight_036):
+        save_weights = False
+        load_weights = True
+
+
+    if 'postprocess_exec_str' in settings:
+        exec_str = """f{settings['postprocess_exec_str']} {timestamp} {True} {weight_002} {weight_036} {save_weights} {load_weights}"""
+        subprocess.check_call([exec_str], shell=True, cwd=os.path.join(settings['snowcast_base'], 'postprocess]'))
+    else:
+        comm = MPI.COMM_SELF.Spawn(sys.executable,
+                                   args=[os.path.join('postprocess', 'MPI_to_tiff.py'),
+                                         timestamp, True, weight_002, weight_036,save_weights, load_weights ],
+                                   maxprocs=settings['postprocess_maxprocs'])
+
+        comm.Disconnect()
     end = time.time()
     print("Took %fs" % (end - start))
 
