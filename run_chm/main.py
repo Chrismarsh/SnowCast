@@ -1,4 +1,4 @@
-from . import list_dir
+from nwp_forcing import list_dir
 
 import subprocess
 import os
@@ -60,7 +60,7 @@ def main(settings, processed_nc_files):
 
             chkp_startdate = pd.to_datetime(chkp_json['startdate'], format='%Y%m%dT%H%M%S')
             df = df[df.date >= chkp_startdate]
-        
+
         processed_nc_files = df.file.tolist()
 
 
