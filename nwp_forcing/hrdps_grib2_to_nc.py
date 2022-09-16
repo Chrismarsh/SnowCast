@@ -183,7 +183,7 @@ def hrdps_grib2nc(settings):
         ds = xr.merge([ds, ds_LR])
 
         # Export to netcdf
-        nc_file_out = os.path.join(settings['nc_ar_dir'], 'GEM_2_5km_' + settings['domain'] + '_' + str(ds.valid_time[0].values) + '.nc')
+        nc_file_out = os.path.join(settings['nc_ar_dir'], 'GEM_2_5km_' + settings['hrdps_domain'] + '_' + str(ds.valid_time[0].values) + '.nc')
         print(f'Writing netcdf file {nc_file_out}')
         processed_nc_files.append(nc_file_out)
 

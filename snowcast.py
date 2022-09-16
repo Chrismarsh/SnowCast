@@ -62,8 +62,6 @@ if __name__ == '__main__':
     # Internal settings
     # Likely do not need to be changed by the user
     ################################################
-    # not currently used
-    settings['domain'] = 'west'
 
     # Define HRDPS variables to download (names match file names in HRDPS system)
     settings['hrdps_variables'] = [
