@@ -40,6 +40,7 @@ slack_webhook.py
 *.ipynb
 *.tiff
 *.prj
+*.grib2
 
 CHM
 
