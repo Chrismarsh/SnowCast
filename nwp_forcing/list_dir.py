@@ -1,6 +1,7 @@
 import pandas as pd
 import glob
 import os
+import re
 
 def list_dir(dir, settings):
     all_files = glob.glob(os.path.join(dir, '*.nc'))
