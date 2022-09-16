@@ -196,7 +196,8 @@ def hrdps_nc_to_chm(settings):
         existing_ar.close()
         if len(df) == 0:
             print(f"Existing archive has end date {end}, which matches most recent .nc chunks. No update needed")
-            return True
+
+            return True, df.file.tolist()
 
     ds = xr.open_mfdataset(df.file.tolist(),
                            combine='nested',
