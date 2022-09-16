@@ -1,3 +1,5 @@
+from . import list_dir
+
 import subprocess
 import os
 import pandas as pd
@@ -45,6 +47,22 @@ def main(settings, processed_nc_files):
         print('No existing load_checkpoint_path found, enabling checkpointing')
 
     i = 1
+
+    if len(processed_nc_files) == 0:
+        # to get here with zero nc files means we have a successfull backfill in a previous run but we are rerunning CHM
+        # due to an error or something else.
+
+        df, start, end = list_dir.list_dir(settings['checkpoint_nc_chm_dir'])
+
+        if load_checkpoint_path is not None:
+            with open(load_checkpoint_path) as f:
+                chkp_json = pyjson5.load(f)
+
+            chkp_startdate = pd.to_datetime(chkp_json['startdate'], format='%Y%m%dT%H%M%S')
+            df = df[df.date >= chkp_startdate]
+        
+        processed_nc_files = df.file.tolist()
+
 
     # this will be almost certainly 1 iteration but it might not be if we had some backfill
     # note: These files are naemd as if they start at 00, but they actually start at 01 so that valid data is present!
