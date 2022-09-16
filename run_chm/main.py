@@ -52,7 +52,7 @@ def main(settings, processed_nc_files):
         # to get here with zero nc files means we have a successfull backfill in a previous run but we are rerunning CHM
         # due to an error or something else.
 
-        df, start, end = list_dir.list_dir(settings, settings['checkpoint_nc_chm_dir'])
+        df, start, end = list_dir.list_dir(settings['checkpoint_nc_chm_dir'], settings)
 
         if load_checkpoint_path is not None:
             with open(load_checkpoint_path) as f:
