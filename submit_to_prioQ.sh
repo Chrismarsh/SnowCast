@@ -3,7 +3,7 @@
 jobib=$(sbatch --parsable --account hpc_c_giws_prio_clark "$@")
 
 #give it a minute to service the job
-sleep 5
+sleep 2
 if ! [[ $(squeue -h -p cnic_giws_high_priority -t RUNNING) ]]; then
   scancel -p cnic_giws_high_priority
   echo "prio queue failed to run Snowcast"
@@ -21,7 +21,7 @@ done
 # xargs trims whitespace
 if [ "$(sacct -X -n -o State --jobs ${jobid} | xargs)" = "COMPLETED" ];
 then
-   return 0 # Success!
+   exit 0 # Success!
 fi
 
-return 1
+exit 1
