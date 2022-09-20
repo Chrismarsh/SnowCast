@@ -124,7 +124,7 @@ def main(settings):
 
 
     if 'postprocess_exec_str' in settings:
-        exec_str = f"""{settings['postprocess_exec_str']} {timestamp} {False} {weight_002} {weight_036} {save_weights} {load_weights}"""
+        exec_str = f"""{settings['postprocess_exec_str']} {timestamp} {False} {weight_002} {weight_036} {save_weights} {load_weights} 0.002"""
         print(exec_str)
         subprocess.check_call([exec_str], shell=True, cwd=os.path.join(settings['snowcast_base']))
     else:
@@ -136,6 +136,21 @@ def main(settings):
         comm.Disconnect()
     end = time.time()
     print("Took %fs" % (end - start))
+
+    print('Creating AEP outputs...')
+
+    if 'postprocess_exec_str' in settings:
+        exec_str = f"""{settings['postprocess_exec_str']} --nodes=4 {timestamp} {False} {weight_002} {weight_036} {save_weights} {load_weights} 0.036"""
+        print(exec_str)
+        subprocess.check_call([exec_str], shell=True, cwd=os.path.join(settings['snowcast_base']))
+    else:
+        comm = MPI.COMM_SELF.Spawn(sys.executable,
+                                   args=[os.path.join('postprocess', 'MPI_to_tiff.py'),
+                                         timestamp, True, weight_002, weight_036, save_weights, load_weights],
+                                   maxprocs=settings['postprocess_maxprocs'])
+
+        comm.Disconnect()
+
 
     # Make the ~2.5km asc raster for AEP
     todays_tiff = f't-0.036x0.036_{timestamp_ISO}.tiff'

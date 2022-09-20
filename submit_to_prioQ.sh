@@ -1,6 +1,6 @@
 #!/bin/bash
 
-jobib=$(sbatch --parsable --account hpc_c_giws_prio_clark "$@")
+jobid=$(sbatch --parsable --account hpc_c_giws_prio_clark "$@")
 
 #give it a minute to service the job
 sleep 2
@@ -19,7 +19,7 @@ while [[ $(squeue -h -p cnic_giws_high_priority) ]]; do
 done
 
 # xargs trims whitespace
-if [ "$(sacct -X -n -o State --jobs ${jobid} | xargs)" = "COMPLETED" ];
+if [ "$(sacct -X -n -o State --jobs $jobid | xargs)" = "COMPLETED" ];
 then
    exit 0 # Success!
 fi
