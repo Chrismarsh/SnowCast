@@ -139,8 +139,10 @@ def main(settings):
 
     print('Creating AEP outputs...')
 
+    # The AEP outputs for some reason cause ESMF to segfault when run with the same number of nodes as used above
+    # so this is a special case workaround until that is resolved
     if 'postprocess_exec_str' in settings:
-        exec_str = f"""{settings['postprocess_exec_str']} --nodes=4 {timestamp} {False} {weight_002} {weight_036} {save_weights} {load_weights} 0.036"""
+        exec_str = f"""./submit_to_prioQ.sh --nodes=4 postprocess/job.sh {timestamp} {False} {weight_002} {weight_036} {save_weights} {load_weights} 0.036"""
         print(exec_str)
         subprocess.check_call([exec_str], shell=True, cwd=os.path.join(settings['snowcast_base']))
     else:
