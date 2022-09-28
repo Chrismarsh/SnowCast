@@ -20,8 +20,8 @@ while [[ $(squeue -h -p cnic_giws_high_priority) ]]; do
   fi
 done
 
-# xargs trims whitespace
-echo `sacct -X -n -o State --jobs $jobid`
+# wait for the job to clear up, otherwise sacct will still show as running even though the above cleared
+sleep 5
 
 if [ "$(sacct -X -n -o State --jobs $jobid | xargs)" = "COMPLETED" ];
 then
