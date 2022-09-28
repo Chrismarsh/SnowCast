@@ -75,10 +75,7 @@
     }
   },
   "meshes": {
-    "mesh": "meshes/ref-DEM-utm_mesh.h5",
-    "parameters": {
-      "file": "meshes/ref-DEM-utm_param.h5"
-    }
+    "mesh": "FABDEM.metis.384_mesh.np384.partition"
   },
   "parameter_mapping": {
     "landcover": {
@@ -236,7 +233,6 @@
   "checkpoint": {
     "save_checkpoint": true,
     "on_last": false,
-    "load_checkpoint_path": "/Users/cmarsh/Documents/science/code/SnowCast/run_chm/output/checkpoint/checkpoint_20220904T010000.np1.json",
     "frequency": 23
   }
 }
