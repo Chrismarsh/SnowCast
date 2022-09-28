@@ -39,7 +39,7 @@ def upload(settings):
     for file_type in ['swe_*.asc', 'swe_*.prj']:
         _rolling_copy(file_type, asc_path)
 
-    for file_type in ['swe-0.002x0.002*.tif', 'swe-0.036x0.036*.tif']:
+    for file_type in ['swe-0.002x0.002*.tiff', 'swe-0.036x0.036*.tiff']:
         _rolling_copy(file_type, tiff_path, 3)
 
 
