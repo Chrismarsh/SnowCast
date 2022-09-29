@@ -10,6 +10,7 @@ from plot import main as plot_main
 from run_chm import main as chm_main
 from webupload import upload
 from postprocess import postprocess
+from pathlib import Path
 
 import argparse
 parser = argparse.ArgumentParser()
@@ -133,6 +134,8 @@ if __name__ == '__main__':
     try:
         try:
             if step_backfill:
+                # clean up previous runs file
+                Path('processed_nc_files').unlink(missing_ok=True)
                 processed_nc_files = nwp_main.main(settings)
 
                 with open('processed_nc_files', 'wb') as f:
@@ -149,8 +152,11 @@ if __name__ == '__main__':
         try:
             if step_CHM:
                 if not step_backfill:
-                    with open('processed_nc_files', 'rb') as f:
-                        processed_nc_files = pickle.load(f)
+                    try:
+                        with open('processed_nc_files', 'rb') as f:
+                            processed_nc_files = pickle.load(f)
+                    except FileNotFoundError as e:
+                        raise Exception("Last backfill did not run correctly. Please rerun backfill.")
 
                 chm_main.main(settings, processed_nc_files)
         except Exception as e:
@@ -162,20 +168,28 @@ if __name__ == '__main__':
         df = None
         try:
             if step_postprocess:
+
+                # clean up old files
+                Path('postprocess_df').unlink(missing_ok=True)
                 df = postprocess.main(settings)
+
                 with open('postprocess_df', 'wb') as f:
                     pickle.dump(df, f)
 
         except Exception as e:
             message = 'Snowcast run failed during post processing :exclamation:\n' + str(e)
             slack.send_slack_notifier(settings['webhook_url'], message, '')
+
             raise Exception(message)
 
         try:
             if step_plot:
                 if not step_postprocess:
-                    with open('postprocess_df', 'rb') as f:
-                        df = pickle.load(f)
+                    try:
+                        with open('postprocess_df', 'rb') as f:
+                            df = pickle.load(f)
+                    except FileNotFoundError as e:
+                        raise Exception("Last postprocess did not run correctly. Please rerun postprocess.")
 
                 plot_main.main(settings, df)
         except Exception as e:
