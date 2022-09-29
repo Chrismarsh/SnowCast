@@ -382,7 +382,7 @@ def make_map(settings, df):
 
         # fixes
         # dimension time on 0th function argument to apply_ufunc with dask='parallelized' consists of multiple chunks, but is also a core dimension.
-        ds = ds.chunk(dict(time=-1))
+        ds = ds.chunk(dict(time=-1, y=-1, x=-1))
 
         # Gets the robust percentile range across multiple tiffs, follows mpl's routine
         vmax = float(ds.quantile(1.0 - ROBUST_PERCENTILE, dim=['time', 'y', 'x']))
