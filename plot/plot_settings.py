@@ -53,7 +53,7 @@ def get_cmap(variable):
                         ],
                  'snowdepthavg_diff': sns.diverging_palette(10, 240, n=12), # sns.color_palette("RdBu", 12),
                  'swe_diff': sns.diverging_palette(10, 240, n=12),
-                 't_diff': sns.diverging_palette(10, 240, n=12),
+                 't_diff': sns.diverging_palette(240, 10, n=12),
                  't': sns.color_palette("Reds", 12)
                  } # sns.color_palette("RdBu", 12)}
 
