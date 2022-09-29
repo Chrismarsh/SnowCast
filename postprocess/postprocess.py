@@ -139,23 +139,25 @@ def main(settings):
 
     print('Creating AEP outputs...')
 
-    # The AEP outputs for some reason cause ESMF to segfault when run with the same number of nodes as used above
-    # so this is a special case workaround until that is resolved
-    if 'postprocess_exec_str' in settings:
-        exec_str = f"""./submit_to_prioQ.sh --nodes=4 postprocess/job.sh {timestamp} {False} {weight_002} {weight_036} {save_weights} {load_weights} 0.036"""
-        print(exec_str)
-        subprocess.check_call([exec_str], shell=True, cwd=os.path.join(settings['snowcast_base']))
-    else:
-        comm = MPI.COMM_SELF.Spawn(sys.executable,
-                                   args=[os.path.join('postprocess', 'MPI_to_tiff.py'),
-                                         timestamp, True, weight_002, weight_036, save_weights, load_weights],
-                                   maxprocs=settings['postprocess_maxprocs'])
+    # # The AEP outputs for some reason cause ESMF to segfault when run with the same number of nodes as used above
+    # # so this is a special case workaround until that is resolved
+    # if 'postprocess_exec_str' in settings:
+    #     exec_str = f"""./submit_to_prioQ.sh --nodes=4 postprocess/job.sh {timestamp} {False} {weight_002} {weight_036} {save_weights} {load_weights} 0.036"""
+    #     print(exec_str)
+    #     subprocess.check_call([exec_str], shell=True, cwd=os.path.join(settings['snowcast_base']))
+    # else:
+    #     comm = MPI.COMM_SELF.Spawn(sys.executable,
+    #                                args=[os.path.join('postprocess', 'MPI_to_tiff.py'),
+    #                                      timestamp, True, weight_002, weight_036, save_weights, load_weights],
+    #                                maxprocs=settings['postprocess_maxprocs'])
+    #
+    #     comm.Disconnect()
 
-        comm.Disconnect()
+    # just use gdalwarp it's faster and less weird than the coarse ESMF regrid
 
 
     # Make the ~2.5km asc raster for AEP
-    todays_tiff = f't-0.036x0.036_{timestamp_ISO}.tiff'
+    todays_tiff = f't-0.002x0.002_{timestamp_ISO}.tiff'
     todays_asc = f'swe_{timestamp}.asc'
     AEP.to_ascii(settings, f'{todays_tiff}', todays_asc)
 

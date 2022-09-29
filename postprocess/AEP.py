@@ -105,7 +105,7 @@ def to_ascii(settings, in_filename, out_filename):
     gdal_prefix = os.path.join(_gdal_prefix(), 'bin')+'/'
     user_output_dir = settings['snowcast_base']
 
-    exec_str = f"""{gdal_prefix}gdalwarp -t_srs EPSG:4326 {in_filename} tmp_{in_filename} """
+    exec_str = f"""{gdal_prefix}gdalwarp -tr 0.036 0.036 -t_srs EPSG:4326 {in_filename} tmp_{in_filename} """
     subprocess.check_call([exec_str], shell=True)
 
     # clip_no_data(settings, f'tmp_{in_filename}')
