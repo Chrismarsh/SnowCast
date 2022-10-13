@@ -108,10 +108,14 @@ def to_ascii(settings, in_filename, out_filename):
     exec_str = f"""{gdal_prefix}gdalwarp -tr 0.036 0.036 -t_srs EPSG:4326 {in_filename} tmp_{in_filename} """
     subprocess.check_call([exec_str], shell=True)
 
+    # convert tif nan to -9999 nodata
+    exec_str =f"""{gdal_prefix}gdal_calc.py -A tmp_{in_filename} --outfile=tmp_nonan_{in_filename} --calc="nan_to_num(A, nan=-9999)" --NoDataValue=-9999"""
+    subprocess.check_call([exec_str], shell=True)
     # clip_no_data(settings, f'tmp_{in_filename}')
 
-    exec_str = f"""{gdal_prefix}gdal_translate tmp_{in_filename} {out_filename} """
+    exec_str = f"""{gdal_prefix}gdal_translate tmp_nonan_{in_filename} {out_filename} """
     subprocess.check_call([exec_str],  shell=True)
 
     os.remove(f'tmp_{in_filename}')
+    os.remove(f'tmp_nonan_{in_filename}')
 
