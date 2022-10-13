@@ -25,6 +25,7 @@ def main(settings):
     start = time.time()
 
     timestamp = df.iloc[[0]].datetime[0].strftime('%Y%m%d%H%M')
+    timestamp_AEP = df.iloc[[0]].datetime[0].strftime('%Y%m%d%H%M%S')
     timestamp_ISO = df.iloc[[0]].datetime[0].strftime('%Y%m%dT%H%M%S') # need the ISO time to match ugrid2tiff
 
     # build up a meta data dataframe to return to use in the map generation.
@@ -158,7 +159,7 @@ def main(settings):
 
     # Make the ~2.5km asc raster for AEP
     todays_tiff = f't-0.002x0.002_{timestamp_ISO}.tiff'
-    todays_asc = f'swe_{timestamp}.asc'
+    todays_asc = f'swe_{timestamp_AEP}.asc'
     AEP.to_ascii(settings, f'{todays_tiff}', todays_asc)
 
     return df
