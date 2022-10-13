@@ -5,6 +5,8 @@ import re
 import urllib3
 from datetime import datetime
 from tqdm import tqdm
+import time
+from urllib3.exceptions import ProtocolError
 
 
 def find_hpfx_earliest_date():
@@ -27,31 +29,37 @@ def find_hpfx_earliest_date():
 
 def data_download(url, outputDir, filename, dryRun=False):
     ''' Function to download data from url, called by threading'''
-    
-    useThreading = False
-    
+
     outputFile = os.path.join(outputDir,filename)
 
     if os.path.isfile(outputFile):
         print('File %s already exists. Download cancelled' % filename)
-    else:
-            http = urllib3.PoolManager(timeout=60, retries=5, num_pools = 1)
-            response = http.request('GET',url,preload_content=False)
+    elif not dryRun:
+        retries = 11
 
-            if response.status != 200:
-                return False
+        while True:
+            http = urllib3.PoolManager(timeout=60, retries=5, num_pools=1)
+            response = http.request('GET', url, preload_content=False)
 
-            if not dryRun:
+            # if response.status != 200:
+            #     return False
+
+            retries -= 1
+            try:
                 with open(outputFile, 'wb') as out:
                     while True:
                         data = response.read(1024)
                         if not data:
-                            break
+                            break #end of file
                         out.write(data)
-
-            response.release_conn()
-            # url = url.replace('&','&amp;')
-            # print('Downloading url complete [%s]' %url)
+                response.release_conn()
+                break
+            except ProtocolError as e:
+                print(f'Failed to download {url}, retries left = {retries}')
+                if retries == 0:
+                    raise e
+                else:
+                    time.sleep(60)
 
     return True
 
