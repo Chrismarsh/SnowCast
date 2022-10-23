@@ -50,7 +50,7 @@ def main(settings):
 
 
 
-    diff = ds.isel(time=0) - ds.isel(time=-1)
+    diff = ds.isel(time=-1) - ds.isel(time=0)
 
     # the subsctraion will have mangled these so reset them
     diff['Mesh2_face_nodes'] = ds['Mesh2_face_nodes']
