@@ -28,6 +28,8 @@ import plot.plot_settings as plot_settings
 
 ROBUST_PERCENTILE = 0.02  # follows xarray's robust 98% - 2%
 
+# This is copied here so-as to fix this problem
+# https://github.com/python-visualization/branca/issues/89
 class LinearColormap(cm.LinearColormap):
     def __init__(self, colors, index=None, vmin=0., vmax=1., caption=''):
         super(LinearColormap, self).__init__(colors=colors,vmin=vmin, vmax=vmax,
