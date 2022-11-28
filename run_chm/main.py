@@ -58,14 +58,16 @@ def main(settings, processed_nc_files):
             with open(load_checkpoint_path) as f:
                 chkp_json = pyjson5.load(f)
 
-            chkp_startdate = pd.to_datetime(chkp_json['startdate'], format='%Y%m%dT%H%M%S')
+            # the -1hours is because all the chkp nc files are 00h indexed but the checkpoint will be at 01h. Thus we will
+            # miss "today's" nc file if we don't adjust the time
+            chkp_startdate = pd.to_datetime(chkp_json['startdate'], format='%Y%m%dT%H%M%S') - pd.Timedelta('1 hours')
             df = df[df.date >= chkp_startdate]
 
         processed_nc_files = df.file.tolist()
 
 
     # this will be almost certainly 1 iteration but it might not be if we had some backfill
-    # note: These files are naemd as if they start at 00, but they actually start at 01 so that valid data is present!
+    # note: These files are named as if they start at 00, but they actually start at 01 so that valid data is present!
     for nc in processed_nc_files:
 
         last = True if i == len(processed_nc_files) else False
