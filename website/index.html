@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<link rel="apple-touch-icon" sizes="180x180" href="favicons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="favicons/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicons/favicon-16x16.png">
+<link rel="manifest" href="favicons/manifest.json">
+<link rel="mask-icon" href="favicons/safari-pinned-tab.svg" color="#5bbad5">
+<meta name="theme-color" content="#ffffff">
+
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta name="description" content="">
+    <meta name="author" content="">
+    <style>
+      body {
+          position: relative; 
+      }
+
+      .nav-pills > li > a.active {
+        background-color: #dee2e6 !important;
+      }
+
+      html { scroll-padding-top: 100px; }
+
+    </style>
+
+    <title>SnowCast</title>
+
+
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-1BmE4kWBq78iYhFldvKuhfTAU6auU8tT94WrHftjDbrCEXSU1oBoqyl2QvZ6jIW3" crossorigin="anonymous">
+
+
+
+  </head>
+
+<body data-bs-spy="scroll" data-bs-target="#navbar-main" data-bs-offset="120">
+
+
+  <div class="container py-2" >
+
+    <nav id="navbar-main" class="navbar navbar-light bg-white px-3 navbar-expand-md sticky-top py-0 ">
+      <div class="container-fluid">
+
+        <div class="p-2 flex-fill bd-highlight">
+          <span class="fs-3"><a href="#"><img src="favicons/android-chrome-256x256.png" width="64" height="64" ></a>SnowCast </span>
+        </div>
+         <!-- <a class="navbar-brand" href="#"><img src="favicons/android-chrome-256x256.png" width="64" height="64">SnowCast</a> -->
+
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <!-- <div class="p-2 flex-fill bd-highlight">  -->
+
+        <div class="collapse navbar-collapse col-auto me-auto" id="navbarSupportedContent">
+
+
+           <ul class="navbar-nav col-auto me-auto nav-pills">
+              <li class="nav-item ">
+                <a class="nav-link active" href="#snowcast">Home</a>
+              </li>
+              <li class="nav-item ">
+                <a class="nav-link" href="#forecast">Forecast</a>
+              </li>
+              <li class="nav-item ">
+                <a class="nav-link" href="#CHM">Model</a>
+              </li>
+            </ul>
+            <div class=" fs-3 p-2 bd-highlight col-auto ">
+              <img src="images/CH_logo_ 15x15_300_trans.png" width="64" height="64">
+              <img src="images/GWF_SIMPLE_FCLG_vertical-01.png" width="64" height="64">
+            </div>
+        </div>
+      </div>
+    <!-- </div> -->
+  </nav>
+
+
+<!--     <header class="pb-3 mb-4 border-bottom">
+      <div class="d-flex align-items-center text-dark text-decoration-none">
+
+        <div class="p-2 flex-fill bd-highlight">
+          <span class="fs-3"><a href="#"><img src="favicons/android-chrome-256x256.png" width="64" height="64" ></a>SnowCast </span>
+        </div>
+
+         <ul class="nav">
+            <li class="nav-item active">
+              <a class="nav-link" href="#forecast">Forecast</a>
+            </li>
+            <li class="nav-item active">
+              <a class="nav-link" href="#CHM">CHM</a>
+            </li>
+          </ul>
+
+
+        <div class=" fs-3 p-2 bd-highlight">
+          <img src="images/CH_logo_ 15x15_300_trans.png" width="64" height="64">
+          <img src="images/GWF_SIMPLE_FCLG_vertical-01.png" width="64" height="64">
+
+        </div>
+      </div> 
+    </header> -->
+
+
+  <div class="p-5 mb-4 bg-light border rounded-3" id="snowcast" >
+      <div class="container-fluid">
+        <h1  class="display-5 fw-bold">SnowCast</h1>
+        <p class="col-md-12 fs-4">
+
+        SnowCast is an experimental <a href="#CHM">Canadian Hydrological Model (CHM)</a> data product that downscales the <a href="https://weather.gc.ca/grib/grib2_HRDPS_HR_e.html">Global Environmental Multiscale (GEM)</a> model forecasts from Environment and Climate Change Canada (ECCC) to provide high resolution snowpack forecasts that take into account variable windflow, solar radiation, precipitation, and temperature over complex terrain. </p>
+
+        <p> Downscaling is accomplished through a coupled snow redistribution and ablation model that is run at high resolution. Redistribution is calculated by gravity and wind transport and forest canopy interception.  Ablation is calculated by snow sublimation and melt of forest canopy and surface snowpacks.</p>
+
+         <p class="col-md-12 fs-7">The model domain is centred over Banff National Park, Canada and extends over a region from the US border north to Mount Robson Provincial Park, and from east of Strathmore, Alberta west to Mara Lake, British Columbia.</p>
+
+
+        <p><a href="https://github.com/Chrismarsh/Snowcast">SnowCast</a> is developed as part of <a href="https://gwf.usask.ca/">Global Water Futures</a> Next Generation modelling theme in the Core Modelling Team and the <a href="http://www.usask.ca/hydrology/">Centre for Hydrology</a>, University of Saskatchewan and in collaboration with <a href="https://scholar.google.com/citations?user=rW6_84QAAAAJ&hl=fr">Dr. Vincent Vionnet</a> at ECCC. The high-performance computing advances in CHM are made in collaboration with Dr. Raymond Spiteri and Dr. Kevin Green at the Numerical Simulation Lab (USask).</p> 
+       
+       <p>Two GEM forecasts are currently used:
+          <ul>
+            <li>GEM 2.5 km 2-day forecasts <a href="https://weather.gc.ca/grib/grib2_HRDPS_HR_e.html">(High Resolution Deterministic Prediction System (HRDPS))</a> </li>
+            <li>[Under development] GEM 25 km 6-day forecasts <a href="https://weather.gc.ca/grib/grib2_glb_25km_e.html">(Global Deterministic Forecast System (GDPS)</a> </li>
+          </ul>
+        <p> DISCLAIMER: DO NOT USE FOR DECISION MAKING, EXPERIMENTAL! </p>
+      </p>
+       
+
+      <!-- </div> -->
+    </div>
+  </div>
+
+
+
+  <div class="p-5 mb-4 bg-light border rounded-3" id="forecast">
+    <div class="container-fluid ">
+      <h1 class="display-8 fw-bold" >2-day forecast</h1>
+
+      <div class="ratio ratio-4x3 d-none d-md-block">
+        <iframe id="frame"  src="http://www.snowcast.ca/v2"></iframe>
+      </div>
+
+      <div class="d-block d-md-none">
+        Although this is viewable on mobile, please use a larger screen to fully view the data.
+      </div>
+
+       <p>
+        <h4>Model Outputs</h4>
+
+        <p>Two model outputs, SWE and snow depth, are provided for a) the start of the model run (current) and b) for a period in the future (forecast). The difference between these model outputs are shown as 'Predicted change.' </p>
+
+        <h4>Variables</h4>
+
+        <p> <b>SWE</b> -- Snow Water Equivalent is the amount of water stored in the snowpack, given as an equivalent depth of water (mm) which is the same as mass per unit area (kg/m2). </p>
+        <p><b>Snow Depth </b> -- Snow depth is the depth of snow in metres. </p>
+      </p>
+
+      <a class="btn btn-primary btn-lg"  target="_blank" href="http://www.snowcast.ca/v2" type="button">View</a>
+
+
+
+    </div>
+  </div>
+
+  <div class="p-5 mb-4 bg-light border rounded-3" id="CHM">
+    <div class="container-fluid ">
+      <h1 class="display-8 fw-bold" >Canadian Hydrological Model (CHM)</h1>
+
+
+      <p> 
+        <img src="https://raw.githubusercontent.com/Chrismarsh/CHM/dev/docs/images/mesh.png" class="img-fluid"></p>
+        <p>
+        The <a href="https://github.com/Chrismarsh/CHM">Canadian Hydrological Model (CHM)</a> is a modular, multi-physics, spatially distributed modelling framework designed for representing cold-regions hydrological processes. CHM uses existing high-quality open-source libraries and modern high-performance computing practices to provide a framework that allows for integration of a wide range of process representations, ranging from simple empirical relationships to physics-based, state-of-the-art algorithms. Modularity in structure and process representation allows for diagnosis of deficiencies in these aspects of the model. CHM also has sufficient flexibility in spatial representation and algorithm parameterisation to assess uncertainty in model structure, parameters, initial conditions, process representation, and spatial and temporal scales. By utilizing unstructured meshes, fewer than 1% of the computational elements of high-resolution structured (raster) grids are usually necessary. This preserves surface and sub-surface heterogeneity but results in fewer parameters and initial conditions.  
+      </p>
+      <p>
+        Snowcast current reprsents snowprocess (avalanching, blowing snow, energy balance snowmodel) and canopy interactions. The snowpack model is FSM 2.0 (Essery et al, 2015) and the windfields are downscaled with Windmapper (Marsh et al, 2022; in review). The other physical processes are as described in the CHM paper (Marsh et al, 2020).
+      </p>
+
+
+      <h4> Select publications:</h2>
+
+      <p>
+
+          <p><a name="Marsh:2018hwa"></a>
+
+          Marsh, C.B, R.J. Spiteri, J.W. Pomeroy, and H.S. Wheater.
+           Multi-objective unstructured triangular mesh generation for use in
+            hydrological and land surface models.
+           <em>Computers &amp; Geosciences</em>, 119:49--67, 2018.
+          [&nbsp;<a href="http://dx.doi.org/10.1016/j.cageo.2018.06.009">DOI</a>&nbsp;]
+
+          </p>
+
+          <p><a name="Marsh2020"></a>
+
+          Marsh, C.B, J.W. Pomeroy, R.J. Spiteri, and H.S Wheater.
+           A Finite Volume Blowing Snow Model for Use With Variable Resolution
+            Meshes.
+           <em>Water Resources Research</em>, 56(2), 2020.
+          [&nbsp;<a href="http://dx.doi.org/10.1029/2019wr025307">DOI</a>&nbsp;]
+
+          </p>
+
+          <p><a name="Marsh2020b"></a>
+
+          Marsh, C.B., J.W. Pomeroy, and H.S. Wheater.
+           The Canadian Hydrological Model (CHM) v1.0: a multi-scale,
+            multi-extent, variable-complexity hydrological model – design and
+            overview.
+           <em>Geoscientific Model Development</em>, 13(1):225--247, 2020.
+          [&nbsp;<a href="http://dx.doi.org/10.5194/gmd-13-225-2020">DOI</a>&nbsp;]
+
+          </p>
+
+          <p><a name="Vionnet.2020"></a>
+
+          Vionnet V., Marsh, C.B., B.&nbsp;Menounos, S.&nbsp;Gascoin, N.E. Wayand,
+            J.&nbsp;Shea, K.&nbsp;Mukherjee, and J.W. Pomeroy.
+           Multi-scale snowdrift-permitting modelling of mountain snowpack.
+           <em>The Cryosphere</em>, 15:743–--769, 2021.
+          [&nbsp;<a href="http://dx.doi.org/10.5194/tc-15-743-2021">DOI</a>&nbsp;]
+
+          </p>
+
+          <p><a name="Essery.2015"></a>
+          Essery, R. A factorial snowpack model (FSM 1.0). 
+          <em>Geoscientific Model Development<em>, 8, 3867--3876 2015.
+          [&nbsp;<a href="https://doi.org/10.5194/gmd-8-3867-2015">DOI</a>&nbsp;]
+  
+
+      </p>
+
+
+
+    </div>
+  </div>
+
+  <footer>
+    <p>SnowCast is developed and maintained by <a href="http://www.chrismarsh.ca"> Dr. Chris Marsh</a> at the University of Saskatchewan, Canada and in collaboration with  <a href="https://scholar.google.com/citations?user=rW6_84QAAAAJ&hl=fr">Dr. Vincent Vionnet</a> from ECCC.  SnowCast v1 was originally developed by <a href="http://www.nicwayand.com">Dr. Nic Wayand</a>  </p>
+  </footer>
+
+</div> <!-- /container -->
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-ka7Sk0Gln4gmtz2MlQnikT1wXgYsOg+OMhuP+IlRH9sENBO0LRn5q+8nbTov4+1p" crossorigin="anonymous"></script>
+
+  </body>
+</html>
