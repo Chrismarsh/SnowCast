@@ -6,8 +6,8 @@
     "ui": "false",
     "debug_level": "debug",
     "prj_name": "SnowCast",
-    "startdate": "20220903T010000",
-    "enddate": "20220904T230000"
+    "startdate": "20221209T010000",
+    "enddate": "20221210T230000"
   },
   "modules": [
     "solar",
@@ -75,7 +75,7 @@
     }
   },
   "meshes": {
-    "mesh": "FABDEM.metis.384_mesh.np384.partition"
+    "mesh": "FABDEM.metis.np384_mesh.np384.snowcastv4.partition"
   },
   "parameter_mapping": {
     "landcover": {
@@ -217,7 +217,7 @@
   "forcing": {
     "UTC_offset": "0",
     "use_netcdf": "true",
-    "file": "/Users/cmarsh/Documents/science/code/SnowCast/nwp_forcing/ckp_nc/GEM_2_5km_west_2022-09-03T00:00:00.000000000.nc",
+    "file": "/gpfs/tp/gwf/gwf_cmt/cmarsh/SnowCast/nwp_forcing/ckp_nc/GEM_2_5km_continental_2022-12-09T00:00:00.000000000.nc",
     "filter": {
       "scale_wind_speed": {
         "Z_F": "40",
@@ -232,6 +232,7 @@
   },
   "checkpoint": {
     "save_checkpoint": true,
+    "load_checkpoint_path": "/gpfs/tp/gwf/gwf_cmt/cmarsh/SnowCast/run_chm/output/checkpoint/checkpoint_20221210T010000.np384.json",
     "on_last": false,
     "frequency": 23
   }
