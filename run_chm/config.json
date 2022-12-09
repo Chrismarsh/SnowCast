@@ -163,9 +163,10 @@
         "LAI": "1",
         "CanopyHeight": "0.1"
       },
+      // wet lands. Assume they freeze
       "14": {
         "canopyType": "1",
-        "is_water": "true",
+        "is_water": "false",
         "LAI": "0",
         "CanopyHeight": "0"
       },
