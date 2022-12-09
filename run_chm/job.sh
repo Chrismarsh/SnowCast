@@ -4,7 +4,7 @@
 #SBATCH --nodes=12 
 #SBATCH --tasks-per-node=32
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=150G
+#SBATCH --mem=195G
 
 # these are controlled from the squeue submit sh script
 #SBATCH --account=hpc_c_giws_prio_clark

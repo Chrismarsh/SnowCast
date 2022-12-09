@@ -16,6 +16,9 @@ nwp_forcing/grib_download/
 
 run_chm/output/
 run_chm/slurm-*
+run_chm/*.partition*
+
+postprocess/slurm-*
 
 www/tiles/
 www/index.html
@@ -41,6 +44,8 @@ slack_webhook.py
 *.tiff
 *.prj
 *.grib2
+core.*
+slurm-*
 
 CHM
 

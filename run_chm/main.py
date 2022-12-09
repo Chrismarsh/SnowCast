@@ -48,6 +48,7 @@ def main(settings, processed_nc_files):
 
     i = 1
 
+    print(processed_nc_files)
     if len(processed_nc_files) == 0:
         # to get here with zero nc files means we have a successfull backfill in a previous run but we are rerunning CHM
         # due to an error or something else.
@@ -65,7 +66,7 @@ def main(settings, processed_nc_files):
 
         processed_nc_files = df.file.tolist()
 
-
+    print(processed_nc_files)
     # this will be almost certainly 1 iteration but it might not be if we had some backfill
     # note: These files are named as if they start at 00, but they actually start at 01 so that valid data is present!
     for nc in processed_nc_files:

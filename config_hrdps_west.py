@@ -52,7 +52,7 @@ settings['force_nc_archive'] = False
 # Format Y-M-D
 # settings['start_date'] = '2020-10-26'
 # settings['end_date'] = '2021-03-29'
-settings['start_date'] = '2022-09-14'
+settings['start_date'] = '2022-09-17'
 
 # regridding resolution
 settings['dxdy'] = 0.002
