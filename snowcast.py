@@ -1,7 +1,7 @@
 # import dask
 import importlib
 import os
-import sys
+
 from datetime import datetime
 import pickle
 from notifier import slack
@@ -11,6 +11,9 @@ from run_chm import main as chm_main
 from webupload import upload
 from postprocess import postprocess
 from pathlib import Path
+
+import dask
+dask.config.set(**{'array.slicing.split_large_chunks': True})
 
 import argparse
 parser = argparse.ArgumentParser()
