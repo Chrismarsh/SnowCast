@@ -34,9 +34,10 @@ def main(settings):
     for f in glob.glob( os.path.join(settings['grib_dir'], '*.idx') ):
         os.remove(f)
 
-    # even in chechk point mode still build the mega nc file so-as to be able to easily run a full model sim
-    print('Converting nc to CHM format')
-    _, processed_nc_files = hrdps_nc_to_chm(settings)
+    if settings['create_complete_nc_archive']:
+        # even in chechk point mode still build the mega nc file so-as to be able to easily run a full model sim
+        print('Converting nc to CHM format')
+        _, processed_nc_files = hrdps_nc_to_chm(settings)
 
     if settings['checkpoint_mode']:
         if processed_nc_files is None:

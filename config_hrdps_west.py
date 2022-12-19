@@ -43,7 +43,12 @@ settings['html_dir'] = os.path.join(settings['snowcast_base'], 'www')
 #settings['chm_exec_str'] = '%s -f config.json.chkp.json' % os.path.join(settings['snowcast_base'], 'run_chm/CHM')
 settings['chm_exec_str'] = './submit_to_prioQ.sh job.sh'
 
-# force a regeneration of the complete nc archieve
+# produce the complete nc archive. Can use a lot of RAM for large nc files and might not be worth the hassle
+# esp. if Snowcast is run in chkpoint mode
+settings['create_complete_nc_archive'] = False
+
+
+# force a regeneration of the complete nc archive
 settings['force_nc_archive'] = False
 
 # if there are more nc than you'd like to include, start at this date
