@@ -1,14 +1,14 @@
 import glob
-import importlib
 import os
 import shutil
-import sys
+import pandas as pd
+import pyjson5 # to be able to handle comments in json loading
 
 from nwp_forcing.backfill_hrdps import backfill_grib2
 from nwp_forcing.hrdps_grib2_to_nc import hrdps_grib2nc
 from nwp_forcing.hrdps_nc_to_chm import hrdps_nc_to_chm
 from nwp_forcing.hrdps_nc_to_chm_checkpoint import  hrdps_nc_to_chm_checkpoint
-
+from nwp_forcing import list_dir
 
 def main(settings):
 
@@ -34,10 +34,40 @@ def main(settings):
     for f in glob.glob( os.path.join(settings['grib_dir'], '*.idx') ):
         os.remove(f)
 
+    processed_nc_files = None
+    # this checks the end of the complete nc file to know what to back fill
     if settings['create_complete_nc_archive']:
-        # even in chechk point mode still build the mega nc file so-as to be able to easily run a full model sim
+        # build the mega nc file so-as to be able to easily run a full model sim
         print('Converting nc to CHM format')
         _, processed_nc_files = hrdps_nc_to_chm(settings)
+    else:
+        # we need to check if we have a valid checkpoint resume point in the main CHM config file. If so we can use
+        # this to determine what we are missing and only process that
+
+        df, start, end = list_dir.list_dir(settings['nc_ar_dir'], settings)
+
+        diff = pd.date_range(start=start,
+                             end=end,
+                             freq='1d').difference(df.date)
+        if len(diff) > 0:
+            missing = '\n'.join([str(d) for d in diff.to_list()])
+            raise Exception(f'Missing the following dates:\n {missing}')
+
+        with open(settings['chm_config_path']) as f:
+            config = pyjson5.load(f)
+
+
+        try:
+            load_checkpoint_path = config['checkpoint']['load_checkpoint_path']
+            chk = pyjson5.load(load_checkpoint_path)
+            end = chk['startdate']
+            # only keep the input nc to append
+            df = df[df.date > end]
+        except:
+            print("""Didn't find an existing load_checkpoint_path""")
+            
+        if len(df.file.tolist()) > 0:
+            processed_nc_files = df.file.tolist()
 
     if settings['checkpoint_mode']:
         if processed_nc_files is None:
