@@ -34,7 +34,7 @@ def main(settings):
     for f in glob.glob( os.path.join(settings['grib_dir'], '*.idx') ):
         os.remove(f)
 
-    processed_nc_files = None
+
     # this checks the end of the complete nc file to know what to back fill
     if settings['create_complete_nc_archive']:
         # build the mega nc file so-as to be able to easily run a full model sim
@@ -43,9 +43,11 @@ def main(settings):
     else:
         # we need to check if we have a valid checkpoint resume point in the main CHM config file. If so we can use
         # this to determine what we are missing and only process that
+        processed_nc_files = None
 
         df, start, end = list_dir.list_dir(settings['nc_ar_dir'], settings)
 
+        # check for missing nc files
         diff = pd.date_range(start=start,
                              end=end,
                              freq='1d').difference(df.date)
@@ -56,11 +58,13 @@ def main(settings):
         with open(settings['chm_config_path']) as f:
             config = pyjson5.load(f)
 
-
+        # see if we have a resume from checkpoint we can use to figure out what the last run was
+        # anything past this last rur needs to be generated then
         try:
             load_checkpoint_path = config['checkpoint']['load_checkpoint_path']
             with open(load_checkpoint_path) as f:
                 chkp_json = pyjson5.load(f)
+
             end = pd.to_datetime(chkp_json['startdate'], format='%Y%m%dT%H%M%S') - pd.Timedelta('1 hours')
             end = end.strftime('%Y-%m-%d')
             # only keep the input nc to append
