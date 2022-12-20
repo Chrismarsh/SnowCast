@@ -59,13 +59,14 @@ def main(settings):
 
         try:
             load_checkpoint_path = config['checkpoint']['load_checkpoint_path']
-            chk = pyjson5.load(load_checkpoint_path)
+            with open(load_checkpoint_path) as f:
+                chk = pyjson5.load(f)
             end = chk['startdate']
             # only keep the input nc to append
             df = df[df.date > end]
         except:
             print("""Didn't find an existing load_checkpoint_path""")
-            
+
         if len(df.file.tolist()) > 0:
             processed_nc_files = df.file.tolist()
 
