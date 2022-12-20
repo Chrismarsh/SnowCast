@@ -12,8 +12,8 @@ from webupload import upload
 from postprocess import postprocess
 from pathlib import Path
 
-import dask
-dask.config.set(**{'array.slicing.split_large_chunks': True})
+# import dask
+# dask.config.set(**{'array.slicing.split_large_chunks': True})
 
 import argparse
 parser = argparse.ArgumentParser()
@@ -26,8 +26,7 @@ parser.add_argument("-c", "--config", required=True, default='', type=str,
                 help="Config file to use")
 
 if __name__ == '__main__':
-    # cluster = dask.distributed.LocalCluster(threads_per_worker=1, n_workers=1)
-    # c = dask.distributed.Client(cluster)
+
     args = vars(parser.parse_args())
 
     if os.path.exists('.snowcast.lock'):
@@ -36,21 +35,13 @@ if __name__ == '__main__':
     else:
         open('.snowcast.lock','w')
 
-
-
     step_backfill = args['backfill']
     step_CHM = args['CHM']
     step_plot = args['plot']
     step_upload = args['upload']
     step_postprocess = args['postprocess']
 
-
-    # dask.config.set(scheduler='single-threaded')
-    # dask.config.set(**{'array.slicing.split_large_chunks': True})
-
     print("Started at =", datetime.now().strftime("%H:%M:%S"))
-    # Load in config file
-
 
     # Get name of configuration file/module
     configfile = args['config']
