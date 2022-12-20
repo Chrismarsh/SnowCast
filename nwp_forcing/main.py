@@ -60,10 +60,11 @@ def main(settings):
         try:
             load_checkpoint_path = config['checkpoint']['load_checkpoint_path']
             with open(load_checkpoint_path) as f:
-                chk = pyjson5.load(f)
-            end = chk['startdate']
+                chkp_json = pyjson5.load(f)
+            end = pd.to_datetime(chkp_json['startdate'], format='%Y%m%dT%H%M%S') - pd.Timedelta('1 hours')
+            end = end.strftime('%Y-%m-%d')
             # only keep the input nc to append
-            df = df[df.date > end]
+            df = df[df.date >= end]
         except:
             print("""Didn't find an existing load_checkpoint_path""")
 
