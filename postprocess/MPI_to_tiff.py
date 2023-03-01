@@ -81,7 +81,7 @@ def main(timestamp: str,
                   save_weights,
                   load_weights)
 
-    # have been run from the MPI.spawn, so disconnect. But we we came from SLURM, etc dont' do this
+    # have been run from the MPI.spawn, so disconnect.
     if disconnect:
         comm = MPI.Comm.Get_parent()
         comm.Disconnect()
