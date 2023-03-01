@@ -12,8 +12,9 @@ from webupload import upload
 from postprocess import postprocess
 from pathlib import Path
 
-# import dask
-# dask.config.set(**{'array.slicing.split_large_chunks': True})
+import dask
+dask.config.set(**{'array.slicing.split_large_chunks': False})
+dask.config.set(scheduler='single-threaded')
 
 import argparse
 parser = argparse.ArgumentParser()
