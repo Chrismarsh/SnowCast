@@ -69,28 +69,28 @@ if __name__ == '__main__':
         'HGT_ISBL_0925', 'HGT_ISBL_0900',
 
         # geopotential of Model surface (geopotential meter)
-        'HGT_SFC_0',
+        'HGT_Sfc',
 
-        'TMP_TGL_2',  # 2m air temp (kelvin)
-        'RH_TGL_2',  # 2m RH
+        'TMP_AGL-2m',  # 2m air temp (kelvin)
+        'RH_AGL-2m',  # 2m RH
 
         # Wind speed, direction 10m (m/s)
-        'WIND_TGL_10', 'WDIR_TGL_10',
+        'WIND_AGL-10m', 'WDIR_AGL-10m',
 
         # Surface pressure  (Pa)
-        'PRES_SFC_0',
+        'PRES_Sfc',
 
         # Incoming surface longwave, accumulated flux (J/m^2)
-        'DLWRF_SFC_0',
+        'DLWRF_Sfc',
 
         # Downward incident solar flux (Accumulated), surface, (J/m^2(
-        'DSWRF_SFC_0',
+        'DSWRF_Sfc',
 
         # precipitation rate, surface (kg/m^2/s)
-        'PRATE_SFC_0',
+        'PRATE_Sfc',
 
         # accumulated precipitation, surface (kg/m^2)
-        'APCP_SFC_0'
+        'APCP_Sfc'
     ]
 
     settings['hrdps2chm_names'] = {

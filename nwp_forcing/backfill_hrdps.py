@@ -140,8 +140,8 @@ def backfill_grib2(settings):
         Ymd = missing.strftime('%Y%m%d')
 
         #prefer backfilling of hpfx but also check dd if hpfx doesn't have today's as this occasioanlly occurs
-        base_url_hpfx = f"""http://hpfx.collab.science.gc.ca/{Ymd}/WXO-DD/model_hrdps/{settings['hrdps_domain']}/grib2/00/"""
-        base_url_dd = f"""http://dd.weather.gc.ca/model_hrdps/{settings['hrdps_domain']}/grib2/00/"""
+        base_url_hpfx = f"""http://hpfx.collab.science.gc.ca/{Ymd}/WXO-DD/model_hrdps/{settings['hrdps_domain']}/2.5km/00/"""
+        base_url_dd = f"""http://dd.weather.gc.ca/model_hrdps/{settings['hrdps_domain']}/2.5km/00/"""
 
         is_ok=True
 
@@ -153,7 +153,8 @@ def backfill_grib2(settings):
                 if var in ['HGT_SFC_0', 'PRATE_SFC_0', 'APCP_SFC_0'] and int(lead_time) == 0:
                     continue
 
-                filename = f"""CMC_hrdps_{settings['hrdps_domain']}_{var}_ps2.5km_{Ymd}00_P{lead_time}-00.grib2"""
+                filename = f"""{Ymd}T00Z_MSC_HRDPS_{var}_RLatLon0.0225_PT{lead_time}H.grib2"""
+
                 url_hpfx = f'{base_url_hpfx}/{lead_time}/{filename}'
                 url_dd   = f'{base_url_dd}/{lead_time}/{filename}'
 
