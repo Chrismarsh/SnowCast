@@ -3,6 +3,7 @@ import numpy as np
 import os
 import pandas as pd
 import re
+import sys
 import xarray as xr
 import shutil
 
@@ -235,7 +236,8 @@ if __name__ == '__main__':
         'prate': 'p'
     }
 
-    settings['nc_ar_dir'] = os.path.join(os.getcwd(), 'nc_ar_offset')
+    settings['nc_ar_dir'] = os.path.join(os.getcwd(), 'nc_ar')
     settings['nc_chm_dir'] = os.getcwd()
+    settings['hrdps_domain'] = 'continental'
 
     hrdps_nc_to_chm(settings)
