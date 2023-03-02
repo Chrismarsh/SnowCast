@@ -99,10 +99,10 @@ def hrdps_grib2nc(settings):
                 raise Exception(f'We are processing grib files but are missing grib files for {var}')
 
             for f in files:
-                p = re.compile('([0-9]{8})T.+_PT([0-9]{3})H')
+                p = re.compile('([0-9]{8}T[0-9]{2}).+_PT([0-9]{3})H')
                 m = p.search(f)
 
-                d = pd.to_datetime(m.group(1), format='%Y%m%d%H%M')
+                d = pd.to_datetime(m.group(1), format='%Y%m%dT%H')
                 date.append(d)
                 P.append(int(m.group(2)))
                 fname.append(f)
