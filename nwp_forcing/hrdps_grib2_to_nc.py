@@ -102,6 +102,9 @@ def hrdps_grib2nc(settings):
                 p = re.compile('([0-9]{8}T[0-9]{2}).+_PT([0-9]{3})H')
                 m = p.search(f)
 
+                if m is None:
+                    raise Exception(f'Unable to extract timestamps from {f}')
+
                 d = pd.to_datetime(m.group(1), format='%Y%m%dT%H')
                 date.append(d)
                 P.append(int(m.group(2)))
