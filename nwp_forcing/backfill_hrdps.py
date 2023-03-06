@@ -150,7 +150,7 @@ def backfill_grib2(settings):
             for lead_time in leadTime:
 
                 # these variables are not present at the 0h lead time as they are a rate or an accumulation
-                if var in ['HGT_SFC_0', 'PRATE_SFC_0', 'APCP_SFC_0'] and int(lead_time) == 0:
+                if var in ['HGT_Sfc', 'PRATE_Sfc', 'APCP_Sfc'] and int(lead_time) == 0:
                     continue
 
                 filename = f"""{Ymd}T00Z_MSC_HRDPS_{var}_RLatLon0.0225_PT{lead_time}H.grib2"""
