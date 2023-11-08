@@ -72,7 +72,7 @@ def backfill_grib2(settings):
     fname=[]
 
     # first, build a list
-    all_files = glob.glob(os.path.join(settings['nc_ar_dir'],'*.nc'))
+    all_files = glob.glob(os.path.join(settings['nc_ar_dir'], '*.nc'))
 
     try:
         config_start = pd.to_datetime(settings['start_date'], format='%Y-%m-%d')
@@ -179,7 +179,7 @@ def backfill_grib2(settings):
                     grib_to_download.append( ( url_for_download, filename) )
 
         if is_ok:
-            print(' available on hpfx, dd, or local archive')
+            print(f""" available on hpfx, dd, or local archive ({settings['grib_dir']})""")
 
     if missing_files_error:
         raise Exception('Missing grib files and not available on hpfx or local cache')
