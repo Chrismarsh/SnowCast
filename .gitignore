@@ -3,6 +3,8 @@ __pycache__/
 bin/
 dask-worker-space/
 
+In_Situ_Data/
+
 domain/__pycache__/
 domain/mesher_config/
 domain/windmapper_config/
