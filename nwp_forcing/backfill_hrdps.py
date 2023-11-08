@@ -72,7 +72,7 @@ def backfill_grib2(settings):
     fname=[]
 
     # first, build a list
-    all_files = glob.glob(os.path.join(settings['nc_ar_dir'], '*.nc'))
+    all_files = sorted(glob.glob(os.path.join(settings['nc_ar_dir'],'*.nc')))
 
     try:
         config_start = pd.to_datetime(settings['start_date'], format='%Y-%m-%d')
