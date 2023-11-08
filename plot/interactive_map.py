@@ -363,6 +363,11 @@ def _gdal_prefix():
                   Please install it via your package manage of choice.
                 """)
 
+def _get_TileLayerTile():
+    tiles = 'https://server.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer/tile/{z}/{y}/{x}'
+    attr = (
+        'Tiles &copy; Esri &mdash; National Geographic, Esri, DeLorme, NAVTEQ, UNEP-WCMC, USGS, NASA, ESA, METI, NRCAN, GEBCO, NOAA, iPC')
+    return tiles, attr
 
 def make_map(settings, df):
 
@@ -371,7 +376,7 @@ def make_map(settings, df):
 
     # the lat long in the df isn't /quite/ right but close enough for this
     m = folium.Map(location=[df.lat.mean(), df.lon.mean()], zoom_start=8, tiles=None, control_scale=True, zoom_control=True, max_zoom=maxZoom, min_zoom=minZoom)
-    folium.TileLayer('Stamen Terrain', control=False, overlay=True, max_zoom=maxZoom, min_zoom=minZoom).add_to(m) # overlay=True is important to allow it to be drawn over and not replaced
+    folium.TileLayer(_get_TileLayerTile()[0], attr=get_TileLayerTile()[1], control=False, overlay=True, max_zoom=maxZoom, min_zoom=minZoom).add_to(m) # overlay=True is important to allow it to be drawn over and not replaced
 
     layer_attr = 'University of Saskatchewan, Global Water Futures'
 
