@@ -5,11 +5,11 @@ import os
 from datetime import datetime
 import pickle
 from notifier import slack
-from nwp_forcing import main as nwp_main
-from plot import main as plot_main
+from met import main as met_main
+# from plot import main as plot_main
 from run_chm import main as chm_main
-from webupload import upload
-from postprocess import postprocess
+# from webupload import upload
+# from postprocess import postprocess
 from pathlib import Path
 
 import dask
@@ -18,7 +18,8 @@ dask.config.set(scheduler='single-threaded')
 
 import argparse
 parser = argparse.ArgumentParser()
-parser.add_argument("-r", "--no-chm", required=False, dest='CHM',action="store_false", help="Run CHM")
+parser.add_argument("-m", "--no-met", required=False, dest='met', action="store_false", help="Update met archive json")
+parser.add_argument("-r", "--no-chm", required=False, dest='CHM', action="store_false", help="Run CHM")
 parser.add_argument("-p", "--no-plot", required=False, dest='plot', action="store_false", help="Do plot")
 parser.add_argument("-a", "--no-postprocess", required=False, dest='postprocess', action="store_false", help="Post process CHM->TIFF")
 parser.add_argument("-u", "--no-upload", required=False, dest='upload', action="store_false", help="Upload")
@@ -35,6 +36,7 @@ if __name__ == '__main__':
     else:
         open('.snowcast.lock','w')
 
+    step_met = args['met']
     step_CHM = args['CHM']
     step_plot = args['plot']
     step_upload = args['upload']
@@ -55,28 +57,21 @@ if __name__ == '__main__':
 
     #######################################################
 
-    if not os.path.exists(settings['grib_dir']):
-        os.mkdir(settings['grib_dir'])
-
-    if not os.path.exists(settings['grib_ar_dir']):
-        os.mkdir(settings['grib_ar_dir'])
-
-    if not os.path.exists(settings['nc_ar_dir']):
-        os.mkdir(settings['nc_ar_dir'])
-
-    if not os.path.exists(settings['nc_chm_dir']):
-        os.mkdir(settings['nc_chm_dir'])
-
     slack.send_slack_notifier(settings['webhook_url'], 'Snowcast run started :zap:', '')
 
-    #if we are running in checkpoint mode, this will hold the list of today's (but maybe >1 day!) set of processed
-    # nc files
-    processed_nc_files = None
-
     try:
+
+        try:
+            if step_met:
+                met_main.main(settings)
+        except Exception as e:
+            message = 'Snowcast run failed during CHM run :exclamation:\n' + str(e)
+            slack.send_slack_notifier(settings['webhook_url'], message, '')
+            raise Exception(message)
+
         try:
             if step_CHM:
-                chm_main.main(settings, processed_nc_files)
+                chm_main.main(settings)
         except Exception as e:
             message = 'Snowcast run failed during CHM run :exclamation:\n' + str(e)
             slack.send_slack_notifier(settings['webhook_url'], message, '')
@@ -100,28 +95,28 @@ if __name__ == '__main__':
 
             raise Exception(message)
 
-        try:
-            if step_plot:
-                if not step_postprocess:
-                    try:
-                        with open('postprocess_df', 'rb') as f:
-                            df = pickle.load(f)
-                    except FileNotFoundError as e:
-                        raise Exception("Last postprocess did not run correctly. Please rerun postprocess.")
+        # try:
+        #     if step_plot:
+        #         if not step_postprocess:
+        #             try:
+        #                 with open('postprocess_df', 'rb') as f:
+        #                     df = pickle.load(f)
+        #             except FileNotFoundError as e:
+        #                 raise Exception("Last postprocess did not run correctly. Please rerun postprocess.")
 
-                plot_main.main(settings, df)
-        except Exception as e:
-            message = 'Snowcast run failed during plot generation :exclamation:\n' + str(e)
-            slack.send_slack_notifier(settings['webhook_url'], message, '')
-            raise Exception(message)
+        #         plot_main.main(settings, df)
+        # except Exception as e:
+        #     message = 'Snowcast run failed during plot generation :exclamation:\n' + str(e)
+        #     slack.send_slack_notifier(settings['webhook_url'], message, '')
+        #     raise Exception(message)
 
-        try:
-            if step_upload:
-                upload.upload(settings)
-        except Exception as e:
-            message = 'Snowcast run failed during web upload :exclamation:\n' + str(e)
-            slack.send_slack_notifier(settings['webhook_url'], message, '')
-            raise Exception(message)
+        # try:
+        #     if step_upload:
+        #         upload.upload(settings)
+        # except Exception as e:
+        #     message = 'Snowcast run failed during web upload :exclamation:\n' + str(e)
+        #     slack.send_slack_notifier(settings['webhook_url'], message, '')
+        #     raise Exception(message)
     finally:
         message = "Finished at " + datetime.now().strftime("%H:%M:%S")
         slack.send_slack_notifier(settings['webhook_url'], message, '')
