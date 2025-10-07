@@ -5,7 +5,7 @@ import os
 
 settings = dict()
 
-# Should snowcast run in a mode that allows CHM to checkpoint. Requires a slightly differently handling of the met files
+# Should snowcast run in a mode that allows CHM to checkpoint.
 settings['checkpoint_mode'] = True
 
 # the URL to use for the slack webhook. This is a secret
@@ -13,51 +13,27 @@ settings['webhook_url'] = slack_webhook.webhook_url
 
 settings['snowcast_base'] = os.getcwd()
 
-settings['hrdps_domain'] = 'continental'
-
-# Dir to put GEM grib2 files
-settings['grib_dir'] = os.path.join(settings['snowcast_base'], 'nwp_forcing/grib_download')
-
-# were to copy after we have processed. Not used, just kept "in case"
-settings['grib_ar_dir'] = os.path.join(settings['snowcast_base'], 'nwp_forcing/grib_ar')
-
-# Dir where output netcdf files go
-settings['nc_ar_dir'] = os.path.join(settings['snowcast_base'], 'nwp_forcing/nc_ar')
-
 # where to put the nc file CHM to use
-settings['nc_chm_dir'] = os.path.join(settings['snowcast_base'], 'nwp_forcing')
-
-#where to put the standalone nc files for use with the checkpointing mode
-settings['checkpoint_nc_chm_dir'] = os.path.join(settings['snowcast_base'], 'nwp_forcing/ckp_nc')
+settings['nc_chm_dir'] = os.path.join(settings['snowcast_base'], 'met')
 
 #active configuration path
 settings['chm_config_path'] = os.path.join(settings['snowcast_base'], 'run_chm/config.json')
 
 # where the CHM output is
-settings['chm_outpath'] = os.path.join(settings['snowcast_base'], 'run_chm/output/meshes/SC.pvd')
+settings['chm_outpath'] = os.path.join(settings['snowcast_base'], 'run_chm/output/SC.nc')
 
 # where to put the leaflet output
 settings['html_dir'] = os.path.join(settings['snowcast_base'], 'www')
 
 # how should CHM be called?
 #settings['chm_exec_str'] = '%s -f config.json.chkp.json' % os.path.join(settings['snowcast_base'], 'run_chm/CHM')
-settings['chm_exec_str'] = './submit_to_prioQ.sh job.sh'
+settings['chm_exec_str'] = './submit_snowcast_job.sh'
 
-# produce the complete nc archive. Can use a lot of RAM for large nc files and might not be worth the hassle
-# esp. if Snowcast is run in chkpoint mode
-settings['create_complete_nc_archive'] = False
-
-
-# force a regeneration of the complete nc archive
-settings['force_nc_archive'] = False
 
 # if there are more nc than you'd like to include, start at this date
-# doesn't impact grib processing, just the nc -> CHM step
 # if None, use earliest available
 # Format Y-M-D
-# settings['start_date'] = '2020-10-26'
-# settings['end_date'] = '2021-03-29'
-settings['start_date'] = '2022-09-17'
+settings['start_date'] = '2025-09-01'
 
 # regridding resolution
 settings['dxdy'] = 0.002
