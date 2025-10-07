@@ -1,0 +1,33 @@
+spack:
+  specs:
+  #########################
+  # compilers
+  #########################
+    - gcc@14.3.0
+    - r
+    - python@3.12.9
+  ##########################  
+  # CHM
+    - chm@1.5.3
+    - py-pychm
+  ##########################
+    - 'gdal@3.5: +python +hdf5 +netcdf'
+    - py-pandas
+    - py-tqdm
+    - 'py-xarray@2025: +io +viz +parallel +accel +etc'
+    - py-natsort +icu
+    - py-rioxarray
+    - py-rasterio
+    - py-numpy
+    - 'py-netcdf4@1.7.2: +mpi'
+    - py-pyproj
+    - py-pandas
+    - py-cartopy
+    - py-seaborn
+    - py-branca
+    - py-folium
+    - py-mpi4py
+    - py-json5
+  view: true
+  concretizer:
+    unify: true
