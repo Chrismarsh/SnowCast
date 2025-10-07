@@ -1,19 +1,19 @@
 {
   "option": {
-    "station_N_nearest": "4",
-    "interpolant": "idw",
     "per_triangle_timeseries": "false",
     "ui": "false",
     "debug_level": "debug",
-    "prj_name": "SnowCast",
-    "startdate": "20221209T010000",
-    "enddate": "20221210T230000"
+    "prj_name": "SnowCast"
+    // "startdate": "20171001T000000",
+    // "enddate": "20181101T000000"
+    // "enddate": "20180930T000000"
   },
   "modules": [
     "solar",
     "WindNinja",
     "iswr_from_obs",
-    "lw_no_lapse",
+    // "lw_no_lapse",
+    "Longwave_from_obs",
     "fast_shadow",
     "iswr",
     "kunkel_rh",
@@ -23,7 +23,9 @@
     "Harder_precip_phase",
     "Simple_Canopy",
     "FSM",
-    "fetchr"
+    "fetchr",
+    "PBSM3D",
+    "snow_slide"
   ],
   "remove_depency": {
     "Simple_Canopy": "FSM",
@@ -44,7 +46,7 @@
     },
     "PBSM3D": {
       "nLayer": "10",
-      "smooth_coeff": "6500",
+      "smooth_coeff": "2280", //6500
       "rouault_diffusion_coef": "false",
       "min_sd_trans": "0.1",
       "enable_veg": "true",
@@ -75,7 +77,7 @@
     }
   },
   "meshes": {
-    "mesh": "FABDEM.metis.np384_mesh.np384.snowcastv4.partition"
+    "mesh": "snowcastv5.FABDEM.metis.np800_mesh.np800.partition"
   },
   "parameter_mapping": {
     "landcover": {
@@ -163,7 +165,6 @@
         "LAI": "1",
         "CanopyHeight": "0.1"
       },
-      // wet lands. Assume they freeze
       "14": {
         "canopyType": "1",
         "is_water": "false",
@@ -203,27 +204,37 @@
     }
   },
   "output": {
-    "output_dir": "output",
-    "mesh": {
-      "base_name": "SC",
-      "write_parameters": "false",
-      "only_last_n": "48",
+    "output_dir": "output.2017",
+    "ugrid": 
+    {
+      "write_parameters": false,
+      // "specific_time":"00:00",
+      "frequency": 23,
+      // "only_last_n": "48",
       "variables": [
         "swe",
-        "snowdepthavg",
+        "snowdepthavg_vert",
+        // "p",
+        // "p_snow",
+        "frac_precip_rain",
         "t"
       ]
     }
   },
-  "forcing": {
+  "forcing": 
+  {
+    "num_stations_to_use": "4",
+    "interpolant": "spline",
+    "use_netcdf": true,
     "UTC_offset": "0",
-    "use_netcdf": "true",
-    "file": "/gpfs/tp/gwf/gwf_cmt/cmarsh/SnowCast/nwp_forcing/ckp_nc/GEM_2_5km_continental_2022-12-09T00:00:00.000000000.nc",
+
+     "file":"metdata-hrdps.json",
+
     "filter": {
       "scale_wind_speed": {
         "Z_F": "40",
-        "variable": "u",
-        "ignore_canopy": "true"
+        "variable": "U_R",
+        "ignore_canopy": "false"
       },
       "debias_lw": {
         "factor": "20.0",
@@ -231,10 +242,12 @@
       }
     }
   },
-  "checkpoint": {
+  "checkpoint":
+  {
     "save_checkpoint": true,
-    "load_checkpoint_path": "/gpfs/tp/gwf/gwf_cmt/cmarsh/SnowCast/run_chm/output/checkpoint/checkpoint_20221210T010000.np384.json",
-    "on_last": false,
-    "frequency": 23
+    "on_frequency": 23,
+    // "on_wallclock_limit":true,
+    // "minutes_of_wallclock":5,
+    "auto_resume":true
   }
 }
