@@ -19,12 +19,24 @@ from folium.utilities import parse_options
 from jinja2 import Template
 import rioxarray as rio
 from tqdm import tqdm
+import pickle
 
-
+from pathlib import Path
+import rioxarray as rio
+import numpy as np
+import pandas as pd
+from datetime import datetime
+import subprocess
 
 from mpi4py import MPI
 
-import plot.plot_settings as plot_settings
+if __package__:
+    from . import plot_settings as plot_settings
+else:
+    current_dir = Path(__file__).resolve().parent
+    if str(current_dir) not in sys.path:
+        sys.path.insert(0, str(current_dir))
+    import plot_settings as plot_settings
 
 ROBUST_PERCENTILE = 0.02  # follows xarray's robust 98% - 2%
 
@@ -370,18 +382,19 @@ def _get_TileLayerTile():
     return tiles, attr
 
 def make_map(settings, df):
-
+    print("make map")
     minZoom = 0
     maxZoom = 12
 
     # the lat long in the df isn't /quite/ right but close enough for this
     m = folium.Map(location=[df.lat.mean(), df.lon.mean()], zoom_start=8, tiles=None, control_scale=True, zoom_control=True, max_zoom=maxZoom, min_zoom=minZoom)
-    folium.TileLayer(_get_TileLayerTile()[0], attr=get_TileLayerTile()[1], control=False, overlay=True, max_zoom=maxZoom, min_zoom=minZoom).add_to(m) # overlay=True is important to allow it to be drawn over and not replaced
+    folium.TileLayer(_get_TileLayerTile()[0], attr=_get_TileLayerTile()[1], control=False, overlay=True, max_zoom=maxZoom, min_zoom=minZoom).add_to(m) # overlay=True is important to allow it to be drawn over and not replaced
 
     layer_attr = 'University of Saskatchewan, Global Water Futures'
 
     # figure out the vmin/vmax for plotting
     for var in list(df.index.levels[0].values):
+        print(var)
         tiffs = list(df.loc[var].tiff.values)
 
         rasters = [rio.open_rasterio(x, masked=True, chunks=True, lock=False) for x in tiffs]
@@ -389,7 +402,7 @@ def make_map(settings, df):
 
         # fixes
         # dimension time on 0th function argument to apply_ufunc with dask='parallelized' consists of multiple chunks, but is also a core dimension.
-        ds = ds.chunk(dict(time=-1, y=-1, x=-1))
+        # ds = ds.chunk(dict(time=-1, y=-1, x=-1))
 
         # Gets the robust percentile range across multiple tiffs, follows mpl's routine
         vmax = float(ds.quantile(1.0 - ROBUST_PERCENTILE, dim=['time', 'y', 'x']))
@@ -406,7 +419,7 @@ def make_map(settings, df):
 
 
     for idx, row in df.iterrows():
-
+        print(row)
         #this has the MPI call in it
         make_tiles(settings, row['tiff'], idx[0], row['datetime'], row['vmax'], row['vmin'], minZoom=0, maxZoom=12)
 
@@ -456,26 +469,116 @@ def make_tiles(settings, tiff, var, time, vmax, vmin, minZoom, maxZoom):
     else:
         colormap = make_colour_txt(var, vmin, vmax, mangle, n=12)
     exec = f'gdaldem color-relief {tiff} {colormap} temp_color_{mangle}.vrt -alpha'
+    print(exec)
     subprocess.check_call([exec], shell=True)
     tile_path = os.path.join(settings['html_dir'], 'tiles', f'tiles_{var}_{time}')
 
-    if 'plotgen_exec_str' in settings:
-        exec_str = f"""{settings['plotgen_exec_str']} temp_color_{mangle}.vrt --mpi -w leaflet -z {minZoom}-{maxZoom} {tile_path} False"""
-        print(exec_str)
-        subprocess.check_call([exec_str], shell=True, cwd=os.path.join(settings['snowcast_base']))
-    else:
-        comm = MPI.COMM_SELF.Spawn(sys.executable,
-                               args=[os.path.join('plot','MPI_gdal2tiles.py'),
-                                     f'temp_color_{mangle}.vrt',
-                                     '--mpi',
-                                     '-w', 'leaflet',
-                                     '-z', f'{minZoom}-{maxZoom}',
-                                     tile_path],
-                               maxprocs=settings['plotgen_maxprocs'])
 
-        comm.Disconnect()
+    # exec_str = f"/opt/pbs/bin/qsub plot/job_2tiles.sh temp_color_{mangle}.vrt --mpi -w leaflet -z {minZoom}-{maxZoom} {tile_path} False"
+    # print(exec_str)
+    # subprocess.check_call([exec_str], shell=True, cwd=os.path.join(settings['snowcast_base']))
+
+
+    # if 'plotgen_exec_str' in settings:
+    exec_str = f"""{settings['plotgen_exec_str']} --mpi -w leaflet -z {minZoom}-{maxZoom} temp_color_{mangle}.vrt {tile_path}"""
+    print(exec_str)
+    subprocess.check_call([exec_str], shell=True, cwd=os.path.join(settings['snowcast_base']))
+
+    # # else:
+    # print("About to call MPI gdal2tile")
+    # from osgeo_utils.gdal2tiles import main as gdal2tiles
+    # args = [
+    #     '-w leaflet',
+    #     f'-z {minZoom}-{maxZoom}',
+    #     '--mpi',
+    #     f'temp_color_{mangle}.vrt',
+    #     tile_path
+    # ]
+    # print(args)
+    # gdal2tiles(args)
+    # comm = MPI.COMM_SELF.Spawn(sys.executable,
+    #                         args=[os.path.join('plot','MPI_gdal2tiles.py'),
+    #                                 f'temp_color_{mangle}.vrt',
+    #                                 '--mpi',
+    #                                 '-w', 'leaflet',
+    #                                 '-z', f'{minZoom}-{maxZoom}',
+    #                                 tile_path],
+    #                                 maxprocs = 40
+    #                         # maxprocs=settings['plotgen_maxprocs']
+    #                         )
+    # print("about to dc")
+    # comm.Disconnect()
+    # print("dc")
 
 
     os.remove(f'temp_color_{mangle}.vrt')
     os.remove(colormap)
 
+
+   
+def build_plot_dataframe(settings, pattern="*-0.001x0.001_*.tiff"):
+    """Construct the plotting dataframe from the generated GeoTIFF files."""
+
+    base_path = Path(settings['snowcast_base'])
+    search_root = base_path / "postprocess"
+    tiff_paths = sorted(search_root.glob(pattern))
+
+    if not tiff_paths:
+        raise FileNotFoundError(f"No TIFF files matching {pattern} found in {search_root}")
+
+    records = []
+    for tiff_path in tiff_paths:
+        stem = tiff_path.stem
+        if "_" not in stem:
+            continue
+
+        prefix, timestamp_txt = stem.split("_", 1)
+        if "-" not in prefix or "x" not in prefix:
+            continue
+
+        var_name, grid_txt = prefix.split("-", 1)
+        dx_txt, _, _ = grid_txt.partition("x")
+
+        try:
+            timestamp = datetime.strptime(timestamp_txt, "%Y%m%dT%H%M%S")
+        except ValueError:
+            continue
+
+        data_array = rio.open_rasterio(tiff_path)
+        bounds = data_array.rio.bounds()
+        data_array.close()
+
+        lon = (bounds[0] + bounds[2]) / 2.0
+        lat = (bounds[1] + bounds[3]) / 2.0
+
+        records.append(
+            {
+                "var": var_name,
+                "datetime": timestamp_txt,
+                "time": pd.Timestamp(timestamp),
+                "dxdy": float(dx_txt),
+                "tiff": str(tiff_path.relative_to(base_path)),
+                "lat": lat,
+                "lon": lon,
+                "vmin": np.nan,
+                "vmax": np.nan,
+            }
+        )
+
+    if not records:
+        raise ValueError(f"No valid TIFF metadata could be parsed from {pattern}")
+
+    df = pd.DataFrame.from_records(records)
+    df = df.set_index(["var", "time"]).sort_index()
+    return df
+
+
+if __name__ == '__main__':
+
+    with open('plot/settings.pickle', 'rb') as file:
+        settings = pickle.load(file)
+
+    # os.remove("plot/settings.pickle")
+
+    df = build_plot_dataframe(settings)
+    make_map(settings, df)
