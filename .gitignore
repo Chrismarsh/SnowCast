@@ -52,3 +52,8 @@ slurm-*
 CHM
 
 .spack-env
+met/metdata-hrdps.json
+run_chm/run.logs
+postprocess/archive_tiff
+met/hrdps
+plot/settings.pickle
