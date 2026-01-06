@@ -6,10 +6,10 @@ from datetime import datetime
 import pickle
 from notifier import slack
 from met import main as met_main
-# from plot import main as plot_main
+from plot import main as plot_main
 from run_chm import main as chm_main
-# from webupload import upload
-# from postprocess import postprocess
+from webupload import upload
+from postprocess import postprocess
 from pathlib import Path
 
 import dask
@@ -57,13 +57,13 @@ if __name__ == '__main__':
 
     #######################################################
 
-    slack.send_slack_notifier(settings['webhook_url'], 'Snowcast run started :zap:', '')
+    # slack.send_slack_notifier(settings['webhook_url'], 'Snowcast run started :zap:', '')
+
 
     try:
-
         try:
             if step_met:
-                met_main.main(settings)
+                met_main.update_metdata_json(settings)
         except Exception as e:
             message = 'Snowcast run failed during CHM run :exclamation:\n' + str(e)
             slack.send_slack_notifier(settings['webhook_url'], message, '')
@@ -77,17 +77,9 @@ if __name__ == '__main__':
             slack.send_slack_notifier(settings['webhook_url'], message, '')
             raise Exception(message)
 
-#TODO: Replace this with just time offsets
-        df = None
         try:
             if step_postprocess:
-
-                # clean up old files
-                Path('postprocess_df').unlink(missing_ok=True)
-                df = postprocess.main(settings)
-
-                with open('postprocess_df', 'wb') as f:
-                    pickle.dump(df, f)
+                postprocess.main(settings)
 
         except Exception as e:
             message = 'Snowcast run failed during post processing :exclamation:\n' + str(e)
@@ -95,31 +87,24 @@ if __name__ == '__main__':
 
             raise Exception(message)
 
-        # try:
-        #     if step_plot:
-        #         if not step_postprocess:
-        #             try:
-        #                 with open('postprocess_df', 'rb') as f:
-        #                     df = pickle.load(f)
-        #             except FileNotFoundError as e:
-        #                 raise Exception("Last postprocess did not run correctly. Please rerun postprocess.")
+        try:
+            if step_plot:
+                plot_main.main(settings)
+        except Exception as e:
+            message = 'Snowcast run failed during plot generation :exclamation:\n' + str(e)
+            slack.send_slack_notifier(settings['webhook_url'], message, '')
+            raise Exception(message)
 
-        #         plot_main.main(settings, df)
-        # except Exception as e:
-        #     message = 'Snowcast run failed during plot generation :exclamation:\n' + str(e)
-        #     slack.send_slack_notifier(settings['webhook_url'], message, '')
-        #     raise Exception(message)
-
-        # try:
-        #     if step_upload:
-        #         upload.upload(settings)
-        # except Exception as e:
-        #     message = 'Snowcast run failed during web upload :exclamation:\n' + str(e)
-        #     slack.send_slack_notifier(settings['webhook_url'], message, '')
-        #     raise Exception(message)
+        try:
+            if step_upload:
+                upload.upload(settings)
+        except Exception as e:
+            message = 'Snowcast run failed during web upload :exclamation:\n' + str(e)
+            slack.send_slack_notifier(settings['webhook_url'], message, '')
+            raise Exception(message)
     finally:
         message = "Finished at " + datetime.now().strftime("%H:%M:%S")
-        slack.send_slack_notifier(settings['webhook_url'], message, '')
+        # slack.send_slack_notifier(settings['webhook_url'], message, '')
 
         print(message)
 
