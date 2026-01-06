@@ -8,8 +8,8 @@ spack:
     - python@3.12.9
   ##########################  
   # CHM
-    - chm@1.5.3
-    - py-pychm
+    - chm@1.5.4
+    - py-pychm@1.4.4
   ##########################
     - 'gdal@3.5: +python +hdf5 +netcdf'
     - py-pandas
