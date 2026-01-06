@@ -1,15 +1,26 @@
 #!/bin/bash
-#SBATCH --time=01:00:00
-#SBATCH --job-name=Snowcast_plotgen
-#SBATCH --nodes=12
-#SBATCH --tasks-per-node=32
-#SBATCH --cpus-per-task=1
-#SBATCH --mem=100G
+#PBS -S /bin/bash
+#PBS -j oe
+#PBS -m abe
+#PBS -q development
+#PBS -l walltime=01:30:00
+#PBS -l select=1:ncpus=80:mpiprocs=80:mem=185gb
+#PBS -N sc2_plot
+#PBS -o sc2_plot.o
+#PBS -e sc2_plot.e
 
-module load gcc/9.3.0
-module restore snowcast-prod
+# load spack
+. ~/project-ords/spack/share/spack/setup-env.sh
 
-source /globalhome/cbm038/HPC/venv/snowcast-prod/bin/activate
-cd /globalhome/cbm038/HPC/project/SnowCast/
+BASE=/home/chm003/project/Snowcast-www/SnowCast/
 
-srun --label --unbuffered python plot/MPI_gdal2tiles.py "$@"
+# laod snowcast env
+cd $BASE
+spack env activate .
+
+# cd $BASE/plot
+
+export OMP_NUM_THREADS=2
+export UCX_NET_DEVICES=ib0
+
+python plot/interactive_map.py
