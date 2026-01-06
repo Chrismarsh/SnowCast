@@ -57,3 +57,4 @@ run_chm/run.logs
 postprocess/archive_tiff
 met/hrdps
 plot/settings.pickle
+sc2_plot.o
