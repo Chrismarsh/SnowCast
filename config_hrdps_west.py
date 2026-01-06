@@ -35,21 +35,18 @@ settings['chm_exec_str'] = './submit_snowcast_job.sh'
 # Format Y-M-D
 settings['start_date'] = '2025-09-01'
 
-# regridding resolution
-settings['dxdy'] = 0.002
-
 # post processing settings
 # these are using the pvd -> tiff step
 
 # the ESMF regridder can expand to a whole cluster via MPI. This allows for calling it via, e.g, slurm
 # if this key is not present it will default to local node MPI using postprocess_maxprocs processors
 # if postprocess_exec_str is defined, postprocess_maxprocs is ignored
-settings['postprocess_exec_str'] = './submit_to_prioQ.sh postprocess/job.sh'
+# settings['postprocess_exec_str'] = './submit_to_prioQ.sh postprocess/job.sh'
 #settings['postprocess_maxprocs'] = 8
 
 #same as above but for plot generation
-# settings['plotgen_exec_str'] = './submit_to_prioQ.sh plot/job.sh'
-settings['plotgen_maxprocs'] = 8
+settings['plotgen_exec_str'] = 'mpirun --mca btl_tcp_if_include ib0 -n 75 gdal2tiles '
+# settings['plotgen_maxprocs'] = 8
 
 #variables to plot (implicitly includes the difference between these)
 settings['plot_vars'] = ['swe', 'snowdepthavg', 't']
@@ -75,5 +72,5 @@ lon_r = [-116.645, -114.769166666667]
 
 #static figure settings
 # deprecated
-settings['fig_dir'] = os.path.join(settings['snowcast_base'], 'plot/figures')
-settings['dpi'] = 90
+# settings['fig_dir'] = os.path.join(settings['snowcast_base'], 'plot/figures')
+# settings['dpi'] = 90
