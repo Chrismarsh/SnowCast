@@ -1,13 +1,11 @@
 import subprocess
 import os
 import pandas as pd
-import xarray as xr
-import numpy as np
-import shutil
+import sys
 
 import json # to pretty print the output
-import pyjson5 # to be able to handle comments in json loading
-import glob
+import json5 as pyjson5# to be able to handle comments in json loading
+
 
 def main(settings):
 
@@ -17,17 +15,48 @@ def main(settings):
     config['output']['ugrid']['variables'] = settings['plot_vars']
 
     # once we get going from a checkpoint, this will be ignored by the checkpoint loader in CHM
-    config['option']['startdate'] = settings['start_date']
+    config['option']['startdate'] = pd.to_datetime(settings['start_date']).isoformat().replace(":",'').replace("-",'')
 
     with open(settings['chm_config_path'], 'w') as f:
         js = json.dumps(config, indent=2)
         f.write(js)
 
     print("Running CHM")
-    exec_str = settings['chm_exec_str']
-    # exec_str = '%s -f config.json.chkp.json' % os.path.join(settings['snowcast_base'], 'run_chm/CHM')
-    subprocess.run(exec_str, check=True, capture_output=True, shell=True,  text=True, cwd=os.path.join(settings['snowcast_base'], 'run_chm'))
 
+    # clean up the clean_exit flag other wise the CHM job will bail
+    path = "run_chm/output/clean_exit"
+    if os.path.exists(path):
+        os.remove(path)
+        print(f"Removed {path}")
+
+    exec_str = settings['chm_exec_str']
+
+    result = subprocess.run(
+        exec_str,
+        check=False,
+        capture_output=True,
+        shell=True,
+        text=True,
+        cwd=os.path.join(settings['snowcast_base'], 'run_chm'),
+    )
+
+    print(result.stdout)
+
+    if result.returncode == 0:
+        pass  # normal success, never used
+    elif result.returncode == 20:
+        # exited out via clean_exit. Assuming success
+        pass
+    elif result.returncode == 30:
+        # we don't have enough met to resume. Not a failure per-se but nothing to be done
+        print(f"Not enough met data to resume from checkpoint. Continuing with post processing EXISTING output.")
+
+    else:
+        print(result.stdout)
+        print(result.stderr, file=sys.stderr)
+        raise RuntimeError(f"CHM failed with exit {result.returncode}")
+
+    print("Finished")
     # house keeping on the last run
 
     # On the last run, we need to use checkpoint frequency=23 to get at the mid-way timestamp to checkpoint
