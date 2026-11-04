@@ -58,3 +58,4 @@ postprocess/archive_tiff
 met/hrdps
 plot/settings.pickle
 sc2_plot.o
+/pmtiles
