@@ -3,18 +3,23 @@ spack:
   #########################
   # compilers
   #########################
-    - gcc@14.3.0
-    - r
-    - python@3.12.9
+    - python
   ##########################  
   # CHM
-    - chm@1.5.4
-    - py-pychm@1.4.4
+    - chm@1.5.5b1
+    - py-pychm@develop
   ##########################
-    - 'gdal@3.5: +python +hdf5 +netcdf'
+    - 'gdal@3.12.3 +python +hdf5 +netcdf +curl +geos +libkml  +blosc +liblzma +lz4 +zstd'
+    - 'netcdf-c@4.9.3 +mpi +nczarr_zip +zstd +blosc +szip'
+    # - netcdf-c/22elvkl 
+    # - py-uxarray/2yjupsi
+    - 'py-uxarray@2026:'
+    - 'vtk@9.6 +python +mpi'
+    # - vtk/bamzy3w 
     - py-pandas
     - py-tqdm
-    - 'py-xarray@2025: +io +viz +parallel +accel +etc'
+    - 'py-xarray@2026.2.0+accel+etc+io+parallel+viz'
+    - py-cartopy@0.25.0
     - py-natsort +icu
     - py-rioxarray
     - py-rasterio
@@ -28,6 +33,8 @@ spack:
     - py-folium
     - py-mpi4py
     - py-json5
+    - the-silver-searcher
   view: true
   concretizer:
     unify: true
+    reuse: true
