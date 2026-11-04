@@ -5,7 +5,7 @@ set -e
  # 1 year is typically 5 or 6 jobs
  # but we are doing a day so 1 job should be 
  # loads even if we have a bit of a backfill
-NUM_JOBS=2
+NUM_JOBS=10
 JOB_SUFFIX='SnowCast'
 
 
@@ -46,15 +46,14 @@ cat << EOF > $JOB_SCRIPT
 #PBS -j oe
 #PBS -m abe
 #PBS -q development
-#PBS -l walltime=01:00:00
-#PBS -l select=20:ncpus=80:mpiprocs=40:mem=185gb
+#PBS -l walltime=06:00:00
+#PBS -l select=20:ncpus=40:mpiprocs=40:mem=185gb
 #PBS -N job${JOB_ID}
 #PBS -o job${JOB_ID}.o
 #PBS -e job${JOB_ID}.e
 ${DEPENDENCY}
 
-# load spack
-. ~/project-ords/spack/share/spack/setup-env.sh
+. ~/.profile
 
 # we will use the CHM from the Snowcast spack env
 cd /home/chm003/project/Snowcast-www/SnowCast/
@@ -63,7 +62,6 @@ spack env activate .
 cd /home/chm003/project/Snowcast-www/SnowCast/run_chm
 
 export OMP_NUM_THREADS=1
-export UCX_NET_DEVICES=ib0
 EOF
 
 # don't do variable expansion for this part as this needs to be run-time during qsub
@@ -76,11 +74,17 @@ export CHM_WALLCLOCK_LIMIT=$(qstat -f $PBS_JOBID | sed -rn 's/.*Resource_List.wa
 EOF
 
 cat << EOF >> $JOB_SCRIPT
-mpirun --mca btl_tcp_if_include ib0 -n 800 CHM -f config.json ${CHM_RUN_ARGS}
+mpirun  -n 800 CHM -f config.json ${CHM_RUN_ARGS}   
 EOF
+# 
+#--mca btl_tcp_if_include ib0
+
+
 
         # Submit the job and capture the job ID
         JOB_ID=$(/opt/pbs/bin/qsub $JOB_SCRIPT)
+
+        echo "$JOB_SCRIPT" >> $JOB_ID.pbs
 
         # Extract the job ID number from the returned string (PBS job ID)
         JOB_ID=$(echo $JOB_ID | cut -d. -f1)
