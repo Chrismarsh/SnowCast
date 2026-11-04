@@ -1,10 +1,40 @@
 import subprocess
 import os
+import shutil
 import pandas as pd
 import sys
+from pathlib import Path
 
 import json # to pretty print the output
 import json5 as pyjson5# to be able to handle comments in json loading
+
+
+def prune_checkpoints(settings, keep_days=3):
+    """Delete old daily checkpoints, keeping the newest `keep_days`.
+
+    Each checkpoint is a pair in run_chm/output/checkpoint/:
+        checkpoint_<ts>.np800.json      (index file listing the per-rank data)
+        <ts>/chkp<ts>_<rank>.nc         (per-rank state, ~14 GB total)
+    The filename timestamp is fixed-width so lexicographic order ==
+    chronological order. CHM auto-resumes from the newest checkpoint, so
+    anything older than that (with a little headroom for rollback) is safe
+    to delete. Never raises: a partial prune failure must not take the
+    pipeline down.
+    """
+    chk_dir = Path(settings['chm_outpath']).resolve().parent / 'checkpoint'
+    if not chk_dir.is_dir():
+        print(f'No checkpoint directory at {chk_dir}; nothing to prune')
+        return
+
+    jsons = sorted(chk_dir.glob('checkpoint_*.json'))
+    for j in jsons[:-keep_days]:
+        ts = j.stem.rsplit('.', 1)[0].removeprefix('checkpoint_')  # checkpoint_<ts>.np800.json -> <ts>
+        try:
+            shutil.rmtree(chk_dir / ts, ignore_errors=True)
+            j.unlink(missing_ok=True)
+            print(f'Pruned checkpoint {ts}')
+        except OSError as e:
+            print(f'Could not prune checkpoint {ts}: {e}')
 
 
 def main(settings):
@@ -57,44 +87,10 @@ def main(settings):
         raise RuntimeError(f"CHM failed with exit {result.returncode}")
 
     print("Finished")
-    # house keeping on the last run
 
-    # On the last run, we need to use checkpoint frequency=23 to get at the mid-way timestamp to checkpoint
-    # but the last timestep will also trigger a checkpoint. However this will be at T00 00 00 which we don't need
-    # and we will never resume off this far forward of a forecast. So clean this up
-    # chkpt_path = os.path.join(os.path.dirname(settings['chm_outpath']), '..', 'checkpoint',
-    #                             f'checkpoint_*T000000*.json')
-    # chkpt_path = os.path.abspath(chkpt_path)
-    # chkpt_file = glob.glob(chkpt_path)
-
-    # for ckp in chkpt_file:
-    #     os.remove(ckp)
-
-    # chkpt_path = os.path.join(os.path.dirname(settings['chm_outpath']), '..', 'checkpoint',
-    #                             f'*T000000')
-    # chkpt_path = os.path.abspath(chkpt_path)
-    # chkpt_file = glob.glob(chkpt_path)
-
-    # for ckp in chkpt_file:
-    #     shutil.rmtree(ckp)
-
-    # # update the config file so that it can be immediately used to start the next run
-    #     # use 24 here as we want the time the checkpoint will resume off of which is idx23+1
-    # midpoint = str(ds.datetime[24].dt.strftime('%Y%m%dT%H%M%S').data)
-    # chkpt_path = os.path.join(os.path.dirname(settings['chm_outpath']), '..', 'checkpoint',
-    #                             f'checkpoint_{midpoint}*.json')
-    # chkpt_path = os.path.abspath(chkpt_path)
-    # chkpt_file = glob.glob(chkpt_path)
-
-    # if len(chkpt_file) != 1:
-    #     raise Exception(f"Found wrong number of files. {chkpt_file}")
-
-    # config['checkpoint']['load_checkpoint_path'] = chkpt_file[0]
-
-
-    # with open(settings['chm_config_path'], 'w') as f:
-    #     js = json.dumps(config, indent=2)
-    #     f.write(js)
+    # house keeping: keep only the newest N daily checkpoints (older ones are
+    # never needed again since CHM auto-resumes from the newest checkpoint)
+    prune_checkpoints(settings, keep_days=settings.get('checkpoint_keep_days', 3))
 
 
 

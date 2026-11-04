@@ -8,6 +8,10 @@ settings = dict()
 # Should snowcast run in a mode that allows CHM to checkpoint.
 settings['checkpoint_mode'] = True
 
+# how many of the most recent daily checkpoints to keep (older ones are
+# pruned after each successful CHM run; CHM auto-resumes from the newest)
+settings['checkpoint_keep_days'] = 3
+
 # the URL to use for the slack webhook. This is a secret
 settings['webhook_url'] = slack_webhook.webhook_url
 
