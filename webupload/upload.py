@@ -14,27 +14,43 @@ def set_cwd(path):
     finally:
         os.chdir(prev_cwd)
 
-def _cleanup_dir(path):
 
-    shutil.rmtree(path, ignore_errors=True)
+from collections import defaultdict
+
+
+def _rolling_copy(filemask, path, archive_dir, ntokeep=3):
+    files = sorted(glob.glob(filemask))
+
     os.makedirs(path, exist_ok=True)
+    os.makedirs(archive_dir, exist_ok=True)
 
-def _rolling_copy(filemask, path, ntokeep=7):
-    files = glob.glob(filemask)
-    files.sort()
+    # Group by variable name (everything before the timestamp)
+    groups = defaultdict(list)
 
-    # keep a rolling 7 day archive
-    to_keep = files[-ntokeep:]
-
-    # remove older files
     for f in files:
-        if f not in to_keep:
-            os.remove(f)
+        stem = os.path.splitext(os.path.basename(f))[0]
 
-    for file in to_keep:
-        print(f'Copying {file} for webupload')
-        shutil.copy2(file, path)
+        # snowdepthhavg-0.001x0.001_20260531T230000
+        var = stem.rsplit("_", 1)[0]
 
+        groups[var].append(f)
+
+    for var, var_files in groups.items():
+        var_files.sort()
+
+        keep = set(var_files[-ntokeep:])
+
+        for f in var_files:
+            if f not in keep:
+                print(f"Archiving {f}")
+                shutil.move(
+                    f,
+                    os.path.join(archive_dir, os.path.basename(f))
+                )
+
+        for f in sorted(keep):
+            print(f"Copying {f} for webupload")
+            shutil.copy2(f, path)
 
 def upload(settings):
 
@@ -60,15 +76,11 @@ def upload(settings):
             for f in files:
                 print(f)
                 src = os.path.join(os.getcwd(), f)  # your local file
-                dst = f"collab:/home/chm003/project/snowcast/{ext}/"
+                dst = f"collab-lp:/home/chm003/project/snowcast/{ext}/"
 
-                cmd = [
-                    "rsync", "--progress",
-                    src,
-                    dst,
-                ]
+                cmd = f"rsync --progress {src} {dst}"
 
-                result = subprocess.run(cmd, stdin=subprocess.DEVNULL, text=True, capture_output=True)
+                result = subprocess.run(cmd, stdin=subprocess.DEVNULL, text=True, capture_output=True, shell=True)
 
                 print(result.stdout)
                 # print(result.stderr)
@@ -99,5 +111,11 @@ def upload(settings):
     if not done:
         raise Exception("Failed to upload to Snowcast")
 
+    _rolling_copy(
+        "*.tiff",
+        path="/home/chm003/project/Snowcast-www/SnowCast/postprocess/tiff/",
+        archive_dir="/home/chm003/project/Snowcast-www/SnowCast/postprocess/archive_tiff/",
+        ntokeep=3,
+    )
 
     print('done')

@@ -45,7 +45,7 @@ settings['start_date'] = '2025-09-01'
 #settings['postprocess_maxprocs'] = 8
 
 #same as above but for plot generation
-settings['plotgen_exec_str'] = 'mpirun --mca btl_tcp_if_include ib0 -n 75 gdal2tiles '
+# settings['plotgen_exec_str'] = 'mpirun --mca btl tcp,self --mca btl_tcp_if_include ibs1 --hetero-nodes -n 75 gdal2tiles '
 # settings['plotgen_maxprocs'] = 8
 
 #variables to plot (implicitly includes the difference between these)
