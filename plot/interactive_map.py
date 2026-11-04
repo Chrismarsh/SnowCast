@@ -480,7 +480,7 @@ def make_tiles(settings, tiff, var, time, vmax, vmin, minZoom, maxZoom):
 
 
     # if 'plotgen_exec_str' in settings:
-    exec_str = f"""{settings['plotgen_exec_str']} --mpi -w leaflet -z {minZoom}-{maxZoom} temp_color_{mangle}.vrt {tile_path}"""
+    exec_str = f"""plot/wrapper_gdal2tiles.sh --mpi -w leaflet -z {minZoom}-{maxZoom} temp_color_{mangle}.vrt {tile_path}"""
     print(exec_str)
     subprocess.check_call([exec_str], shell=True, cwd=os.path.join(settings['snowcast_base']))
 
@@ -516,11 +516,18 @@ def make_tiles(settings, tiff, var, time, vmax, vmin, minZoom, maxZoom):
 
 
    
-def build_plot_dataframe(settings, pattern="*-0.001x0.001_*.tiff"):
-    """Construct the plotting dataframe from the generated GeoTIFF files."""
+def build_plot_dataframe(settings, pattern="*-0.001x0.001_*.tiff", max_records_per_var=2):
+    """Construct the plotting dataframe from the generated GeoTIFF files.
+
+    `max_records_per_var` keeps only the newest N timesteps per variable.
+    postprocess/ should normally hold just the last two (older ones are
+    archived by submit_ugrid2tiff.sh and the web upload), but if the
+    directory ever accumulates extras, plotting only the newest ones keeps
+    tile generation fast instead of re-plotting every day in the folder.
+    """
 
     base_path = Path(settings['snowcast_base'])
-    search_root = base_path / "postprocess"
+    search_root = base_path / "postprocess" / "tiff"
     tiff_paths = sorted(search_root.glob(pattern))
 
     if not tiff_paths:
@@ -535,7 +542,8 @@ def build_plot_dataframe(settings, pattern="*-0.001x0.001_*.tiff"):
         prefix, timestamp_txt = stem.split("_", 1)
         if "-" not in prefix or "x" not in prefix:
             continue
-
+        
+        print(tiff_path)
         var_name, grid_txt = prefix.split("-", 1)
         dx_txt, _, _ = grid_txt.partition("x")
 
@@ -569,6 +577,12 @@ def build_plot_dataframe(settings, pattern="*-0.001x0.001_*.tiff"):
         raise ValueError(f"No valid TIFF metadata could be parsed from {pattern}")
 
     df = pd.DataFrame.from_records(records)
+
+    # keep only the newest N timesteps per variable (records are sorted by
+    # tiff path, which sorts lexicographically by timestamp)
+    if max_records_per_var is not None:
+        df = df.sort_values("time").groupby("var", group_keys=False).tail(max_records_per_var)
+
     df = df.set_index(["var", "time"]).sort_index()
     return df
 
@@ -581,4 +595,5 @@ if __name__ == '__main__':
     # os.remove("plot/settings.pickle")
 
     df = build_plot_dataframe(settings)
+    print('Done building dataframe')
     make_map(settings, df)

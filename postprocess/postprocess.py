@@ -50,7 +50,7 @@ def main(settings):
 
     timestamp_sets = []
     for var in variables:
-        pattern = os.path.join(postprocess_dir, f'{var}-0.001x0.001_*.tiff')
+        pattern = os.path.join(postprocess_dir,'tiff', f'{var}-0.001x0.001_*.tiff')
         timestamps = set()
         for path in glob(pattern):
             filename = os.path.basename(path)
@@ -72,7 +72,9 @@ def main(settings):
     def parse_iso(ts):
         return datetime.strptime(ts, "%Y%m%dT%H%M%S")
 
-    timestamp_ISO = min(common_timestamps, key=parse_iso)
+    # use the newest timestep. (This used to be min(), which pinned the AEP
+    # output to the oldest leftover TIFF once tiff/ stopped being swept.)
+    timestamp_ISO = max(common_timestamps, key=parse_iso)
     fixed_time = parse_iso(timestamp_ISO)
 
     timestamp_AEP = fixed_time.strftime("%Y%m%d%H%M%S")
@@ -84,7 +86,9 @@ def main(settings):
     # The AEP outputs for some reason cause ESMF to segfault so this is safeer to downscale with a gdal call
     with set_cwd("postprocess/"):
         for var in variables:
-            AEP.to_ascii(settings, f'{var}-0.001x0.001_{timestamp_ISO}.tiff', f'{var}_{timestamp_AEP}.asc')
+            # requires the _ between var name and time as per
+            # https://publicwiki.deltares.nl/spaces/FEWSDOC/pages/8684011/ArcInfoAscii
+            AEP.to_ascii(settings, os.path.join(postprocess_dir,'tiff',f'{var}-0.001x0.001_{timestamp_ISO}.tiff'), f'{var}_{timestamp_AEP}.asc')
 
 
 
