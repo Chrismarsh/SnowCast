@@ -17,8 +17,12 @@ nwp_forcing/nc_ar/
 nwp_forcing/grib_download/
 
 run_chm/output/
+run_chm/log/
 run_chm/slurm-*
 run_chm/*.partition*
+run_chm/*.pbs
+run_chm/job*.o
+run_chm/job*.e
 
 postprocess/slurm-*
 
@@ -58,4 +62,5 @@ postprocess/archive_tiff
 met/hrdps
 plot/settings.pickle
 sc2_plot.o
+sc_2tiff.o*
 /pmtiles
