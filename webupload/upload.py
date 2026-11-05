@@ -119,3 +119,9 @@ def upload(settings):
     )
 
     print('done')
+
+    if settings.get('webui_enabled', False) and settings.get('webui_upload_host'):
+        from . import v3
+        if not settings.get('webui_upload_dir'):
+            raise ValueError('webui_upload_dir is required with webui_upload_host')
+        v3.upload(settings['webui_data_dir'], settings['webui_upload_host'], settings['webui_upload_dir'])

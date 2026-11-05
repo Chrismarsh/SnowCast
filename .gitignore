@@ -64,3 +64,13 @@ plot/settings.pickle
 sc2_plot.o
 sc_2tiff.o*
 /pmtiles
+
+# The viewer is built separately from simulation data.
+webui/node_modules/
+webui/dist/
+webui/public/demo/
+webui/.openai/
+webui/.vite/
+www/v3/
+postprocess/webdata/
+.pytest_cache/

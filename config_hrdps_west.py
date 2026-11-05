@@ -55,6 +55,17 @@ settings['start_date'] = '2025-09-01'
 #variables to plot (implicitly includes the difference between these)
 settings['plot_vars'] = ['swe', 'snowdepthavg', 't']
 
+# Optional v3 COG publishing. Enable after deploying webui/dist to your web host.
+# The existing Leaflet viewer and AEP exports remain available during migration.
+settings['webui_enabled'] = False
+settings['webui_keep_days'] = 10
+settings['webui_data_dir'] = os.path.join(settings['snowcast_base'], 'postprocess', 'webdata')
+# Relative asset URLs work when the catalogue and cogs/ are hosted together.
+settings['webui_data_url'] = None
+# Set these only when the published data needs to be copied to another machine.
+settings['webui_upload_host'] = None  # e.g. 'root@www.snowcast.ca'
+settings['webui_upload_dir'] = None   # e.g. '/var/www/html/v3/data'
+
 # Offset from UTM to local time (i.e. Mountain standard time = -7)
 # CHM forcing files will be in this time zone
 # not currently used

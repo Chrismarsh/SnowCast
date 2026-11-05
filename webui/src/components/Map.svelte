@@ -1,0 +1,168 @@
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import OLMap from 'ol/Map';
+  import View from 'ol/View';
+  import TileLayer from 'ol/layer/Tile';
+  import WebGLTile from 'ol/layer/WebGLTile';
+  import ImageLayer from 'ol/layer/Image';
+  import RasterSource from 'ol/source/Raster';
+  import GeoTIFF from 'ol/source/GeoTIFF';
+  import XYZ from 'ol/source/XYZ';
+  import VectorLayer from 'ol/layer/Vector';
+  import VectorSource from 'ol/source/Vector';
+  import Feature from 'ol/Feature';
+  import Point from 'ol/geom/Point';
+  import { Circle, Fill, Stroke, Style } from 'ol/style';
+  import { fromLonLat, toLonLat, transformExtent } from 'ol/proj';
+  import { intersects } from 'ol/extent';
+  import { defaults } from 'ol/control';
+  import { unByKey } from 'ol/Observable';
+  import type { Asset, Variable } from '../lib/types';
+  import { ensureProjection } from '../lib/raster';
+  import { colorPixel, snowColors, temperatureColors } from '../lib/data';
+  import 'ol/ol.css';
+  export let asset: Asset | undefined;
+  export let variable: Variable | undefined;
+  export let opacity = 0.7;
+  export let point: number[] | null = null;
+  export let bounds = [-116.65, 50.66, -114.77, 51.79];
+  export let basemap = 'terrain';
+  export let onpick: (point: number[]) => void;
+  export let onready: (id: string) => void;
+  export let onerror: (error: string) => void;
+  let target: HTMLDivElement;
+  let map: OLMap;
+  let mounted = false;
+  let marker: VectorSource;
+  let base: TileLayer<XYZ>;
+  type RasterLayer = WebGLTile | ImageLayer<RasterSource>;
+  let active: RasterLayer | undefined;
+  let activeVariable = '';
+  let useWebGL = true;
+  let requested = '';
+  let cancel: (() => void) | undefined;
+  const layers = new globalThis.Map<string, RasterLayer>();
+  const sources = new globalThis.Map<string, GeoTIFF>();
+
+  export function fit() { if (map) map.getView().fit(transformExtent(bounds, 'EPSG:4326', map.getView().getProjection()), { padding: [65, 30, 165, 30], duration: 400 }); }
+  export function zoom(delta: number) { if (map) map.getView().animate({ zoom: (map.getView().getZoom() || 8) + delta, duration: 200 }); }
+  export function retry() { if (asset && variable) show(asset, variable); }
+
+  onMount(() => {
+    const probe = document.createElement('canvas').getContext('webgl2');
+    useWebGL = !!probe;
+    probe?.getExtension('WEBGL_lose_context')?.loseContext();
+    base = new TileLayer({ source: new XYZ({ url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', attributions: 'Tiles © Esri — Esri, HERE, Garmin, USGS, NRCan', maxZoom: 16, crossOrigin: 'anonymous' }) });
+    marker = new VectorSource();
+    map = new OLMap({
+      target,
+      controls: defaults({ zoom: false, rotate: false, attributionOptions: { collapsible: false } }),
+      layers: [base, new VectorLayer({
+        source: marker, zIndex: 50,
+        style: new Style({ image: new Circle({ radius: 7, fill: new Fill({ color: '#08777a' }), stroke: new Stroke({ color: 'white', width: 3 }) }) }),
+      })],
+      view: new View({ center: fromLonLat([-115.7, 51.24]), zoom: 9, maxZoom: 17 }),
+    });
+    map.on('singleclick', e => onpick(toLonLat(e.coordinate, map.getView().getProjection())));
+    mounted = true;
+    fit();
+    return () => { cancel?.(); for (const [id, layer] of layers) disposeLayer(id, layer); map.setTarget(undefined); map.dispose(); };
+  });
+
+  function disposeLayer(id: string, layer: RasterLayer) {
+    map.removeLayer(layer);
+    layer.getSource()?.dispose();
+    sources.get(id)?.dispose(); sources.delete(id);
+    layer.dispose(); layers.delete(id);
+  }
+
+  function updateMarker() {
+    marker.clear();
+    if (point) marker.addFeature(new Feature(new Point(fromLonLat(point, map.getView().getProjection()))));
+  }
+
+  function show(next: Asset, v: Variable) {
+    cancel?.();
+    requested = next.id;
+    try {
+      ensureProjection(next.projection, next.proj4);
+      if (active && activeVariable !== v.id) { active.setVisible(false); active = undefined; }
+      // Canvas fallback keeps data tiles in their native projection; basemap
+      // image tiles are reprojected by OpenLayers' Canvas renderer instead.
+      if (!useWebGL && map.getView().getProjection().getCode() !== next.projection) {
+        map.setView(new View({ projection: next.projection }));
+        fit(); updateMarker();
+      }
+      let layer = layers.get(next.id);
+      if (!layer) {
+        const colors = v.palette === 'temperature' ? temperatureColors : snowColors;
+        const expression: any[] = ['interpolate', ['linear'], ['+', ['*', ['band', 1], next.scale], next.offset]];
+        colors.forEach((color, i) => expression.push(v.range[0] + (v.range[1] - v.range[0]) * i / (colors.length - 1), color));
+        const cog = new GeoTIFF({ normalize: false, interpolate: false, transition: 0, projection: next.projection, sources: [{ ...(next.blob ? { blob: next.blob } : { url: next.href }), bands: [1], nodata: next.nodata === 'NaN' || next.nodata == null ? NaN : next.nodata }], sourceOptions: { allowFullFile: false, cacheSize: 64 } });
+        sources.set(next.id, cog);
+        if (useWebGL) layer = new WebGLTile({ source: cog, style: { color: expression as any }, cacheSize: 64, opacity: 0.01, zIndex: 10 });
+        else {
+          const raster = new RasterSource({ sources: [cog], interpolate: false, operation: colorPixel });
+          raster.on('beforeoperations', e => Object.assign(e.data, {
+            colors: colors.map(c => [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)]),
+            min: v.range[0], max: v.range[1], scale: next.scale, offset: next.offset, nodata: next.nodata,
+          }));
+          layer = new ImageLayer({ source: raster, opacity: 0.01, zIndex: 10 });
+          const canvasLayer = layer;
+          raster.on('afteroperations', () => { canvasLayer.set('frameReady', true); map.render(); });
+        }
+        layers.set(next.id, layer);
+        map.addLayer(layer);
+      }
+      const nextLayer = layer;
+      if (!useWebGL) { nextLayer.set('frameReady', false); nextLayer.getSource()?.changed(); }
+      nextLayer.setVisible(true);
+      nextLayer.setOpacity(0.01); // OL rounds opacity to two decimals; zero skips loading.
+      let finished = false;
+      const source = sources.get(next.id)!;
+      const cleanup = () => { clearTimeout(timeout); unByKey(readyKey); unByKey(errorKey); unByKey(stateKey); };
+      const fail = (message: string) => {
+        if (finished) return;
+        finished = true; cleanup();
+        nextLayer.setVisible(nextLayer === active);
+        if (nextLayer === active) nextLayer.setOpacity(opacity);
+        // A failed source must not poison future retries.
+        if (nextLayer !== active) disposeLayer(next.id, nextLayer);
+        onerror(message);
+      };
+      const errorKey = source.on('tileloaderror', () => fail('Could not load this raster. Check its URL, CORS and HTTP range support.'));
+      const stateKey = source.on('change', () => { if (source.getState() === 'error') fail('The COG could not be opened. Check its projection, format and hosting.'); });
+      const readyKey = map.on('rendercomplete', () => {
+        if (finished || requested !== next.id || source.getState() !== 'ready') return;
+        const inView = intersects(map.getView().calculateExtent(map.getSize()), transformExtent(next.bounds, 'EPSG:4326', map.getView().getProjection()));
+        if (!useWebGL && inView && !nextLayer.get('frameReady')) return;
+        finished = true; cleanup();
+        for (const cached of layers.values()) cached.setVisible(cached === nextLayer);
+        active = nextLayer; activeVariable = v.id; active.setOpacity(opacity);
+        while (layers.size > 3) {
+          const entry = [...layers.entries()].find(([key]) => key !== next.id)!;
+          disposeLayer(entry[0], entry[1]);
+        }
+        onready(next.id);
+      });
+      const timeout = window.setTimeout(() => fail('This frame took too long to load. Try again or zoom into a smaller area.'), 25000);
+      cancel = () => {
+        if (finished) return;
+        finished = true; cleanup();
+        nextLayer.setVisible(nextLayer === active);
+        if (nextLayer === active) nextLayer.setOpacity(opacity);
+      };
+      map.render();
+    } catch (e) { onerror(e instanceof Error ? e.message : 'Could not display raster'); }
+  }
+
+  $: if (mounted && asset && variable && asset.id !== requested) show(asset, variable);
+  $: if (active) active.setOpacity(opacity);
+  $: if (mounted) {
+    point; updateMarker();
+  }
+  $: if (mounted) {
+    base.setSource(new XYZ({ url: basemap === 'satellite' ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', attributions: 'Tiles © Esri — Esri, HERE, Garmin, USGS, NRCan', crossOrigin: 'anonymous', maxZoom: 17 }));
+  }
+</script>
+<div bind:this={target} class="map-canvas" aria-label="Interactive snowpack map"></div>
