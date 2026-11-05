@@ -20,6 +20,7 @@
   let displayedIndex = -1;
   let displayId = '';
   let frameLoading = false;
+  let slowFrameId = '';
   let opacity = 0.7;
   let basemap = 'terrain';
   let map: Map;
@@ -74,7 +75,7 @@
   }
 
   async function load() {
-    loading = true; error = ''; stop();
+    loading = true; error = ''; slowFrameId = ''; stop();
     try {
       const response = await fetch(catalogueURL, { cache: 'no-cache' });
       if (!response.ok) throw new Error(`Catalogue request returned HTTP ${response.status}`);
@@ -108,7 +109,7 @@
   }
 
   function chooseVariable(id: string) {
-    stop(); variableId = id; displayId = ''; displayedIndex = -1; series = [];
+    stop(); variableId = id; displayId = ''; displayedIndex = -1; series = []; slowFrameId = '';
     const v = variables.find(v => v.id === id);
     requestedIndex = dailyDates(v, catalogue?.window_days || 10).length - 1;
     frameLoading = true; error = '';
@@ -116,11 +117,11 @@
   function select(index: number, manual = true) {
     if (manual) stop();
     if (!dates[index]?.asset) return;
-    requestedIndex = index; frameLoading = dates[index].asset!.id !== displayId; error = '';
+    requestedIndex = index; frameLoading = dates[index].asset!.id !== displayId; error = ''; slowFrameId = '';
   }
   function ready(id: string) {
     if (id !== selected?.id) return;
-    displayId = id; displayedIndex = requestedIndex; frameLoading = false; error = '';
+    displayId = id; displayedIndex = requestedIndex; frameLoading = false; error = ''; slowFrameId = '';
   }
   function failed(message: string) { error = message; frameLoading = false; stop(); }
   function step(delta: number) {
@@ -208,7 +209,7 @@
 
 <main class="workspace">
   <section class="map-workspace" aria-label="Map and playback">
-    <Map bind:this={map} asset={selected} {variable} {opacity} {point} {basemap} bounds={custom.some(v => v.id === variableId) && selected ? selected.bounds : catalogue?.bounds || [-116.65, 50.66, -114.77, 51.79]} onpick={pick} onready={ready} onerror={failed}/>
+    <Map bind:this={map} asset={selected} {variable} {opacity} {point} {basemap} bounds={custom.some(v => v.id === variableId) && selected ? selected.bounds : catalogue?.bounds || [-116.65, 50.66, -114.77, 51.79]} onpick={pick} onready={ready} onerror={failed} onslow={id => slowFrameId = id}/>
     <div class="map-toolbar">
       <button class="surface domain" onclick={() => map?.fit()}><Icon name="pin" size={17}/>{catalogue?.title || 'Upper Bow River'}<Icon name="chevron" size={15}/></button>
       <div class="variable-tabs surface" role="group" aria-label="Map variable">{#each variables.filter(v => !v.id.startsWith('custom-')) as v}<button class:active={variableId === v.id} onclick={() => chooseVariable(v.id)}>{v.label}</button>{/each}</div>
@@ -218,8 +219,8 @@
     <div class="map-tools"><div class="surface tool-pair"><button aria-label="Zoom in" onclick={() => map?.zoom(1)}><Icon name="plus"/></button><button aria-label="Zoom out" onclick={() => map?.zoom(-1)}><Icon name="minus"/></button></div><button class="surface icon-button" aria-label="Fit model domain" onclick={() => map?.fit()}><Icon name="target"/></button><button class="surface icon-button" aria-label={basemap === 'terrain' ? 'Show satellite basemap' : 'Show terrain basemap'} onclick={() => basemap = basemap === 'terrain' ? 'satellite' : 'terrain'}><Icon name="layers"/></button></div>
     {#if loading}<div class="map-message surface"><span class="spinner"></span>Loading simulation catalogue…</div>
     {:else if !variables.length}<div class="map-message empty surface"><Icon name="layers" size={32}/><h2>Your snowpack, in context.</h2><p>No simulation catalogue is available yet. Publish SnowCast COGs or open a local raster to get started.</p><button class="primary" onclick={() => showDialog('import')}>Add a COG</button><button class="text-button" onclick={load}>Retry catalogue</button><small>{error}</small></div>
-    {:else if error}<div class="map-banner error" role="alert">{error}<button class="text-button" onclick={() => { error = ''; frameLoading = true; map?.retry(); }}>Retry</button></div>
-    {:else if frameLoading}<div class="map-banner"><span class="spinner"></span>Loading {selected ? dateLabel(selected.datetime) : 'frame'}…</div>
+    {:else if error}<div class="map-banner error" role="alert">{error}<button class="text-button" onclick={() => { error = ''; slowFrameId = ''; frameLoading = true; map?.retry(); }}>Retry</button></div>
+    {:else if frameLoading}<div class="map-banner" role="status"><span class="spinner"></span>{#if slowFrameId === selected?.id}Still loading {variable?.label} for {dateLabel(selected!.datetime)}. Waiting for map data…{:else}Loading {selected ? dateLabel(selected.datetime) : 'frame'}…{/if}</div>
     {:else if stale && !catalogue?.sample_data}<div class="map-banner">Latest model output is over 48 hours old. <button class="text-button" onclick={load}>Refresh</button></div>{/if}
     {#if variable}
       <div class="legend surface"><div>{variable.title} <span>· {variable.unit}</span></div><div class="colour-ramp" style={`background:linear-gradient(90deg,${colors.join(',')})`}></div><div class="legend-labels">{#each [0, .25, .5, .75, 1] as fraction}<span>{formatValue(variable.range[0] + (variable.range[1] - variable.range[0]) * fraction, variable.unit)}{fraction === 1 ? '+' : ''}</span>{/each}</div></div>

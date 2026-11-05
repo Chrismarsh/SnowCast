@@ -20,6 +20,7 @@
   import type { Asset, Variable } from '../lib/types';
   import { ensureProjection } from '../lib/raster';
   import { colorPixel, snowColors, temperatureColors } from '../lib/data';
+  import { watchFrameLoad } from '../lib/frameLoad';
   import 'ol/ol.css';
   export let asset: Asset | undefined;
   export let variable: Variable | undefined;
@@ -30,6 +31,7 @@
   export let onpick: (point: number[]) => void;
   export let onready: (id: string) => void;
   export let onerror: (error: string) => void;
+  export let onslow: (id: string) => void = () => {};
   let target: HTMLDivElement;
   let map: OLMap;
   let mounted = false;
@@ -109,6 +111,7 @@
           }));
           layer = new ImageLayer({ source: raster, opacity: 0.01, zIndex: 10 });
           const canvasLayer = layer;
+          raster.on('beforeoperations', () => canvasLayer.set('frameReady', false));
           raster.on('afteroperations', () => { canvasLayer.set('frameReady', true); map.render(); });
         }
         layers.set(next.id, layer);
@@ -120,7 +123,7 @@
       nextLayer.setOpacity(0.01); // OL rounds opacity to two decimals; zero skips loading.
       let finished = false;
       const source = sources.get(next.id)!;
-      const cleanup = () => { clearTimeout(timeout); unByKey(readyKey); unByKey(errorKey); unByKey(stateKey); };
+      const cleanup = () => { watchdog.cancel(); unByKey(readyKey); unByKey(errorKey); unByKey(stateKey); unByKey(progressKey); };
       const fail = (message: string) => {
         if (finished) return;
         finished = true; cleanup();
@@ -131,11 +134,22 @@
         onerror(message);
       };
       const errorKey = source.on('tileloaderror', () => fail('Could not load this raster. Check its URL, CORS and HTTP range support.'));
-      const stateKey = source.on('change', () => { if (source.getState() === 'error') fail('The COG could not be opened. Check its projection, format and hosting.'); });
-      const readyKey = map.on('rendercomplete', () => {
+      const stateKey = source.on('change', () => {
+        if (source.getState() === 'error') fail('The COG could not be opened. Check its projection, format and hosting.');
+        else if (source.getState() === 'ready') watchdog.progress();
+      });
+      const progressKey = source.on('tileloadend', () => watchdog.progress());
+      // Map-level rendercomplete also waits for Esri and all other layers.
+      // Accept this frame when its own renderer is complete, even if the
+      // basemap is still loading. Keep the date unchanged until that point.
+      const readyKey = map.on('postrender', () => {
         if (finished || requested !== next.id || source.getState() !== 'ready') return;
         const inView = intersects(map.getView().calculateExtent(map.getSize()), transformExtent(next.bounds, 'EPSG:4326', map.getView().getProjection()));
-        if (!useWebGL && inView && !nextLayer.get('frameReady')) return;
+        if (inView) {
+          if (nextLayer instanceof WebGLTile) {
+            if (!nextLayer.getRenderer()?.renderComplete) return;
+          } else if (!nextLayer.get('frameReady')) return;
+        }
         finished = true; cleanup();
         for (const cached of layers.values()) cached.setVisible(cached === nextLayer);
         active = nextLayer; activeVariable = v.id; active.setOpacity(opacity);
@@ -145,7 +159,10 @@
         }
         onready(next.id);
       });
-      const timeout = window.setTimeout(() => fail('This frame took too long to load. Try again or zoom into a smaller area.'), 25000);
+      const watchdog = watchFrameLoad(
+        () => onslow(next.id),
+        () => fail('No raster loading progress for 90 seconds. Check your connection or retry.'),
+      );
       cancel = () => {
         if (finished) return;
         finished = true; cleanup();

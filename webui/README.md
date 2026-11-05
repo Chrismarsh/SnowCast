@@ -186,9 +186,12 @@ alone; an old file can still be referenced. No original TIFF is deleted.
   depends on map zoom. Zero and nodata are distinct.
 - Missing dates and failed point reads produce gaps in charts and CSV. The
   reported change requires a valid first frame and a valid selected frame.
-- Playback waits for the incoming viewport to render before changing the
-  displayed timestamp. It retains up to three raster layers; point reads run
-  with at most three concurrent requests. It pauses in hidden tabs.
+- Playback waits for the selected raster's viewport to render before changing
+  the displayed timestamp. Basemap loading does not hold back a ready raster.
+  After 15 seconds the viewer shows a slow-loading notice and continues waiting;
+  it reports a stall only after 90 seconds without raster loading progress.
+  It retains up to three raster layers; point reads run with at most three
+  concurrent requests. Playback pauses in hidden tabs.
 - Browsers with WebGL use GPU raster styling. Without WebGL, a Canvas renderer
   styles numeric tiles in a worker and uses the raster's native projection;
   basemap tiles are reprojected to match. Both paths use the same point sampler.
@@ -226,3 +229,9 @@ WebGL), daily playback, point histories, local TIFF and HTTP COG import, CSV
 export, share links, and the missing-catalogue state. The ten demo point values
 were independently compared with Rasterio. GPU rendering and mobile devices
 still need verification on the deployment host.
+
+Loading regressions cover a 35-second response, continuous progress over several
+minutes, a genuinely stalled transfer, and cancellation during date changes.
+Browser QA also delayed the initial temperature COG response by 35 seconds:
+the slow-loading notice appeared, then the frame rendered successfully without
+a retry. [Screenshot with synthetic data](docs/temperature-loading-check.jpg).
