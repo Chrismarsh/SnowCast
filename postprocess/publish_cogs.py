@@ -15,7 +15,9 @@ from pathlib import Path
 import re
 import tempfile
 import warnings
+import xml.etree.ElementTree as ET
 
+import numpy as np
 import rasterio
 from rasterio.shutil import copy as raster_copy
 from rasterio.warp import transform_bounds
@@ -27,6 +29,9 @@ VARIABLES = {
 }
 PATTERN = re.compile(r"^(?P<variable>swe|snowdepthavg|t)-[^_]+_(?P<time>\d{8}T\d{6})\.tiff?$", re.I)
 UTC = timezone.utc
+# Include the encoding in immutable asset identities, independently of the input
+# hash. Older publications must be rebuilt even when the source TIFF is unchanged.
+COG_ENCODING = "float32-v1"
 
 
 def iso(value: datetime) -> str:
@@ -56,7 +61,7 @@ def sha256(path: Path) -> str:
 
 
 def convert(source: Path, destination: Path) -> dict:
-    """Losslessly copy full-resolution data; averages are only for display overviews."""
+    """Publish Float32 numeric data on the source grid with averaged overviews."""
     destination.parent.mkdir(parents=True, exist_ok=True)
     with rasterio.open(source) as src:
         if src.count != 1 or src.crs is None:
@@ -71,6 +76,10 @@ def convert(source: Path, destination: Path) -> dict:
             raise ValueError(f"Invalid geographic bounds: {source}")
         transform = list(src.transform)[:6]
         nodata = src.nodata
+        if nodata is not None and math.isfinite(nodata):
+            if abs(nodata) > float(np.finfo(np.float32).max):
+                raise ValueError(f"Nodata is outside the Float32 range: {source}")
+            nodata = float(np.float32(nodata))
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             proj4 = src.crs.to_proj4()
@@ -78,22 +87,37 @@ def convert(source: Path, destination: Path) -> dict:
             "projection": f"EPSG:{epsg}", "proj4": proj4,
             "bounds": bounds, "shape": [src.height, src.width], "transform": transform,
             "nodata": nodata if nodata is None or math.isfinite(nodata) else "NaN",
-            "scale": src.scales[0], "offset": src.offsets[0],
+            "scale": src.scales[0], "offset": src.offsets[0], "dtype": "float32",
         }
     if not destination.exists():
         temporary = destination.with_suffix(".partial.tif")
+        virtual = destination.with_suffix(".source.vrt")
         try:
-            raster_copy(source, temporary, driver="COG", compress="DEFLATE",
+            # A VRT casts blocks while GDAL copies them: no full-size intermediate
+            # TIFF, reprojection, or whole-raster NumPy allocation is required.
+            # Preserve the source's masks, scale/offset and other band metadata.
+            raster_copy(source.resolve(), virtual, driver="VRT")
+            tree = ET.parse(virtual)
+            band = tree.getroot().find("VRTRasterBand")
+            band.set("dataType", "Float32")
+            nodata_element = band.find("NoDataValue")
+            if nodata_element is not None:
+                nodata_element.text = str(nodata)
+            tree.write(virtual, encoding="utf-8", xml_declaration=True)
+            raster_copy(virtual, temporary, driver="COG", compress="DEFLATE",
                         blocksize=512, predictor="YES", overview_resampling="AVERAGE",
-                        BIGTIFF="IF_SAFER")
+                        OVERVIEWS="IGNORE_EXISTING", BIGTIFF="IF_SAFER")
             with rasterio.open(temporary) as cog:
                 if cog.tags(ns="IMAGE_STRUCTURE").get("LAYOUT") != "COG":
                     raise RuntimeError(f"GDAL did not produce a COG: {source}")
+                if cog.dtypes != ("float32",):
+                    raise RuntimeError(f"GDAL did not produce Float32 data: {source}")
                 if cog.crs.to_epsg() != epsg or list(cog.transform)[:6] != transform:
                     raise RuntimeError(f"Georeferencing changed during conversion: {source}")
             os.replace(temporary, destination)
         finally:
             temporary.unlink(missing_ok=True)
+            virtual.unlink(missing_ok=True)
     return metadata
 
 
@@ -135,15 +159,17 @@ def publish(inputs: list[Path], output: Path, days: int = 10, run_id: str | None
                 continue
             digest = sha256(source)
             current = assets.setdefault(variable, {}).get(stamp)
-            if current and current.get("source_sha256") == digest and (output / current["path"]).exists():
+            if (current and current.get("source_sha256") == digest
+                    and current.get("cog_encoding") == COG_ENCODING and (output / current["path"]).exists()):
                 continue
             compact = stamp.replace("-", "").replace(":", "").replace("Z", "")
-            relative = f"cogs/{variable}/{compact}-{digest[:20]}.tif"
+            identity = f"{compact}-{digest[:20]}-{COG_ENCODING}"
+            relative = f"cogs/{variable}/{identity}.tif"
             metadata = convert(source, output / relative)
             assets[variable][stamp] = {
-                "id": f"{variable}-{compact}-{digest[:20]}", "path": relative,
+                "id": f"{variable}-{identity}", "path": relative,
                 "href": relative, "datetime": stamp, "run_id": run_id,
-                "published_at": iso(now), "source_sha256": digest, **metadata,
+                "published_at": iso(now), "source_sha256": digest, "cog_encoding": COG_ENCODING, **metadata,
             }
         variables = []
         for variable, settings in VARIABLES.items():

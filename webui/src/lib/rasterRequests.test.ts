@@ -88,7 +88,7 @@ describe('COG byte-range requests', () => {
       new Response(new Uint8Array([1, 2, 3, 4]), { status: 206, headers: { 'Content-Range': 'bytes 4-7/8' } }));
     const { requests, tile } = setup(fetcher);
     expect((await requests.load(url, { Range: 'bytes=0-1023' }, tile.signal)).status).toBe(206);
-    await expect(requests.load(url, headers, tile.signal)).rejects.toThrow('Content-Range');
+    await expect(requests.load(url + '&revision=2', headers, tile.signal)).rejects.toThrow('Content-Range');
     expect(requests.snapshot()).toMatchObject({ completed: 1, failed: 1, retries: 0 });
   });
 
@@ -107,6 +107,86 @@ describe('COG byte-range requests', () => {
     await Promise.all([first, rejected, third]);
     expect(fetcher).toHaveBeenCalledTimes(2);
     expect(b.requests.snapshot()).toMatchObject({ active: 0, queued: 0, attempts: 0 });
+  });
+});
+
+describe('per-file TIFF metadata cache', () => {
+  const data = Uint8Array.from({ length: 128 * 1024 }, (_, i) => i % 251);
+  const rangeResponse = (init?: RequestInit) => {
+    const range = new Headers(init?.headers).get('Range')!.match(/^bytes=(\d+)-(\d+)$/)!;
+    const start = Number(range[1]), end = Math.min(Number(range[2]), data.length - 1);
+    return new Response(data.slice(start, end + 1), { status: 206,
+      headers: { 'Content-Range': `bytes ${start}-${end}/${data.length}` } });
+  };
+
+  it('coalesces header and tile-index reads while keeping tile bytes direct', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async (_url, init) => rangeResponse(init));
+    const { requests, tile } = setup(fetcher);
+    const read = async (start: number, length: number) => {
+      const response = await requests.load(url, { Range: `bytes=${start}-${start + length - 1}` }, tile.signal);
+      expect(response.headers.get('Content-Range')).toBe(`bytes ${start}-${start + length - 1}/${data.length}`);
+      expect(response.headers.get('Content-Length')).toBe(String(length));
+      expect(new Uint8Array(await response.arrayBuffer())).toEqual(data.slice(start, start + length));
+    };
+    // The measured full-domain view: 8 header reads + 2 index reads per tile.
+    for (let i = 0; i < 8; i++) await read(i * 200, 1024);
+    await Promise.all(Array.from({ length: 18 }, async (_, i) => {
+      await Promise.all([read(16104 + i * 8, 8), read(16248 + i * 4, 4)]);
+      const start = 65536 + i * 1024;
+      const response = await requests.load(url, { Range: `bytes=${start}-${start + 1023}` }, tile.signal);
+      expect(new Uint8Array(await response.arrayBuffer())).toEqual(data.slice(start, start + 1024));
+    }));
+    expect(fetcher).toHaveBeenCalledTimes(19);
+    expect(new Headers(fetcher.mock.calls[0][1]?.headers).get('Range')).toBe('bytes=0-65535');
+    expect(requests.snapshot()).toMatchObject({ completed: 19, metadataHits: 43, bytes: 65536 + 18 * 1024, failed: 0 });
+  });
+
+  it('lets a cancelled tile stop waiting without aborting another metadata reader', async () => {
+    let complete!: (response: Response) => void;
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(() => new Promise(resolve => { complete = resolve; }));
+    const { requests, tile, load } = setup(fetcher);
+    const first = load(), other = new AbortController();
+    const second = requests.load(url, { Range: 'bytes=200-207' }, other.signal);
+    const cancelled = expect(first).rejects.toThrow('Tile moved out of view');
+    await Promise.resolve();
+    tile.abort(new Error('Tile moved out of view'));
+    await cancelled;
+    expect(fetcher.mock.calls[0][1]?.signal?.aborted).toBe(false);
+    complete(rangeResponse({ headers: { Range: 'bytes=0-65535' } }));
+    expect(new Uint8Array(await (await second).arrayBuffer())).toEqual(data.slice(200, 208));
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+
+  it('does not reuse a failed prefix and keeps URLs and request headers separate', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(new Response(null, { status: 404 }))
+      .mockImplementation(async (_url, init) => rangeResponse(init));
+    const { requests, tile, load } = setup(fetcher);
+    await expect(load()).rejects.toThrow('HTTP 404');
+    await load();
+    await requests.load(url + '&revision=2', headers, tile.signal);
+    await requests.load(url + '&revision=2', { ...headers, Authorization: 'test' }, tile.signal);
+    expect(fetcher).toHaveBeenCalledTimes(4);
+  });
+
+  it('clips short files at EOF and forwards unsatisfiable or crossing ranges', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(partial())
+      .mockResolvedValueOnce(new Response(null, { status: 416 }))
+      .mockImplementation(async (_url, init) => rangeResponse(init));
+    const { requests, tile } = setup(fetcher);
+    const short = await requests.load(url, { Range: 'bytes=2-1023' }, tile.signal);
+    expect(short.headers.get('Content-Range')).toBe('bytes 2-3/4');
+    expect(new Uint8Array(await short.arrayBuffer())).toEqual(new Uint8Array([3, 4]));
+    await expect(requests.load(url, { Range: 'bytes=4-7' }, tile.signal)).rejects.toThrow('HTTP 416');
+    await requests.load(url, { Range: 'bytes=65530-65540' }, tile.signal);
+    expect(new Headers(fetcher.mock.calls[2][1]?.headers).get('Range')).toBe('bytes=65530-65540');
+  });
+
+  it('does not serve cached bytes after the frame is disposed', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async (_url, init) => rangeResponse(init));
+    const { frame, load } = setup(fetcher);
+    await load(); frame.abort(new Error('Disposed'));
+    await expect(load()).rejects.toThrow('Disposed');
+    expect(fetcher).toHaveBeenCalledOnce();
   });
 });
 

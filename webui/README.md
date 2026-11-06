@@ -16,22 +16,36 @@ The existing model pipeline remains:
 2. `chm_ugrid2grid` conservatively regrids SWE, snow depth, and temperature.
 3. `postprocess/publish_cogs.py` copies those numeric TIFFs using GDAL's COG
    driver (via Rasterio), adding internal 512-pixel tiles, DEFLATE compression,
-   and average overviews. It retains the source grid, dtype, scale/offset,
-   nodata, and full-resolution values. Only the display overviews are averaged.
+   and average overviews. Numeric COGs use **Float32**, retaining the source
+   grid, masks and scale/offset; values and nodata are rounded to Float32.
+   Only display overviews are spatially averaged. Original downloadable TIFFs
+   retain their original precision and are never modified.
 4. The publisher writes immutable, timestamp/content-versioned files and an
    atomic `catalog.json`. The browser styles the numeric values at runtime.
 
 An equivalent single-file conversion using your existing GDAL installation:
 
 ```bash
-gdal_translate input.tiff output.cog.tif -of COG \
+gdal_translate input.tiff output.cog.tif -of COG -ot Float32 \
   -co COMPRESS=DEFLATE -co PREDICTOR=YES -co BLOCKSIZE=512 \
-  -co OVERVIEW_RESAMPLING=AVERAGE -co BIGTIFF=IF_SAFER
+  -co OVERVIEW_RESAMPLING=AVERAGE -co OVERVIEWS=IGNORE_EXISTING -co BIGTIFF=IF_SAFER
 ```
 
 Do not colourize the TIFF before this step. A COG containing RGB colours does
 not contain the numeric values needed for point queries. A `.tif` suffix alone
 also does not establish that a file is a COG.
+
+The publisher casts through a small VRT, so conversion does not require a
+full-size intermediate TIFF or loading the whole raster into memory. Encoding
+`float32-v1` is included in catalogue assets and filenames. After upgrading,
+run the normal publisher/upload pipeline: retained dates with available source
+TIFFs are regenerated once even if their source hash has not changed. Later
+runs skip unchanged Float32 assets. Include the archive input directory to
+rebuild dates whose originals have moved there. Dates without an available
+source remain usable in their previous encoding until replaced or expired.
+New URLs prevent browsers/CDNs from reusing cached Float64 bytes; the uploader
+still transfers the files before switching the catalogue. No catalogue edits
+or manual deletion are needed.
 
 ## Hosting on an ordinary disk
 
@@ -244,7 +258,13 @@ alone; an old file can still be referenced. No original TIFF is deleted.
   Direct byte-range reads bypass geotiff.js 3.1's shared block cache: a live
   zoomed SWE check reproduced an internal `AggregateError: Request failed`
   after every HTTP request had succeeded, with required blocks missing from
-  that cache. Decoded OpenLayers tile caching remains enabled.
+  that cache. Decoded OpenLayers tile caching remains enabled. Each open file
+  pins its first 64 KiB to coalesce TIFF header and tile-index reads. Concurrent
+  metadata reads share one request; a cancelled tile stops waiting without
+  cancelling the header needed by other tiles. Disposing the frame cancels the
+  transfer, and failed prefixes are not cached. Reads outside the prefix remain
+  direct ranges. Diagnostics count actual network attempts/bytes and report
+  `metadataHits` separately. This cache applies to both map renderers.
   Remote raster range reads share a six-request limit across map frames and
   retry transient network/body failures or HTTP 408/429/500/502/503/504 up to
   twice. Responses must match their requested byte ranges and body lengths;

@@ -13,6 +13,23 @@ export function errorDetail(error: unknown) {
 // OpenLayers still caches decoded tiles; browser HTTP caching is unchanged.
 export const rasterSourceOptions = { allowFullFile: false, blockSize: undefined };
 
+const METADATA_BYTES = 64 * 1024;
+type Metadata = { body: ArrayBuffer; headers: Headers };
+
+/** A tile can stop waiting without cancelling a header shared by other tiles. */
+function waitForMetadata(promise: Promise<Metadata>, signal: AbortSignal): Promise<Metadata> {
+  signal.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    signal.addEventListener('abort', abort, { once: true });
+    promise.then(value => {
+      signal.removeEventListener('abort', abort); resolve(value);
+    }, error => {
+      signal.removeEventListener('abort', abort); reject(error);
+    });
+  });
+}
+
 /** Bound COG range requests across the current and cached frames. */
 export class RequestPool {
   private active = 0;
@@ -62,17 +79,55 @@ export class RasterRequests {
   private cancelled = 0;
   private bytes = 0;
   private lastError: Record<string, unknown> | null = null;
+  private metadata?: { key: string; promise: Promise<Metadata> };
+  private metadataHits = 0;
 
   constructor(private frameSignal: AbortSignal, private pool: RequestPool, private fetcher: typeof fetch = fetch) {}
 
   snapshot() {
     return { attempts: this.attempts, active: this.active, queued: this.queued,
       completed: this.completed, retries: this.retries, failed: this.failed,
-      cancelled: this.cancelled, bytes: this.bytes, lastError: this.lastError };
+      cancelled: this.cancelled, bytes: this.bytes, metadataHits: this.metadataHits, lastError: this.lastError };
   }
 
   async load(url: string, headers: HeadersInit, tileSignal: AbortSignal): Promise<Response> {
     const signal = AbortSignal.any([tileSignal, this.frameSignal]);
+    signal.throwIfAborted();
+    const requestHeaders = new Headers(headers);
+    const range = requestHeaders.get('Range')?.match(/^bytes=(\d+)-(\d+)$/);
+    if (range && Number(range[1]) <= Number(range[2]) && Number(range[2]) < METADATA_BYTES) {
+      // Pin only this file's prefix. No evictable/shared block cache, and data
+      // ranges outside the prefix still go directly to the server.
+      requestHeaders.delete('Range');
+      const key = JSON.stringify([url, [...requestHeaders]]);
+      let entry = this.metadata;
+      if (!entry || entry.key !== key) {
+        requestHeaders.set('Range', `bytes=0-${METADATA_BYTES - 1}`);
+        const promise = this.request(url, requestHeaders, this.frameSignal).then(async response => ({
+          body: await response.arrayBuffer(), headers: response.headers,
+        }));
+        entry = { key, promise };
+        this.metadata = entry;
+        const pending = entry;
+        void promise.catch(() => { if (this.metadata === pending) this.metadata = undefined; });
+      } else this.metadataHits++;
+      const metadata = await waitForMetadata(entry.promise, signal);
+      signal.throwIfAborted();
+      const start = Number(range[1]);
+      const end = Math.min(Number(range[2]), metadata.body.byteLength - 1);
+      if (start <= end) {
+        const responseHeaders = new Headers(metadata.headers);
+        const total = responseHeaders.get('Content-Range')!.split('/')[1];
+        responseHeaders.set('Content-Range', `bytes ${start}-${end}/${total}`);
+        responseHeaders.set('Content-Length', String(end - start + 1));
+        return new Response(metadata.body.slice(start, end + 1), { status: 206, headers: responseHeaders });
+      }
+      // A request starting beyond EOF must retain the server's 416 behavior.
+    }
+    return this.request(url, headers, signal);
+  }
+
+  private async request(url: string, headers: HeadersInit, signal: AbortSignal): Promise<Response> {
     const range = new Headers(headers).get('Range');
     for (let attempt = 1; ; attempt++) {
       let waiting = true;
