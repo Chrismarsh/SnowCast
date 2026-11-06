@@ -15,7 +15,7 @@ export class ProjectedRaster extends ImageSource {
   private frame: ImageWrapper | null = null;
   private changeKey;
 
-  constructor(private raster: RasterSource, projection: ProjectionLike) {
+  constructor(private raster: RasterSource, projection: ProjectionLike, private canRender = () => true) {
     super({ projection, interpolate: false });
     this.changeKey = raster.on('change', () => {
       this.frame = null;
@@ -23,9 +23,12 @@ export class ProjectedRaster extends ImageSource {
     });
   }
 
-  get frameReady() { return this.frame?.getState() === ImageState.LOADED; }
+  get frameReady() { return this.canRender() && this.frame?.getState() === ImageState.LOADED; }
 
   override getImage(extent: Extent, resolution: number, pixelRatio: number, projection: Projection) {
+    // RasterSource treats ERROR tiles as empty pixels. Returning null here
+    // retains the last good image in the layer instead of publishing holes.
+    if (!this.canRender()) { this.frame = null; return null; }
     this.frame = super.getImage(extent, resolution, pixelRatio, projection);
     return this.frame;
   }

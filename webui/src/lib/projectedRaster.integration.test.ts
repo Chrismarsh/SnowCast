@@ -1,10 +1,12 @@
 import { afterAll, expect, it, vi } from 'vitest';
 import DataTileSource from 'ol/source/DataTile';
+import DataTile from 'ol/DataTile';
 import RasterSource from 'ol/source/Raster';
 import TileGrid from 'ol/tilegrid/TileGrid';
 import { get as getProjection, transformExtent, fromLonLat } from 'ol/proj';
 import { ProjectedRaster } from './projectedRaster';
 import { colorPixel } from './data';
+import { TileFailures } from './rasterRequests';
 import * as canvas from '@napi-rs/canvas';
 
 vi.stubGlobal('document', {createElement: (tag: string) => {
@@ -65,3 +67,46 @@ it('renders masked numeric data into the correct Mercator positions using only C
     expect(getTile.mock.calls.every(call=>call[4]?.getCode()==='EPSG:4326')).toBe(true);
   } finally {source.dispose(); numeric.dispose();}
 }, 10_000);
+
+it('does not publish a transparent tile hole when a later pan fails, and renders after retry', async () => {
+  const native = getProjection('EPSG:4326')!, mercator = getProjection('EPSG:3857')!;
+  const failures = new TileFailures();
+  let rejectEasternTile = true;
+  let failedTile: DataTile | undefined;
+  const values = new Float32Array(64 * 64 * 2);
+  for (let i = 0; i < values.length; i += 2) { values[i] = 10; values[i + 1] = 1; }
+  const numeric = new DataTileSource({ projection: native, bandCount: 2, tileSize: 64,
+    tileGrid: new TileGrid({ extent: [-130, 50, -110, 60], resolutions: [10 / 64], tileSize: 64 }),
+    loader: (_z, x) => {
+      if (x === 1 && rejectEasternTile) throw new Error('Simulated later tile failure');
+      return values;
+    },
+  });
+  numeric.on('tileloadstart', e => failures.start(e.tile));
+  numeric.on('tileloaderror', e => {
+    failedTile = e.tile as DataTile;
+    failures.error(e.tile, failedTile.getError());
+  });
+  const raster = new RasterSource({ sources: [numeric], threads: 0, operation: () => [40, 75, 163, 255] });
+  const source = new ProjectedRaster(raster, native, () => failures.clear);
+  const west = transformExtent([-129, 51, -121, 59], native, mercator);
+  const both = transformExtent([-129, 51, -111, 59], native, mercator);
+  const resolution = (both[2] - both[0]) / 256;
+  const render = (extent: number[]) => {
+    const image = source.getImage(extent, resolution, 1, mercator); image?.load(); return image;
+  };
+  try {
+    await vi.waitFor(() => { render(west); expect(source.frameReady).toBe(true); });
+    await vi.waitFor(() => { render(both); expect(failedTile).toBeDefined(); });
+    expect(source.frameReady).toBe(false);
+    expect(render(both)).toBeNull(); // Never hand the layer the partial image.
+    rejectEasternTile = false;
+    failedTile!.load();
+    await vi.waitFor(() => { render(both); expect(source.frameReady).toBe(true); });
+    const image = render(both)!.getImage() as HTMLCanvasElement;
+    const p = fromLonLat([-115, 55]);
+    expect(Array.from(image.getContext('2d')!.getImageData(
+      Math.floor((p[0] - both[0]) / resolution), Math.floor((both[3] - p[1]) / resolution), 1, 1).data))
+      .toEqual([40, 75, 163, 255]);
+  } finally { source.dispose(); numeric.dispose(); }
+});

@@ -205,10 +205,24 @@ alone; an old file can still be referenced. No original TIFF is deleted.
   reported change requires a valid first frame and a valid selected frame.
 - Playback waits for the selected raster's viewport to render before changing
   the displayed timestamp. Basemap loading does not hold back a ready raster.
+  Direct byte-range reads bypass geotiff.js 3.1's shared block cache: a live
+  zoomed SWE check reproduced an internal `AggregateError: Request failed`
+  after every HTTP request had succeeded, with required blocks missing from
+  that cache. Decoded OpenLayers tile caching remains enabled.
+  Remote raster range reads share a six-request limit across map frames and
+  retry transient network/body failures or HTTP 408/429/500/502/503/504 up to
+  twice. Responses must match their requested byte ranges and body lengths;
+  a server returning the entire COG or a permanent HTTP error fails explicitly.
+  Abandoning a frame cancels its queued transfers and retries. The limit covers
+  map COG reads; basemaps and point samples have separate request handling.
   After 15 seconds the viewer shows a slow-loading notice and continues waiting;
   it reports a stall only after 90 seconds without raster loading progress.
   It retains up to three raster layers; point reads run with at most three
   concurrent requests. Playback pauses in hidden tabs.
+- Tile errors remain monitored after a frame is displayed, including pan/zoom.
+  Canvas rejects an image containing failed tiles rather than displaying those
+  tiles as transparent model nodata. It retains the last good layer image while
+  reporting the failure. Retry reopens the source, clearing failed tile caches.
 - Both renderers keep the Web Mercator map view (EPSG:3857), matching v2.
   WebGL styles and reprojects numeric raster tiles. Canvas styles native-grid
   values in a worker, then reprojects the resulting RGBA image using Canvas 2D;
@@ -218,6 +232,8 @@ alone; an old file can still be referenced. No original TIFF is deleted.
   once with Canvas, retaining the map view, selected frame, and point. It saves
   Canvas as this browser's preference only after the retry renders successfully.
   Other devices keep their own preference. A failure in both modes is reported.
+  An identified HTTP failure is reported directly rather than retried with a
+  different renderer.
 - COG import supports single-band numeric data with EPSG:4326, EPSG:3857, and
   standard WGS84 UTM definitions. Other EPSG projections work through a
   catalogue containing `proj4`. Multiple imported filenames require timestamps.
@@ -280,6 +296,10 @@ per source instance, not percentages of the current viewport; settled tiles
 can include requests the renderer no longer needs. Pending raster tiles may
 be downloading, decoding or reprojecting, so this is not a network trace.
 The report omits URLs, coordinates and GPU identifiers.
+It includes the variable/time, actual tile error, and HTTP attempt counters.
+`rasterRequests.lastError` records the last failed request attempt (including
+ones later recovered), its phase, and HTTP status when available. These distinguish
+HTTP/network/body failures from later TIFF decoding or tile-rendering errors.
 
 The dialog offers reversible comparisons (each reloads the page):
 
@@ -306,6 +326,9 @@ exercise OpenLayers' native-to-Mercator image requests, readiness, and disposal.
 A Canvas 2D integration test checks actual output pixels at known geographic
 locations (including nodata and valid zero) while rejecting WebGL requests.
 Its native Canvas dependency is used only by tests, not shipped to browsers.
+Additional regressions cover transient HTTP failures, interrupted/truncated
+responses, permanent range errors, queued/retrying request cancellation, and
+a failed tile after an initially successful Canvas frame followed by recovery.
 Transparency regression checks evaluate the generated colour expression with
 OpenLayers, compile it to GLSL, and check Canvas output for missing values,
 masked pixels, valid zero snow, and cold temperatures. These are not a substitute
