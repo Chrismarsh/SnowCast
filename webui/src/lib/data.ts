@@ -1,8 +1,21 @@
-import type { Catalogue, PointValue } from './types';
+import type { Asset, Catalogue, PointValue, Variable } from './types';
+import type { EncodedExpression } from 'ol/expr/expression';
 
 export const snowColors = ['#e4f8fc', '#9ae2ed', '#62b8ed', '#6981e5', '#7852de', '#6630bd'];
 export const temperatureColors = ['#284ba3', '#70b6d5', '#e7f1ef', '#f9ca99', '#df815d', '#b8353d'];
 export const sessionId = () => Array.from(crypto.getRandomValues(new Uint32Array(4)), n => n.toString(16).padStart(8, '0')).join('');
+
+/** Single-band numeric GeoTIFF sources also supply validity in band 2. */
+export function rasterColor(asset: Pick<Asset, 'nodata' | 'scale' | 'offset'>, variable: Pick<Variable, 'palette' | 'range'>): EncodedExpression {
+  const colors = variable.palette === 'temperature' ? temperatureColors : snowColors;
+  const raw: EncodedExpression = ['band', 1];
+  const valid: EncodedExpression = ['all', ['>', ['band', 2], 0], ['==', raw, raw]];
+  // Mask in raw units, before scaling or clamping to the display range.
+  if (typeof asset.nodata === 'number' && Number.isFinite(asset.nodata)) valid.push(['!=', raw, asset.nodata]);
+  const ramp: EncodedExpression = ['interpolate', ['linear'], ['+', ['*', raw, asset.scale], asset.offset]];
+  colors.forEach((color, i) => ramp.push(variable.range[0] + (variable.range[1] - variable.range[0]) * i / (colors.length - 1), color));
+  return ['case', valid, ramp, [0, 0, 0, 0]];
+}
 
 // Kept outside Svelte: RasterSource serializes this function into a worker.
 // It must not capture component state or compiler-generated helpers.

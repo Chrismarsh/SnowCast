@@ -6,6 +6,7 @@
   import type { Asset, Catalogue, PointValue, Variable } from './lib/types';
   import { dateLabel, timeLabel, formatValue, normalizeCatalogue, seriesCSV, sessionId, snowColors, temperatureColors } from './lib/data';
   import { inspectCOG, sampleSeries } from './lib/raster';
+  import { basemaps, basemapIds, BASEMAP_STORAGE_KEY, initialBasemap, isBasemap } from './lib/basemaps';
 
   const params = new URLSearchParams(window.location.search);
   const initial = new URLSearchParams(window.location.hash.slice(1));
@@ -22,7 +23,10 @@
   let frameLoading = false;
   let slowFrameId = '';
   let opacity = 0.7;
-  let basemap = 'terrain';
+  let savedBasemap: string | null = null;
+  try { savedBasemap = localStorage.getItem(BASEMAP_STORAGE_KEY); } catch { /* Storage may be unavailable. */ }
+  let basemap = initialBasemap(params.get('basemap'), savedBasemap);
+  let basemapOpen = false;
   let map: Map;
   let point: number[] | null = null;
   let series: PointValue[] = [];
@@ -47,6 +51,15 @@
   let importError = '';
   let custom: Variable[] = [];
   const localURLs: string[] = [];
+
+  function chooseBasemap(value: string) {
+    if (!isBasemap(value)) return;
+    basemap = value;
+    try { localStorage.setItem(BASEMAP_STORAGE_KEY, value); } catch { /* Keep the session choice. */ }
+    const url = new URL(window.location.href);
+    url.searchParams.set('basemap', value);
+    window.history.replaceState(null, '', url);
+  }
 
   function refreshDiagnostics() {
     diagnosticText = map?.diagnostics() || 'Map is not initialized yet.';
@@ -235,7 +248,8 @@
       {#if custom.length}<select aria-label="Imported layers" class="surface custom-select" value={variableId.startsWith('custom-') ? variableId : ''} onchange={e => e.currentTarget.value && chooseVariable(e.currentTarget.value)}><option value="">Imported layers</option>{#each custom as v}<option value={v.id}>{v.label}</option>{/each}</select>{/if}
     </div>
     <button class="surface import-button" onclick={() => showDialog('import')}><Icon name="plus" size={18}/>Add COG</button>
-    <div class="map-tools"><div class="surface tool-pair"><button aria-label="Zoom in" onclick={() => map?.zoom(1)}><Icon name="plus"/></button><button aria-label="Zoom out" onclick={() => map?.zoom(-1)}><Icon name="minus"/></button></div><button class="surface icon-button" aria-label="Fit model domain" onclick={() => map?.fit()}><Icon name="target"/></button><button class="surface icon-button" aria-label={basemap === 'terrain' ? 'Show satellite basemap' : 'Show terrain basemap'} onclick={() => basemap = basemap === 'terrain' ? 'satellite' : 'terrain'}><Icon name="layers"/></button></div>
+    <div class="map-tools"><div class="surface tool-pair"><button aria-label="Zoom in" onclick={() => map?.zoom(1)}><Icon name="plus"/></button><button aria-label="Zoom out" onclick={() => map?.zoom(-1)}><Icon name="minus"/></button></div><button class="surface icon-button" aria-label="Fit model domain" onclick={() => map?.fit()}><Icon name="target"/></button><button class="surface icon-button" aria-label="Choose basemap" aria-expanded={basemapOpen} aria-controls="basemap-picker" onclick={() => basemapOpen = !basemapOpen}><Icon name="layers"/></button>
+      {#if basemapOpen}<div class="basemap-picker surface" id="basemap-picker"><div class="basemap-heading"><label for="basemap-select">Basemap</label><button class="icon-button" aria-label="Close basemap picker" onclick={() => basemapOpen = false}><Icon name="close" size={14}/></button></div><select id="basemap-select" value={basemap} onchange={e => chooseBasemap(e.currentTarget.value)}>{#each basemapIds as id}<option value={id}>{basemaps[id].label}</option>{/each}</select><p>Try another map if tiles are slow. None shows only model data.</p></div>{/if}</div>
     {#if loading}<div class="map-message surface"><span class="spinner"></span>Loading simulation catalogue…</div>
     {:else if !variables.length}<div class="map-message empty surface"><Icon name="layers" size={32}/><h2>Your snowpack, in context.</h2><p>No simulation catalogue is available yet. Publish SnowCast COGs or open a local raster to get started.</p><button class="primary" onclick={() => showDialog('import')}>Add a COG</button><button class="text-button" onclick={load}>Retry catalogue</button><small>{error}</small></div>
     {:else if error}<div class="map-banner error" role="alert">{error}<button class="text-button" onclick={() => { error = ''; slowFrameId = ''; frameLoading = true; map?.retry(); }}>Retry</button><button class="text-button" onclick={openDiagnostics}>Loading diagnostics</button></div>
@@ -277,7 +291,7 @@
     <ul class="diagnostic-links">
       <li><a href={diagnosticURL('detail', params.get('detail') === 'low' ? 'auto' : 'low')}>{params.get('detail') === 'low' ? 'Restore automatic map detail' : 'Try lower map detail'}</a> — reduces display pixels.</li>
       <li><a href={diagnosticURL('renderer', params.get('renderer') === 'canvas' ? 'auto' : 'canvas')}>{params.get('renderer') === 'canvas' ? 'Restore automatic renderer' : 'Try compatibility rendering'}</a> — compares the Canvas and WebGL paths.</li>
-      <li><a href={diagnosticURL('basemap', params.get('basemap') === 'none' ? 'auto' : 'none')}>{params.get('basemap') === 'none' ? 'Restore basemap' : 'Try without the basemap'}</a> — isolates the snow data layer.</li>
+      <li><a href={diagnosticURL('basemap', basemap === 'none' ? 'auto' : 'none')}>{basemap === 'none' ? 'Restore basemap' : 'Try without the basemap'}</a> — isolates the snow data layer.</li>
     </ul>
   {:else if dialogMode === 'data'}<p>Daily, gridded output from the Canadian Hydrological Model. Values are sampled at full raster resolution; map colours use overviews for efficient display.</p><div class="data-list">{#each variables as v}<div><strong>{v.title}</strong><span>{v.unit} · {v.assets.length} timestamps</span><a href={v.assets.at(-1)?.href} download>Latest GeoTIFF <Icon name="download" size={16}/></a></div>{/each}</div><a class="catalogue-link" href={catalogueURL} target="_blank" rel="noreferrer">Open data catalogue ↗</a><p class="subtle small">The viewer uses the latest available timestamp in each UTC day. A missing day is shown as a gap.</p>
   {:else}<button class="text-button" onclick={openDiagnostics}>Map diagnostics / slow loading</button><p>SnowCast uses meteorological forcing to drive the Canadian Hydrological Model (CHM), representing snowpack evolution over complex mountain terrain.</p><p>This viewer shows regridded simulation values, not observations or exact values from the original model triangles.</p><p>SnowCast is experimental. See the project for model details and limitations.</p><a class="catalogue-link" href="https://github.com/Chrismarsh/SnowCast" target="_blank" rel="noreferrer">SnowCast on GitHub ↗</a>{/if}

@@ -19,7 +19,8 @@
   import { unByKey } from 'ol/Observable';
   import type { Asset, Variable } from '../lib/types';
   import { ensureProjection } from '../lib/raster';
-  import { colorPixel, snowColors, temperatureColors } from '../lib/data';
+  import { colorPixel, rasterColor, snowColors, temperatureColors } from '../lib/data';
+  import { basemaps, type BasemapId } from '../lib/basemaps';
   import { watchFrameLoad } from '../lib/frameLoad';
   import { displayPixelRatio, TileProgress } from '../lib/mapPerformance';
   import 'ol/ol.css';
@@ -28,7 +29,7 @@
   export let opacity = 0.7;
   export let point: number[] | null = null;
   export let bounds = [-116.65, 50.66, -114.77, 51.79];
-  export let basemap = 'terrain';
+  export let basemap: BasemapId = 'osm';
   export let onpick: (point: number[]) => void;
   export let onready: (id: string) => void;
   export let onerror: (error: string) => void;
@@ -50,7 +51,6 @@
   let lastFailure: Record<string, unknown> | undefined;
   const options = new URLSearchParams(window.location.search);
   const lowDetail = options.get('detail') === 'low';
-  const withoutBasemap = options.get('basemap') === 'none';
   const layers = new globalThis.Map<string, RasterLayer>();
   const sources = new globalThis.Map<string, GeoTIFF>();
   const requests = new globalThis.Map<string, AbortController>();
@@ -75,18 +75,23 @@
       sourceState: source?.getState() || 'not requested',
       rasterRenderComplete: layer instanceof WebGLTile ? layer.getRenderer()?.renderComplete : !!layer?.get('frameReady'),
       rasterTiles: progress.get(requested)?.snapshot(),
-      basemap: withoutBasemap ? 'none' : basemap, basemapTiles: baseProgress.snapshot(),
+      basemap, basemapTiles: baseProgress.snapshot(),
       cachedFrames: layers.size,
     };
   }
 
-  function setBasemap(mode: string) {
+  function setBasemap(mode: BasemapId) {
     if (baseMode === mode) return;
     baseMode = mode;
     const old = base.getSource();
     baseProgress = new TileProgress();
     const counter = baseProgress;
-    const source = new XYZ({ url: mode === 'satellite' ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', attributions: 'Tiles © Esri — Esri, HERE, Garmin, USGS, NRCan', crossOrigin: 'anonymous', maxZoom: 17 });
+    const definition = basemaps[mode];
+    base.setVisible(mode !== 'none');
+    if (!definition.url) {
+      base.setSource(null); old?.dispose(); return;
+    }
+    const source = new XYZ({ ...definition, crossOrigin: 'anonymous', transition: 0 });
     source.on('tileloadstart', e => counter.start(e.tile));
     source.on('tileloadend', e => counter.end(e.tile));
     source.on('tileloaderror', e => counter.end(e.tile, true));
@@ -98,7 +103,7 @@
     const probe = document.createElement('canvas').getContext('webgl2');
     useWebGL = !!probe && options.get('renderer') !== 'canvas';
     probe?.getExtension('WEBGL_lose_context')?.loseContext();
-    base = new TileLayer({ visible: !withoutBasemap });
+    base = new TileLayer({ preload: 0 });
     marker = new VectorSource();
     map = new OLMap({
       target,
@@ -147,8 +152,6 @@
       let layer = layers.get(next.id);
       if (!layer) {
         const colors = v.palette === 'temperature' ? temperatureColors : snowColors;
-        const expression: any[] = ['interpolate', ['linear'], ['+', ['*', ['band', 1], next.scale], next.offset]];
-        colors.forEach((color, i) => expression.push(v.range[0] + (v.range[1] - v.range[0]) * i / (colors.length - 1), color));
         const controller = new AbortController();
         requests.set(next.id, controller);
         const cog = new GeoTIFF({ normalize: false, interpolate: false, transition: 0, projection: next.projection, sources: [{ ...(next.blob ? { blob: next.blob } : {
@@ -161,7 +164,7 @@
         cog.on('tileloadend', e => counter.end(e.tile));
         cog.on('tileloaderror', e => counter.end(e.tile, true));
         sources.set(next.id, cog);
-        if (useWebGL) layer = new WebGLTile({ source: cog, style: { color: expression as any }, cacheSize: 64, opacity: 0.01, zIndex: 10 });
+        if (useWebGL) layer = new WebGLTile({ source: cog, style: { color: rasterColor(next, v) }, cacheSize: 64, opacity: 0.01, zIndex: 10 });
         else {
           const raster = new RasterSource({ sources: [cog], interpolate: false, operation: colorPixel });
           raster.on('beforeoperations', e => Object.assign(e.data, {

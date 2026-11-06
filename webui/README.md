@@ -118,9 +118,22 @@ https://www.snowcast.ca/v3/?catalog=https%3A%2F%2Fdata.example%2Fsnowcast-data%2
 
 Asset URLs inside the catalogue are resolved relative to the catalogue itself.
 Use the trailing slash on `/v3/` (or configure the web server's directory redirect).
-The basemap uses Esri's public terrain/imagery tiles and attribution. Confirm
-the provider's applicable terms and capacity for your deployment. Font loading
-uses Google Fonts with system-font fallbacks; it is independent of data access.
+OpenStreetMap is the default basemap. The layers button opens a picker for
+OpenStreetMap, Esri topographic, Esri satellite, or None (model data only).
+The choice is saved in this browser and in the page URL; an explicit
+`?basemap=osm`, `terrain`, `satellite`, or `none` takes precedence over the saved
+choice. `?basemap=auto` resets to OpenStreetMap. Switching basemaps does not
+reload the COG layer, reset the date, or clear the selected point.
+
+The OpenStreetMap source uses the official HTTPS tile endpoint, visible linked
+attribution, normal browser caching/referrer behavior, and no basemap prefetch.
+Follow the [OSM tile usage policy](https://operations.osmfoundation.org/policies/tiles/);
+the community tile service is best-effort and is not an offline/bulk tile source.
+Check the chosen provider's capacity and terms for your deployment. Selecting
+None removes the basemap source so it schedules no new basemap requests.
+Font loading uses Google Fonts with system-font fallbacks; it is independent
+of data access. A different basemap provider may improve a particular network
+path, but is not a measured guarantee of faster loading on every device.
 
 ## Publish the initial ten-day window
 
@@ -184,6 +197,10 @@ alone; an old file can still be referenced. No original TIFF is deleted.
 - Colours use one fixed range per variable across dates, with nearest-neighbour
   display interpolation. Overviews may aggregate pixels; the point value never
   depends on map zoom. Zero and nodata are distinct.
+- SWE, snow depth, and temperature use transparent missing-data pixels in both
+  renderers. The WebGL colour expression explicitly checks the validity band
+  and the raw nodata sentinel before scaling/colour mapping. Valid zero snow
+  and valid temperatures below the legend minimum remain visible.
 - Missing dates and failed point reads produce gaps in charts and CSV. The
   reported change requires a valid first frame and a valid selected frame.
 - Playback waits for the selected raster's viewport to render before changing
@@ -261,7 +278,8 @@ The dialog offers reversible comparisons (each reloads the page):
 - `?detail=low`: cap display density at 1× to compare a lower graphics workload.
 - `?renderer=canvas`: force the existing native-projection Canvas fallback to
   compare against WebGL. This can be slower on some machines.
-- `?basemap=none`: hide the Esri layer to isolate COG loading/rendering.
+- `?basemap=none`: remove the basemap to isolate COG loading/rendering. This is
+  also available as None in the basemap picker, without reloading the page.
 
 Parameters can be combined; the same links restore automatic behavior. Local
 imports must be reopened after a reload. Compare one change at a time, and
@@ -270,3 +288,7 @@ difference to graphics or the host. The laptop-specific failure is not yet
 reproduced; these changes fix identified startup/cancellation problems and
 provide evidence for the remaining diagnosis. The build and automated tests
 cover this change; its local preview was blocked in the cloud test browser.
+Transparency regression checks evaluate the generated colour expression with
+OpenLayers, compile it to GLSL, and check Canvas output for missing values,
+masked pixels, valid zero snow, and cold temperatures. These are not a substitute
+for a visual WebGL check on the affected device.
