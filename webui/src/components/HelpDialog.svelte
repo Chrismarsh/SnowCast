@@ -23,6 +23,7 @@
       <li><strong>Daily history.</strong> Choose a date or play the animation. Each day uses its latest available timestamp, in UTC. Missing dates remain gaps.</li>
       <li><strong>Colours.</strong> Each variable uses a fixed colour range across dates. Missing data is transparent; zero is a valid value.</li>
       <li><strong>Point values.</strong> Click the map for a full-resolution value and its history. Download CSV to keep those values.</li>
+      <li><strong>CanSWE stations.</strong> Click a brown marker, or find a station in Map layers, for historical SWE and snow-depth observations. Seasonal context compares the model with past snow seasons; it is not a live observation feed.</li>
     </ul>
     <p class="model-note">These are regridded model estimates, not observations. Map colours use overviews for efficient display; point values use the full-resolution raster.</p>
   </section>

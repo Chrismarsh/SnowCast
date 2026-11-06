@@ -6,11 +6,12 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "refresh:downloads": "python ../scripts/index_tiff_downloads.py",
-    "prebuild": "npm run refresh:downloads -- --allow-stale",
+    "prebuild": "python ../scripts/unpack_canswe.py && npm run refresh:downloads -- --allow-stale",
     "build": "vite build",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",
-    "demo": "python ../scripts/make_webui_demo.py"
+    "demo": "python ../scripts/make_webui_demo.py",
+    "predev": "python ../scripts/unpack_canswe.py"
   },
   "dependencies": {
     "geotiff": "3.0.5",

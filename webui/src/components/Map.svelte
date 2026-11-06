@@ -11,14 +11,16 @@
   import XYZ from 'ol/source/XYZ';
   import VectorLayer from 'ol/layer/Vector';
   import VectorSource from 'ol/source/Vector';
+  import Cluster from 'ol/source/Cluster';
   import Feature from 'ol/Feature';
   import Point from 'ol/geom/Point';
-  import { Circle, Fill, Stroke, Style } from 'ol/style';
+  import { Circle, Fill, Stroke, Style, Text } from 'ol/style';
   import { fromLonLat, toLonLat, transformExtent } from 'ol/proj';
   import { intersects } from 'ol/extent';
   import { defaults } from 'ol/control';
   import { unByKey } from 'ol/Observable';
   import type { Asset, Variable } from '../lib/types';
+  import type { SnowStation } from '../lib/canswe';
   import { ensureProjection } from '../lib/raster';
   import { colorPixel, rasterColor, snowColors, temperatureColors } from '../lib/data';
   import { basemaps, DEFAULT_BASEMAP, type BasemapId } from '../lib/basemaps';
@@ -38,10 +40,16 @@
   export let onready: (id: string) => void;
   export let onerror: (error: string) => void;
   export let onslow: (id: string) => void = () => {};
+  export let stations: SnowStation[] = [];
+  export let stationsVisible = true;
+  export let onstation: (station: SnowStation) => void = () => {};
+  export let onstationcluster: (stations: SnowStation[]) => void = () => {};
   let target: HTMLDivElement;
   let map: OLMap;
   let mounted = false;
   let marker: VectorSource;
+  let stationSource: VectorSource;
+  let stationLayer: VectorLayer<Cluster>;
   let base: TileLayer<XYZ>;
   type RasterLayer = WebGLTile | ImageLayer<ProjectedRaster>;
   let active: RasterLayer | undefined;
@@ -77,6 +85,11 @@
     });
   }
   export function zoom(delta: number) { if (map) map.getView().animate({ zoom: (map.getView().getZoom() || 8) + delta, duration: 200 }); }
+  export function focusStation(station: SnowStation) {
+    if (!map) return;
+    fitted = true;
+    map.getView().animate({ center: fromLonLat([station.lon, station.lat]), zoom: Math.max(map.getView().getZoom() || 8, 11), duration: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 250 });
+  }
   export function retry() {
     if (!asset || !variable) return;
     cancel?.();
@@ -144,11 +157,25 @@
     probe?.getExtension('WEBGL_lose_context')?.loseContext();
     base = new TileLayer({ preload: 0 });
     marker = new VectorSource();
+    stationSource = new VectorSource();
+    const stationStyles = new globalThis.Map<string, Style>();
+    stationLayer = new VectorLayer({ source: new Cluster({ distance: 32, source: stationSource }), zIndex: 40,
+      style: feature => {
+        const members = feature.get('features') as Feature[];
+        const count = members.length, automated = count === 1 && (members[0].get('station') as SnowStation).automated;
+        const key = `${count}:${automated}`;
+        if (!stationStyles.has(key)) stationStyles.set(key, new Style({
+          image: new Circle({ radius: count > 1 ? 12 : 5, fill: new Fill({ color: count > 1 || automated ? '#9b6b36' : '#fffdf7' }), stroke: new Stroke({ color: count > 1 ? '#fffdf7' : '#9b6b36', width: 1.7 }) }),
+          text: count > 1 ? new Text({ text: String(count), fill: new Fill({ color: 'white' }), font: '600 10px sans-serif' }) : undefined,
+        }));
+        return stationStyles.get(key)!;
+      },
+    });
     map = new OLMap({
       target,
       pixelRatio: displayPixelRatio(window.devicePixelRatio, [target.clientWidth, target.clientHeight], lowDetail),
       controls: defaults({ zoom: false, rotate: false, attributionOptions: { collapsible: false } }),
-      layers: [base, new VectorLayer({
+      layers: [base, stationLayer, new VectorLayer({
         source: marker, zIndex: 50,
         style: new Style({ image: new Circle({ radius: 7, fill: new Fill({ color: '#08777a' }), stroke: new Stroke({ color: 'white', width: 3 }) }) }),
       })],
@@ -156,7 +183,20 @@
       view: new View({ projection: 'EPSG:3857', maxZoom: 17 }),
     });
     map.on('change:size', () => map.setPixelRatio(displayPixelRatio(window.devicePixelRatio, map.getSize() || [1, 1], lowDetail)));
-    map.on('singleclick', e => onpick(toLonLat(e.coordinate, map.getView().getProjection())));
+    map.on('singleclick', e => {
+      const cluster = map.forEachFeatureAtPixel(e.pixel, feature => feature, { layerFilter: layer => layer === stationLayer, hitTolerance: 6 });
+      if (cluster) {
+        const members = cluster.get('features') as Feature<Point>[];
+        if (members.length === 1) { onstation(members[0].get('station')); return; }
+        const coordinates = members.map(f => f.getGeometry()!.getCoordinates());
+        const extent = [Math.min(...coordinates.map(p => p[0])), Math.min(...coordinates.map(p => p[1])), Math.max(...coordinates.map(p => p[0])), Math.max(...coordinates.map(p => p[1]))];
+        if ((map.getView().getZoom() || 0) >= 15 || Math.max(extent[2]-extent[0],extent[3]-extent[1]) < 1) onstationcluster(members.map(f => f.get('station')));
+        else map.getView().fit(extent, { padding: [70,70,170,70], maxZoom: 15, duration: 250 });
+        return;
+      }
+      onpick(toLonLat(e.coordinate, map.getView().getProjection()));
+    });
+    map.on('pointermove', e => { if (!e.dragging) target.style.cursor = map.hasFeatureAtPixel(e.pixel, { layerFilter: layer => layer === stationLayer, hitTolerance: 6 }) ? 'pointer' : ''; });
     mounted = true;
     return () => { mounted = false; cancel?.(); for (const [id, layer] of layers) disposeLayer(id, layer); map.setTarget(undefined); map.dispose(); };
   });
@@ -308,5 +348,10 @@
   $: if (mounted) {
     setBasemap(basemap);
   }
+  $: if (mounted) {
+    stationSource.clear();
+    stationSource.addFeatures(stations.map(station => new Feature({ geometry: new Point(fromLonLat([station.lon,station.lat])), station })));
+  }
+  $: if (mounted) stationLayer.setVisible(stationsVisible);
 </script>
 <div bind:this={target} class="map-canvas" aria-label="Interactive snowpack map"></div>

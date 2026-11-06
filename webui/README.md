@@ -167,6 +167,42 @@ are omitted. About does not initialize a map or fetch raster data. Legacy
 `?panel=about` links redirect to this page; `?panel=help` opens the Help popup.
 Deploy the complete `dist/` output, including `about.html` and its assets.
 
+## CanSWE observation stations
+
+![CanSWE station comparison at Bow Summit](docs/canswe-preview.png)
+
+Map layers includes a remembered **CanSWE stations** toggle (on initially), a
+name/ID search, and manual/automated marker keys. Nearby sites cluster; clicking
+a cluster zooms in, then offers a record list for co-located stations. Clicking
+a station pauses playback and samples the existing full-resolution model raster
+at its coordinates. On phones the comparison panel scrolls into view.
+
+The panel offers historical seasonal context (median and 25–75% range), dated
+observations by snow season, original observation CSV downloads with quality
+flags, and shareable station links. SWE and snow depth follow the selected map
+variable; temperature explicitly has no CanSWE comparison. Snow-depth absence
+is never converted to zero. The existing Model CSV remains a separate download.
+
+This is the public **CanSWE v8 archive through July 2025**, not a current-season
+feed. Seasonal context uses all available station years and independent
+half-month bins, with one contribution per year. Ranges require ten years;
+shorter records show individual year medians. Reference periods, sample counts,
+flags, and terrain-representativeness limitations are visible in the panel.
+See [snapshot provenance and processing](data/README.md) for the precise method.
+
+The committed 6.3 MB bundle includes 750 western-Canada stations. `npm run dev`
+and `npm run build` automatically extract the static assets using Python's
+standard library. Builds require no CanSWE network access or netCDF4 install.
+Only the station index loads initially; each compressed history is fetched on
+selection and cached (up to eight stations). Model rendering never waits for
+observations, and no model reads occur for unselected station markers.
+
+Deploy the entire `dist/observations/canswe/` directory with the rest of `dist/`.
+No new service, COG rebuild, or PNG tile generation is required. Serve
+`observations/canswe/index.json` with revalidation/short caching; versioned
+station history filenames can be cached immutably. Station `.json.gz` files
+work either as ordinary gzip files or with `Content-Encoding: gzip`.
+
 ## Original TIFF downloads
 
 ![Original TIFF download page, with a one-day archive filter](docs/tiff-downloads-preview.png)

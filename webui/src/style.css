@@ -18,6 +18,10 @@
 
 .diagnostic-report{width:100%;height:280px;resize:vertical;font:12px/1.5 monospace;padding:12px;border:1px solid var(--border);border-radius:6px;background:#f6f9f8;color:#344348}.diagnostic-actions{display:flex;gap:10px;margin:12px 0 20px}.diagnostic-actions button{font-size:12px;padding:9px 12px}.diagnostic-links{padding-left:18px;font-size:12px;line-height:1.65}.diagnostic-links li+li{margin-top:10px}
 
-.basemap-picker{position:absolute;right:48px;top:100px;width:235px;padding:11px 12px;z-index:60}.basemap-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;font-size:12px;font-weight:650}.basemap-heading .icon-button{height:24px;width:24px}.basemap-picker select{width:100%;font-size:12px}.basemap-picker p{font-size:11px;line-height:1.5;margin:10px 0 0;color:#647278}@media(max-width:760px){.basemap-picker{right:42px;top:90px;width:220px}}
+.basemap-picker{position:absolute;right:48px;top:100px;width:285px;max-height:calc(100dvh - 245px);overflow:auto;padding:14px;z-index:60}.basemap-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;font-size:12px;font-weight:650}.basemap-heading .icon-button{height:24px;width:24px}.basemap-picker select{width:100%;font-size:12px}.basemap-picker p{font-size:11px;line-height:1.5;margin:10px 0 0;color:#647278}@media(max-width:760px){.basemap-picker{right:42px;top:0;width:min(275px,calc(100vw - 80px));max-height:calc(66dvh - 120px)}}
 
 @media(max-width:420px){.app-header{padding:0 10px;gap:6px}.brand{font-size:21px;gap:6px}.brand svg{width:26px}.app-header nav a,.app-header nav button{padding:7px 8px}}
+
+.basemap-label{display:block;font-size:10px;color:#647a77;margin:10px 0 6px}.inspector-heading h1{overflow-wrap:anywhere}
+
+.station-selected .value-section{margin-top:16px;padding-top:16px;margin-bottom:18px}.station-selected .large-value{font-size:44px;min-height:52px}.station-selected .large-value>span{font-size:20px}.station-selected .selected-time{font-size:11px}

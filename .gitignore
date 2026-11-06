@@ -69,6 +69,7 @@ sc_2tiff.o*
 webui/node_modules/
 webui/dist/
 webui/public/demo/
+webui/public/observations/canswe/
 webui/.openai/
 webui/.vite/
 www/v3/
