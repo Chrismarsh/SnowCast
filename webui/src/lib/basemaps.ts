@@ -21,6 +21,7 @@ export const basemaps = {
 } as const;
 
 export type BasemapId = keyof typeof basemaps;
+export const DEFAULT_BASEMAP: BasemapId = 'terrain';
 export const basemapIds = Object.keys(basemaps) as BasemapId[];
 export const BASEMAP_STORAGE_KEY = 'snowcast-basemap';
 export function isBasemap(value: string | null | undefined): value is BasemapId {
@@ -28,6 +29,6 @@ export function isBasemap(value: string | null | undefined): value is BasemapId 
 }
 export function initialBasemap(requested: string | null, saved: string | null): BasemapId {
   if (isBasemap(requested)) return requested;
-  if (requested === 'auto') return 'osm';
-  return isBasemap(saved) ? saved : 'osm';
+  if (requested === 'auto') return DEFAULT_BASEMAP;
+  return isBasemap(saved) ? saved : DEFAULT_BASEMAP;
 }

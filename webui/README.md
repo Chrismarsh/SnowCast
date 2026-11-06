@@ -132,11 +132,11 @@ https://www.snowcast.ca/v3/?catalog=https%3A%2F%2Fdata.example%2Fsnowcast-data%2
 
 Asset URLs inside the catalogue are resolved relative to the catalogue itself.
 Use the trailing slash on `/v3/` (or configure the web server's directory redirect).
-OpenStreetMap is the default basemap. The layers button opens a picker for
+Esri topographic is the default basemap. The layers button opens a picker for
 OpenStreetMap, Esri topographic, Esri satellite, or None (model data only).
 The choice is saved in this browser and in the page URL; an explicit
 `?basemap=osm`, `terrain`, `satellite`, or `none` takes precedence over the saved
-choice. `?basemap=auto` resets to OpenStreetMap. Switching basemaps does not
+choice. `?basemap=auto` resets to Esri topographic. Switching basemaps does not
 reload the COG layer, reset the date, or clear the selected point.
 
 The OpenStreetMap source uses the official HTTPS tile endpoint, visible linked
@@ -148,6 +148,24 @@ None removes the basemap source so it schedules no new basemap requests.
 Font loading uses Google Fonts with system-font fallbacks; it is independent
 of data access. A different basemap provider may improve a particular network
 path, but is not a measured guarantee of faster loading on every device.
+
+## Help and About
+
+[Help preview](docs/help-preview.png) · [About preview](docs/about-preview.png)
+
+The **Help** button opens a popup on the map, Data and About pages. Its SWE and
+snow-depth definitions come from the v2 website (`website/index.html`); air
+temperature and v3-specific date, colour and point-value instructions complete
+the guide. Opening Help on the map pauses playback without changing the view,
+selected variable, date or point. Loading diagnostics remain accessible there.
+
+**About** is a separate `about.html` build entry. It reuses the v2 CHM description,
+ECCC–University of Saskatchewan collaboration credits, research caveat, mesh
+figure and publication list. The Windmapper DOI is corrected to
+`10.1029/2022WR032683`; old v2 domain extents and forecast-only UI instructions
+are omitted. About does not initialize a map or fetch raster data. Legacy
+`?panel=about` links redirect to this page; `?panel=help` opens the Help popup.
+Deploy the complete `dist/` output, including `about.html` and its assets.
 
 ## Original TIFF downloads
 

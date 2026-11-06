@@ -21,7 +21,7 @@
   import type { Asset, Variable } from '../lib/types';
   import { ensureProjection } from '../lib/raster';
   import { colorPixel, rasterColor, snowColors, temperatureColors } from '../lib/data';
-  import { basemaps, type BasemapId } from '../lib/basemaps';
+  import { basemaps, DEFAULT_BASEMAP, type BasemapId } from '../lib/basemaps';
   import { watchFrameLoad } from '../lib/frameLoad';
   import { displayPixelRatio, TileProgress } from '../lib/mapPerformance';
   import { ProjectedRaster } from '../lib/projectedRaster';
@@ -33,7 +33,7 @@
   export let opacity = 0.7;
   export let point: number[] | null = null;
   export let bounds = [-132, 46.4, -109.8, 56];
-  export let basemap: BasemapId = 'osm';
+  export let basemap: BasemapId = DEFAULT_BASEMAP;
   export let onpick: (point: number[]) => void;
   export let onready: (id: string) => void;
   export let onerror: (error: string) => void;

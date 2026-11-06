@@ -4,6 +4,7 @@
   import Icon from './components/Icon.svelte';
   import AreaPicker from './components/AreaPicker.svelte';
   import Trend from './components/Trend.svelte';
+  import HelpDialog from './components/HelpDialog.svelte';
   import type { Asset, Catalogue, PointValue, Variable } from './lib/types';
   import { dateLabel, timeLabel, formatValue, normalizeCatalogue, seriesCSV, snowColors, temperatureColors } from './lib/data';
   import { sampleSeries } from './lib/raster';
@@ -39,7 +40,8 @@
   let loop = true;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let dialog: HTMLDialogElement;
-  let dialogMode: 'about' | 'data' | 'diagnostics' = 'about';
+  let help: HelpDialog;
+  let dialogMode: 'data' | 'diagnostics' = 'data';
   let diagnosticText = '';
   let diagnosticRenderer = '';
   let copiedDiagnostics = false;
@@ -117,9 +119,14 @@
   }
 
   onMount(() => {
+    if (params.get('panel') === 'about') {
+      window.location.replace(new URL('./about.html', document.baseURI));
+      return;
+    }
     load();
     if (params.get('panel') === 'data') showDialog('data');
-    if (params.get('panel') === 'about') showDialog('about');
+    if (params.get('panel') === 'help') help.open();
+    if (params.get('panel') === 'diagnostics') openDiagnostics();
     const hide = () => { if (document.hidden) stop(); };
     document.addEventListener('visibilitychange', hide);
     return () => { stop(); pointController?.abort(); document.removeEventListener('visibilitychange', hide); };
@@ -204,7 +211,7 @@
 <header class="app-header">
   <a class="brand" href={window.location.pathname + window.location.search} aria-label="SnowCast home"><svg width="40" height="29" viewBox="0 0 48 32" aria-hidden="true"><path d="M2 27 16 10l9 11M20 16 30 4l16 23" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span>SnowCast</span></a>
   <span class="brand-caption">Snowpack explorer</span>
-  <nav aria-label="Main navigation"><button class="active" onclick={() => dialog?.close()}>Explore</button><a href="./downloads.html">Data</a><button onclick={() => showDialog('about')}>About</button></nav>
+  <nav aria-label="Main navigation"><button class="active nav-explore" aria-current="page" onclick={() => dialog?.close()}>Explore</button><a href="./downloads.html">Data</a><a href="./about.html">About</a><button onclick={() => help.open()}>Help</button></nav>
   <span class:sample={catalogue?.sample_data} class="status-pill"><span class="status-dot"></span>{catalogue?.sample_data ? 'Demo · Synthetic data' : 'Daily simulations'}</span>
 </header>
 
@@ -248,7 +255,7 @@
   </aside>
 </main>
 
-<dialog bind:this={dialog} class="dialog"><div class="dialog-heading"><h2>{dialogMode === 'data' ? 'Simulation data' : dialogMode === 'diagnostics' ? 'Map diagnostics' : 'About SnowCast'}</h2><button class="icon-button" aria-label="Close dialog" onclick={() => dialog.close()}><Icon name="close"/></button></div>
+<dialog bind:this={dialog} class="dialog"><div class="dialog-heading"><h2>{dialogMode === 'data' ? 'Simulation data' : 'Map diagnostics'}</h2><button class="icon-button" aria-label="Close dialog" onclick={() => dialog.close()}><Icon name="close"/></button></div>
   {#if dialogMode === 'diagnostics'}
     <p>Tile counts distinguish pending work from errors. Settled tiles can include cancelled requests. Take a snapshot while the map is stuck.</p>
     <textarea class="diagnostic-report" aria-label="Map diagnostic report" readonly value={diagnosticText}></textarea>
@@ -259,6 +266,8 @@
       <li><a href={diagnosticURL('renderer', diagnosticRenderer === 'Canvas' ? 'auto' : 'canvas')}>{diagnosticRenderer === 'Canvas' ? 'Restore automatic renderer' : 'Try compatibility rendering'}</a> — remembers the choice in this browser. Automatic mode can recover with Canvas.</li>
       <li><a href={diagnosticURL('basemap', basemap === 'none' ? 'auto' : 'none')}>{basemap === 'none' ? 'Restore basemap' : 'Try without the basemap'}</a> — isolates the snow data layer.</li>
     </ul>
-  {:else if dialogMode === 'data'}<p>Daily, gridded output from the Canadian Hydrological Model. Values are sampled at full raster resolution; map colours use overviews for efficient display.</p><p><a href="./downloads.html">Browse original TIFF downloads and the full archive →</a></p><div class="data-list">{#each variables as v}<div><strong>{v.title}</strong><span>{v.unit} · {v.assets.length} timestamps</span><a href={v.assets.at(-1)?.href} download>Latest map COG <Icon name="download" size={16}/></a></div>{/each}</div><a class="catalogue-link" href={catalogueURL} target="_blank" rel="noreferrer">Open map data catalogue ↗</a><p class="subtle small">The viewer uses the latest available timestamp in each UTC day. A missing day is shown as a gap.</p>
-  {:else}<button class="text-button" onclick={openDiagnostics}>Map diagnostics / slow loading</button><p>SnowCast uses meteorological forcing to drive the Canadian Hydrological Model (CHM), representing snowpack evolution over complex mountain terrain.</p><p>This viewer shows regridded simulation values, not observations or exact values from the original model triangles.</p><p>SnowCast is experimental. See the project for model details and limitations.</p><a class="catalogue-link" href="https://github.com/Chrismarsh/SnowCast" target="_blank" rel="noreferrer">SnowCast on GitHub ↗</a>{/if}
+  {:else}<p>Daily, gridded output from the Canadian Hydrological Model. Values are sampled at full raster resolution; map colours use overviews for efficient display.</p><p><a href="./downloads.html">Browse original TIFF downloads and the full archive →</a></p><div class="data-list">{#each variables as v}<div><strong>{v.title}</strong><span>{v.unit} · {v.assets.length} timestamps</span><a href={v.assets.at(-1)?.href} download>Latest map COG <Icon name="download" size={16}/></a></div>{/each}</div><a class="catalogue-link" href={catalogueURL} target="_blank" rel="noreferrer">Open map data catalogue ↗</a><p class="subtle small">The viewer uses the latest available timestamp in each UTC day. A missing day is shown as a gap.</p>
+  {/if}
 </dialog>
+
+<HelpDialog bind:this={help} onopen={stop} ondiagnostics={openDiagnostics}/>
