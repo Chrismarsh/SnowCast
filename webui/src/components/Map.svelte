@@ -195,10 +195,11 @@
         const loader = new RasterRequests(controller.signal, requestPool);
         const errors = new TileFailures();
         http.set(next.id, loader); failures.set(next.id, errors);
-        const cog = new GeoTIFF({ normalize: false, interpolate: false, transition: 0, projection: next.projection, sources: [{ ...(next.blob ? { blob: next.blob } : {
+        const cog = new GeoTIFF({ normalize: false, interpolate: false, transition: 0, projection: next.projection, sources: [{
           url: next.href,
           loader: (url, headers, signal) => loader.load(url, headers, signal),
-        }), bands: [1], nodata: next.nodata === 'NaN' || next.nodata == null ? NaN : next.nodata }], sourceOptions: rasterSourceOptions });
+          bands: [1], nodata: next.nodata === 'NaN' || next.nodata == null ? NaN : next.nodata,
+        }], sourceOptions: rasterSourceOptions });
         const counter = new TileProgress();
         progress.set(next.id, counter);
         cog.on('tileloadstart', e => { counter.start(e.tile); errors.start(e.tile); });

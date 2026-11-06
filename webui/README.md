@@ -1,8 +1,8 @@
 # SnowCast explorer (v3)
 
 A static Svelte/TypeScript + OpenLayers viewer for numeric Cloud Optimized
-GeoTIFFs. It provides daily playback, a full-resolution point history, COG URL
-and local-file import, point CSV downloads, shareable links, and a responsive
+GeoTIFFs from the published model catalogue. It provides daily playback,
+a full-resolution point history, point CSV downloads, shareable links, and a responsive
 map/inspector layout. There is no application server, database, S3 dependency,
 or connection from the public browser to the model's compute environment.
 
@@ -235,7 +235,7 @@ alone; an old file can still be referenced. No original TIFF is deleted.
 
 ## Areas of interest
 
-The **Explore areas** dropdown offers the full current model/raster extent and
+The **Explore areas** dropdown offers the full current model extent and
 nine Canadian Rockies research sites listed by
 [GWFO](https://gwfo.ca/instrumented-sites.php): Marmot Creek, Fortress Mountain,
 Burstall Creek, Sibbald Wetlands, Lake O’Hara, Bow River Headwaters (Bow Hut),
@@ -244,7 +244,7 @@ Helen Creek, Peyto Glacier, and Athabasca Glacier.
 `src/lib/areas.ts` records each site's published centre and source URL. The
 4–8 km viewing radii are navigation windows, not watershed boundaries. Choosing
 a site pauses playback and changes only the viewport; variable, date and sampled
-point are preserved. Sites outside the current catalogue/imported raster bounding
+point are preserved. Sites outside the current catalogue bounding
 box are hidden. Being inside that box does not guarantee non-nodata coverage.
 These shortcuts display SnowCast model output, not GWFO observations.
 
@@ -309,11 +309,10 @@ cover site navigation, full-domain reset, date/point preservation, and dismissal
   Other devices keep their own preference. A failure in both modes is reported.
   An identified HTTP failure is reported directly rather than retried with a
   different renderer.
-- COG import supports single-band numeric data with EPSG:4326, EPSG:3857, and
-  standard WGS84 UTM definitions. Other EPSG projections work through a
-  catalogue containing `proj4`. Multiple imported filenames require timestamps.
-  The latest ten daily dates are shown; imported layers are session-local.
-- Local files need no server; a remote URL requires range support and CORS.
+- The viewer loads rasters from the published catalogue; there is no local-file
+  or individual COG URL import workflow. Published rasters support EPSG:4326,
+  EPSG:3857, standard WGS84 UTM, and other projections defined by `proj4` in the
+  catalogue. Remote raster hosting requires range support and CORS.
 - Share links preserve variable, selected date, and point. The exact history
   can expire when it leaves the rolling catalogue; download CSV for a snapshot.
 - Error states never silently substitute synthetic data.
@@ -339,7 +338,7 @@ against Rasterio/GDAL samples from your actual rasters, including outside-domain
 and nodata cells. Test the actual host with desktop and mobile browsers. Synthetic
 fixtures validate functionality, not performance with full-size production data.
 The initial browser QA exercised the Canvas fallback (the test browser had no
-WebGL), daily playback, point histories, local TIFF and HTTP COG import, CSV
+WebGL), daily playback, point histories, CSV
 export, share links, and the missing-catalogue state. The ten demo point values
 were independently compared with Rasterio. GPU rendering and mobile devices
 still need verification on the deployment host.
@@ -387,8 +386,8 @@ The dialog offers reversible comparisons (each reloads the page):
 - `?basemap=none`: remove the basemap to isolate COG loading/rendering. This is
   also available as None in the basemap picker, without reloading the page.
 
-Parameters can be combined; the same links restore automatic behavior. Local
-imports must be reopened after a reload. Compare one change at a time, and
+Parameters can be combined; the same links restore automatic behavior.
+Compare one change at a time, and
 compare phone/laptop on the same Wi-Fi without a VPN before attributing a
 difference to graphics or the host. The affected laptop loaded successfully
 with the earlier native-grid Canvas path, but failed in WebGL with no basemap

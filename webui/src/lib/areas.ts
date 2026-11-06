@@ -23,7 +23,7 @@ export const areas: Area[] = [
   { id: 'athabasca', name: 'Athabasca Glacier', region: 'Columbia Icefield', center: [-117.25, 52.19], radiusKm: 8, source: 'https://gwfo.ca/sites/crho/athabasca-glacier.php' },
 ];
 
-/** Hide shortcuts outside the current catalogue or imported raster extent.
+/** Hide shortcuts outside the current catalogue extent.
  * An extent is only a bounding box: nodata inside it is still possible.
  */
 export function areasWithin(bounds?: number[]): Area[] {

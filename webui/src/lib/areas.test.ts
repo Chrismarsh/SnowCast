@@ -6,7 +6,7 @@ it('offers the Rockies sites for the published western Canadian domain', () => {
   expect(areasWithin([-115.3, 50.8, -115.1, 51]).map(area => area.id)).toEqual(['marmot', 'fortress']);
 });
 
-it('does not send users to sites outside an imported raster or an unknown domain', () => {
+it('does not send users to sites outside the catalogue bounds or an unknown domain', () => {
   expect(areasWithin([-106.8, 52, -106.5, 52.3])).toEqual([]);
   expect(areasWithin()).toEqual([]);
   expect(areasWithin([NaN, 50, -114, 53])).toEqual([]);

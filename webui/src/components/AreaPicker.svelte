@@ -3,7 +3,6 @@
   import { areasWithin, type Area } from '../lib/areas';
 
   export let bounds: number[] | undefined;
-  export let imported = false;
   export let onchoose: (area: Area | null) => void;
   let open = false;
   let root: HTMLDivElement;
@@ -39,14 +38,14 @@
   {#if open}
     <div class="area-panel surface" id="area-options" role="region" aria-label="Areas of interest">
       <button class="whole-domain" disabled={!bounds} onclick={() => choose(null)}>
-        <Icon name="target" size={18}/><span>{imported ? 'Full raster extent' : 'Full model domain'}<small>Zoom out to the complete coverage</small></span>
+        <Icon name="target" size={18}/><span>Full model domain<small>Zoom out to the complete coverage</small></span>
       </button>
       <div class="group-heading" id="gwfo-heading">GWFO · Canadian Rockies</div>
       <ul aria-labelledby="gwfo-heading">
         {#each available as area}
           <li><button onclick={() => choose(area)}><span>{area.name}<small>{area.region}</small></span><Icon name="arrow" size={16}/></button></li>
         {:else}
-          <li class="empty">{bounds ? 'No listed sites within this raster’s extent.' : 'Load a model catalogue or add a COG to explore sites.'}</li>
+          <li class="empty">{bounds ? 'No listed sites within this model domain.' : 'Areas will be available when the model catalogue loads.'}</li>
         {/each}
       </ul>
       <div class="area-footer"><p>Explore model snowpack around research sites.</p><a href="https://gwfo.ca/instrumented-sites.php" target="_blank" rel="noreferrer">About the GWFO sites <Icon name="external" size={12}/></a></div>
