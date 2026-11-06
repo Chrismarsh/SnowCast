@@ -233,6 +233,25 @@ from when they became unreferenced**, allowing old browser sessions to finish.
 Keep long-term scientific archives separately. Do not prune by file creation age
 alone; an old file can still be referenced. No original TIFF is deleted.
 
+## Areas of interest
+
+The **Explore areas** dropdown offers the full current model/raster extent and
+nine Canadian Rockies research sites listed by
+[GWFO](https://gwfo.ca/instrumented-sites.php): Marmot Creek, Fortress Mountain,
+Burstall Creek, Sibbald Wetlands, Lake O’Hara, Bow River Headwaters (Bow Hut),
+Helen Creek, Peyto Glacier, and Athabasca Glacier.
+
+`src/lib/areas.ts` records each site's published centre and source URL. The
+4–8 km viewing radii are navigation windows, not watershed boundaries. Choosing
+a site pauses playback and changes only the viewport; variable, date and sampled
+point are preserved. Sites outside the current catalogue/imported raster bounding
+box are hidden. Being inside that box does not guarantee non-nodata coverage.
+These shortcuts display SnowCast model output, not GWFO observations.
+
+[Dropdown preview](docs/area-picker-preview.png), captured with the local
+single-frame SWE validation catalogue. Desktop and 390 px phone-layout checks
+cover site navigation, full-domain reset, date/point preservation, and dismissal.
+
 ## Data semantics and limitations
 
 - SWE is in mm, snow depth in m, temperature in °C, following existing SnowCast

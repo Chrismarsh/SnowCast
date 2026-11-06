@@ -2,11 +2,13 @@
   import { onMount, tick } from 'svelte';
   import Map from './components/Map.svelte';
   import Icon from './components/Icon.svelte';
+  import AreaPicker from './components/AreaPicker.svelte';
   import Trend from './components/Trend.svelte';
   import type { Asset, Catalogue, PointValue, Variable } from './lib/types';
   import { dateLabel, timeLabel, formatValue, normalizeCatalogue, seriesCSV, sessionId, snowColors, temperatureColors } from './lib/data';
   import { inspectCOG, sampleSeries } from './lib/raster';
   import { basemaps, basemapIds, BASEMAP_STORAGE_KEY, initialBasemap, isBasemap } from './lib/basemaps';
+  import { areaBounds, type Area } from './lib/areas';
 
   const params = new URLSearchParams(window.location.search);
   const initial = new URLSearchParams(window.location.hash.slice(1));
@@ -86,6 +88,8 @@
   $: variable = variables.find(v => v.id === variableId) || variables[0];
   $: dates = dailyDates(variable, catalogue?.window_days || 10);
   $: selected = dates[requestedIndex]?.asset;
+  $: imported = custom.some(v => v.id === variableId);
+  $: domainBounds = imported && selected ? selected.bounds : catalogue?.bounds;
   $: displayed = dates.find(d => d.asset?.id === displayId)?.asset;
   $: colors = variable?.palette === 'temperature' ? temperatureColors : snowColors;
   $: currentValue = series.find(p => p.time === displayed?.datetime)?.value;
@@ -166,6 +170,11 @@
     if (next >= 0 && next < dates.length) select(next);
   }
   function stop() { playing = false; if (timer) clearTimeout(timer); }
+  function chooseArea(area: Area | null) {
+    stop();
+    basemapOpen = false;
+    map?.fit(400, area ? areaBounds(area) : domainBounds);
+  }
   function togglePlayback() {
     if (playing) return stop();
     if (requestedIndex >= dates.length - 1) select(dates.findIndex(d => d.asset), false);
@@ -245,9 +254,9 @@
 
 <main class="workspace">
   <section class="map-workspace" aria-label="Map and playback">
-    <Map bind:this={map} asset={selected} {variable} {opacity} {point} {basemap} bounds={custom.some(v => v.id === variableId) && selected ? selected.bounds : catalogue?.bounds || [-116.65, 50.66, -114.77, 51.79]} onpick={pick} onready={ready} onerror={failed} onslow={id => slowFrameId = id}/>
+    <Map bind:this={map} asset={selected} {variable} {opacity} {point} {basemap} bounds={domainBounds || [-132, 46.4, -109.8, 56]} onpick={pick} onready={ready} onerror={failed} onslow={id => slowFrameId = id}/>
     <div class="map-toolbar">
-      <button class="surface domain" onclick={() => map?.fit()}><Icon name="pin" size={17}/>{catalogue?.title || 'Upper Bow River'}<Icon name="chevron" size={15}/></button>
+      <AreaPicker bounds={domainBounds} {imported} onchoose={chooseArea}/>
       <div class="variable-tabs surface" role="group" aria-label="Map variable">{#each variables.filter(v => !v.id.startsWith('custom-')) as v}<button class:active={variableId === v.id} onclick={() => chooseVariable(v.id)}>{v.label}</button>{/each}</div>
       {#if custom.length}<select aria-label="Imported layers" class="surface custom-select" value={variableId.startsWith('custom-') ? variableId : ''} onchange={e => e.currentTarget.value && chooseVariable(e.currentTarget.value)}><option value="">Imported layers</option>{#each custom as v}<option value={v.id}>{v.label}</option>{/each}</select>{/if}
     </div>

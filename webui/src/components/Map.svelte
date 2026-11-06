@@ -32,7 +32,7 @@
   export let variable: Variable | undefined;
   export let opacity = 0.7;
   export let point: number[] | null = null;
-  export let bounds = [-116.65, 50.66, -114.77, 51.79];
+  export let bounds = [-132, 46.4, -109.8, 56];
   export let basemap: BasemapId = 'osm';
   export let onpick: (point: number[]) => void;
   export let onready: (id: string) => void;
@@ -65,7 +65,17 @@
   const failures = new globalThis.Map<string, TileFailures>();
   const requestPool = new RequestPool();
 
-  export function fit(duration = 400) { if (map) map.getView().fit(transformExtent(bounds, 'EPSG:4326', map.getView().getProjection()), { padding: [65, 30, 165, 30], duration }); }
+  export function fit(duration = 400, targetBounds = bounds) {
+    if (!map) return;
+    const view = map.getView();
+    view.cancelAnimations();
+    // Keep a user's chosen area if they navigate before the first COG is ready.
+    fitted = true;
+    view.fit(transformExtent(targetBounds, 'EPSG:4326', view.getProjection()), {
+      padding: targetBounds === bounds ? [65, 30, 165, 30] : [110, 40, 180, 40],
+      duration: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : duration,
+    });
+  }
   export function zoom(delta: number) { if (map) map.getView().animate({ zoom: (map.getView().getZoom() || 8) + delta, duration: 200 }); }
   export function retry() {
     if (!asset || !variable) return;

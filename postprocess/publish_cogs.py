@@ -182,7 +182,7 @@ def publish(inputs: list[Path], output: Path, days: int = 10, run_id: str | None
                 variables.append({"id": variable, **settings, "assets": retained})
         all_bounds = [a["bounds"] for v in variables for a in v["assets"]]
         catalogue = {
-            "version": 1, "title": "Upper Bow River", "generated_at": iso(now),
+            "version": 1, "title": "SnowCast model domain", "generated_at": iso(now),
             "latest_time": iso(latest), "window_days": days, "sample_data": False,
             "bounds": [min(b[0] for b in all_bounds), min(b[1] for b in all_bounds),
                        max(b[2] for b in all_bounds), max(b[3] for b in all_bounds)],
