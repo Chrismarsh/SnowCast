@@ -23,6 +23,8 @@
   import { basemaps, type BasemapId } from '../lib/basemaps';
   import { watchFrameLoad } from '../lib/frameLoad';
   import { displayPixelRatio, TileProgress } from '../lib/mapPerformance';
+  import { ProjectedRaster } from '../lib/projectedRaster';
+  import { initialRenderer, isRendererPreference, RendererSelection, RENDERER_STORAGE_KEY, type RendererPreference } from '../lib/renderer';
   import 'ol/ol.css';
   export let asset: Asset | undefined;
   export let variable: Variable | undefined;
@@ -39,10 +41,12 @@
   let mounted = false;
   let marker: VectorSource;
   let base: TileLayer<XYZ>;
-  type RasterLayer = WebGLTile | ImageLayer<RasterSource>;
+  type RasterLayer = WebGLTile | ImageLayer<ProjectedRaster>;
   let active: RasterLayer | undefined;
   let activeVariable = '';
   let useWebGL = true;
+  let rendering: RendererSelection;
+  let webglFailure: Record<string, unknown> | undefined;
   let requested = '';
   let cancel: (() => void) | undefined;
   let fitted = false;
@@ -70,13 +74,15 @@
     // Deliberately omit URLs, signed query strings, coordinates and GPU identifiers.
     return {
       renderer: useWebGL ? 'WebGL' : 'Canvas', detail: lowDetail ? 'low' : 'automatic',
+      rendererPreference: rendering?.preference, fallbackReason: rendering?.fallbackReason,
       viewport: map?.getSize(), devicePixelRatio: window.devicePixelRatio, mapPixelRatio: map?.getPixelRatio(),
       projection: map?.getView().getProjection().getCode(), rasterProjection: source?.getProjection()?.getCode(),
       sourceState: source?.getState() || 'not requested',
-      rasterRenderComplete: layer instanceof WebGLTile ? layer.getRenderer()?.renderComplete : !!layer?.get('frameReady'),
+      rasterRenderComplete: layer instanceof WebGLTile ? layer.getRenderer()?.renderComplete : !!layer?.getSource()?.frameReady,
       rasterTiles: progress.get(requested)?.snapshot(),
       basemap, basemapTiles: baseProgress.snapshot(),
       cachedFrames: layers.size,
+      ...(webglFailure ? { previousWebGLFailure: webglFailure } : {}),
     };
   }
 
@@ -100,8 +106,14 @@
   }
 
   onMount(() => {
-    const probe = document.createElement('canvas').getContext('webgl2');
-    useWebGL = !!probe && options.get('renderer') !== 'canvas';
+    let savedRenderer: string | null = null;
+    try { savedRenderer = localStorage.getItem(RENDERER_STORAGE_KEY); } catch { /* Session-only mode. */ }
+    const requestedRenderer = options.get('renderer');
+    const preference = initialRenderer(requestedRenderer, savedRenderer);
+    if (isRendererPreference(requestedRenderer)) rememberRenderer(requestedRenderer);
+    const probe = preference === 'canvas' ? null : document.createElement('canvas').getContext('webgl2');
+    rendering = new RendererSelection(preference, !!probe, rememberRenderer);
+    useWebGL = rendering.mode === 'webgl';
     probe?.getExtension('WEBGL_lose_context')?.loseContext();
     base = new TileLayer({ preload: 0 });
     marker = new VectorSource();
@@ -114,13 +126,17 @@
         style: new Style({ image: new Circle({ radius: 7, fill: new Fill({ color: '#08777a' }), stroke: new Stroke({ color: 'white', width: 3 }) }) }),
       })],
       // No tile requests until the first asset supplies the actual domain bounds.
-      view: new View({ maxZoom: 17 }),
+      view: new View({ projection: 'EPSG:3857', maxZoom: 17 }),
     });
     map.on('change:size', () => map.setPixelRatio(displayPixelRatio(window.devicePixelRatio, map.getSize() || [1, 1], lowDetail)));
     map.on('singleclick', e => onpick(toLonLat(e.coordinate, map.getView().getProjection())));
     mounted = true;
-    return () => { cancel?.(); for (const [id, layer] of layers) disposeLayer(id, layer); map.setTarget(undefined); map.dispose(); };
+    return () => { mounted = false; cancel?.(); for (const [id, layer] of layers) disposeLayer(id, layer); map.setTarget(undefined); map.dispose(); };
   });
+
+  function rememberRenderer(preference: RendererPreference) {
+    try { localStorage.setItem(RENDERER_STORAGE_KEY, preference); } catch { /* Session-only mode. */ }
+  }
 
   function disposeLayer(id: string, layer: RasterLayer) {
     requests.get(id)?.abort(); requests.delete(id); progress.delete(id);
@@ -142,12 +158,7 @@
     try {
       ensureProjection(next.projection, next.proj4);
       if (active && activeVariable !== v.id) { active.setVisible(false); active = undefined; }
-      // Canvas fallback keeps data tiles in their native projection; basemap
-      // image tiles are reprojected by OpenLayers' Canvas renderer instead.
-      if (!useWebGL && map.getView().getProjection().getCode() !== next.projection) {
-        map.setView(new View({ projection: next.projection }));
-        fitted = false;
-      }
+      // Keep the v2 Web Mercator view in both rendering modes.
       if (!fitted) { fit(0); updateMarker(); fitted = true; }
       let layer = layers.get(next.id);
       if (!layer) {
@@ -171,32 +182,37 @@
             colors: colors.map(c => [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)]),
             min: v.range[0], max: v.range[1], scale: next.scale, offset: next.offset, nodata: next.nodata,
           }));
-          layer = new ImageLayer({ source: raster, opacity: 0.01, zIndex: 10 });
-          const canvasLayer = layer;
-          raster.on('beforeoperations', () => canvasLayer.set('frameReady', false));
-          raster.on('afteroperations', () => { canvasLayer.set('frameReady', true); map.render(); });
+          layer = new ImageLayer({ source: new ProjectedRaster(raster, next.projection), opacity: 0.01, zIndex: 10 });
         }
         layers.set(next.id, layer);
         map.addLayer(layer);
       }
       const nextLayer = layer;
-      if (!useWebGL) { nextLayer.set('frameReady', false); nextLayer.getSource()?.changed(); }
       nextLayer.setVisible(true);
       nextLayer.setOpacity(0.01); // OL rounds opacity to two decimals; zero skips loading.
       let finished = false;
       const source = sources.get(next.id)!;
       const cleanup = () => { watchdog.cancel(); unByKey(readyKey); unByKey(errorKey); unByKey(stateKey); unByKey(progressKey); };
-      const fail = (message: string) => {
+      const fail = (message: string, allowRecovery = false) => {
         if (finished) return;
         finished = true; cleanup();
         lastFailure = { ...snapshotDiagnostics(), capturedAtFailure: message };
+        if (allowRecovery && rendering.recover(message)) {
+          webglFailure = lastFailure;
+          // Release every GPU frame and abort outstanding range reads before
+          // loading this same frame with Canvas. The view and point stay put.
+          for (const [id, cached] of [...layers]) disposeLayer(id, cached);
+          active = undefined; activeVariable = ''; useWebGL = false;
+          queueMicrotask(() => { if (mounted && requested === next.id) show(next, v); });
+          return;
+        }
         nextLayer.setVisible(nextLayer === active);
         if (nextLayer === active) nextLayer.setOpacity(opacity);
         // A failed source must not poison future retries.
         if (nextLayer !== active) disposeLayer(next.id, nextLayer);
         onerror(message);
       };
-      const errorKey = source.on('tileloaderror', () => fail('Could not load this raster. Check its URL, CORS and HTTP range support.'));
+      const errorKey = source.on('tileloaderror', () => fail('A raster tile failed while downloading, decoding or rendering. Retry or use Map diagnostics.', true));
       const stateKey = source.on('change', () => {
         if (source.getState() === 'error') fail('The COG could not be opened. Check its projection, format and hosting.');
         else if (source.getState() === 'ready') watchdog.progress();
@@ -211,7 +227,7 @@
         if (inView) {
           if (nextLayer instanceof WebGLTile) {
             if (!nextLayer.getRenderer()?.renderComplete) return;
-          } else if (!nextLayer.get('frameReady')) return;
+          } else if (!nextLayer.getSource()?.frameReady) return;
         }
         finished = true; cleanup();
         for (const cached of layers.values()) cached.setVisible(cached === nextLayer);
@@ -220,11 +236,12 @@
           const entry = [...layers.entries()].find(([key]) => key !== next.id)!;
           disposeLayer(entry[0], entry[1]);
         }
+        if (inView) rendering.frameReady();
         onready(next.id);
       });
       const watchdog = watchFrameLoad(
         () => onslow(next.id),
-        () => fail('No raster loading progress for 90 seconds. Check your connection or retry.'),
+        () => fail('No raster loading progress for 90 seconds. Check your connection or retry.', true),
       );
       cancel = () => {
         if (finished) return;

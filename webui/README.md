@@ -209,9 +209,15 @@ alone; an old file can still be referenced. No original TIFF is deleted.
   it reports a stall only after 90 seconds without raster loading progress.
   It retains up to three raster layers; point reads run with at most three
   concurrent requests. Playback pauses in hidden tabs.
-- Browsers with WebGL use GPU raster styling. Without WebGL, a Canvas renderer
-  styles numeric tiles in a worker and uses the raster's native projection;
-  basemap tiles are reprojected to match. Both paths use the same point sampler.
+- Both renderers keep the Web Mercator map view (EPSG:3857), matching v2.
+  WebGL styles and reprojects numeric raster tiles. Canvas styles native-grid
+  values in a worker, then reprojects the resulting RGBA image using Canvas 2D;
+  it does not invoke GPU float-data reprojection. Both paths use the same
+  full-resolution point sampler and preserve transparent missing pixels.
+- Automatic rendering retries a WebGL tile failure or 90-second loading stall
+  once with Canvas, retaining the map view, selected frame, and point. It saves
+  Canvas as this browser's preference only after the retry renders successfully.
+  Other devices keep their own preference. A failure in both modes is reported.
 - COG import supports single-band numeric data with EPSG:4326, EPSG:3857, and
   standard WGS84 UTM definitions. Other EPSG projections work through a
   catalogue containing `proj4`. Multiple imported filenames require timestamps.
@@ -267,7 +273,9 @@ After deploying the rebuilt UI, open **About → Map diagnostics / slow loading*
 or **Loading diagnostics** in a slow-loading/error notice. While the map is
 stuck, refresh the snapshot and copy it. It shows the actual rendering path,
 viewport/display pixel ratio, projections, COG state, raster rendering state,
-and separate raster/basemap pending, settled and failed tile counts. Counts are
+the saved/requested renderer preference, any automatic fallback reason, and
+separate raster/basemap pending, settled and failed tile counts. After automatic
+recovery it also retains the original WebGL failure snapshot. Counts are
 per source instance, not percentages of the current viewport; settled tiles
 can include requests the renderer no longer needs. Pending raster tiles may
 be downloading, decoding or reprojecting, so this is not a network trace.
@@ -276,18 +284,28 @@ The report omits URLs, coordinates and GPU identifiers.
 The dialog offers reversible comparisons (each reloads the page):
 
 - `?detail=low`: cap display density at 1× to compare a lower graphics workload.
-- `?renderer=canvas`: force the existing native-projection Canvas fallback to
-  compare against WebGL. This can be slower on some machines.
+- `?renderer=canvas`: use and remember compatibility rendering, keeping the
+  Web Mercator view. This can be slower on some machines.
+- `?renderer=auto`: reset the saved renderer preference and enable automatic
+  recovery. `?renderer=webgl` explicitly forces WebGL without automatic recovery
+  for troubleshooting. Explicit URL options override the saved preference.
 - `?basemap=none`: remove the basemap to isolate COG loading/rendering. This is
   also available as None in the basemap picker, without reloading the page.
 
 Parameters can be combined; the same links restore automatic behavior. Local
 imports must be reopened after a reload. Compare one change at a time, and
 compare phone/laptop on the same Wi-Fi without a VPN before attributing a
-difference to graphics or the host. The laptop-specific failure is not yet
-reproduced; these changes fix identified startup/cancellation problems and
-provide evidence for the remaining diagnosis. The build and automated tests
-cover this change; its local preview was blocked in the cloud test browser.
+difference to graphics or the host. The affected laptop loaded successfully
+with the earlier native-grid Canvas path, but failed in WebGL with no basemap
+requests. That narrows the issue to the rendering paths; it does not establish
+a specific GPU-driver or network cause. Canvas now preserves the requested
+Mercator view without numeric-data GPU reprojection. The build and automated
+tests cover the change; its local preview was blocked in the cloud test browser.
+Renderer tests cover remembered choices and one-time recovery. Projection tests
+exercise OpenLayers' native-to-Mercator image requests, readiness, and disposal.
+A Canvas 2D integration test checks actual output pixels at known geographic
+locations (including nodata and valid zero) while rejecting WebGL requests.
+Its native Canvas dependency is used only by tests, not shipped to browsers.
 Transparency regression checks evaluate the generated colour expression with
 OpenLayers, compile it to GLSL, and check Canvas output for missing values,
 masked pixels, valid zero snow, and cold temperatures. These are not a substitute

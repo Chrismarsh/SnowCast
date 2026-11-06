@@ -39,6 +39,7 @@
   let dialog: HTMLDialogElement;
   let dialogMode: 'import' | 'about' | 'data' | 'diagnostics' = 'import';
   let diagnosticText = '';
+  let diagnosticRenderer = '';
   let copiedDiagnostics = false;
   let importURL = '';
   let importFiles: FileList | undefined;
@@ -63,6 +64,7 @@
 
   function refreshDiagnostics() {
     diagnosticText = map?.diagnostics() || 'Map is not initialized yet.';
+    diagnosticRenderer = map ? JSON.parse(diagnosticText).renderer : '';
     copiedDiagnostics = false;
   }
   function openDiagnostics() {
@@ -290,7 +292,7 @@
     <p class="small">These comparisons reload the page. Imported local files will need reopening. Point queries always retain full raster resolution.</p>
     <ul class="diagnostic-links">
       <li><a href={diagnosticURL('detail', params.get('detail') === 'low' ? 'auto' : 'low')}>{params.get('detail') === 'low' ? 'Restore automatic map detail' : 'Try lower map detail'}</a> — reduces display pixels.</li>
-      <li><a href={diagnosticURL('renderer', params.get('renderer') === 'canvas' ? 'auto' : 'canvas')}>{params.get('renderer') === 'canvas' ? 'Restore automatic renderer' : 'Try compatibility rendering'}</a> — compares the Canvas and WebGL paths.</li>
+      <li><a href={diagnosticURL('renderer', diagnosticRenderer === 'Canvas' ? 'auto' : 'canvas')}>{diagnosticRenderer === 'Canvas' ? 'Restore automatic renderer' : 'Try compatibility rendering'}</a> — remembers the choice in this browser. Automatic mode can recover with Canvas.</li>
       <li><a href={diagnosticURL('basemap', basemap === 'none' ? 'auto' : 'none')}>{basemap === 'none' ? 'Restore basemap' : 'Try without the basemap'}</a> — isolates the snow data layer.</li>
     </ul>
   {:else if dialogMode === 'data'}<p>Daily, gridded output from the Canadian Hydrological Model. Values are sampled at full raster resolution; map colours use overviews for efficient display.</p><div class="data-list">{#each variables as v}<div><strong>{v.title}</strong><span>{v.unit} · {v.assets.length} timestamps</span><a href={v.assets.at(-1)?.href} download>Latest GeoTIFF <Icon name="download" size={16}/></a></div>{/each}</div><a class="catalogue-link" href={catalogueURL} target="_blank" rel="noreferrer">Open data catalogue ↗</a><p class="subtle small">The viewer uses the latest available timestamp in each UTC day. A missing day is shown as a gap.</p>
