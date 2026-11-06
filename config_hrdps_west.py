@@ -66,6 +66,10 @@ settings['webui_data_url'] = None
 settings['webui_upload_host'] = None  # e.g. 'root@www.snowcast.ca'
 settings['webui_upload_dir'] = None   # e.g. '/var/www/html/v3/data'
 
+settings['webui_enabled'] = True
+settings['webui_upload_host'] = 'root@snowcast.ca'  # omit for directly served local disk
+settings['webui_upload_dir'] = '/var/www/html/v3/data'
+
 # Offset from UTM to local time (i.e. Mountain standard time = -7)
 # CHM forcing files will be in this time zone
 # not currently used
