@@ -135,6 +135,42 @@ Font loading uses Google Fonts with system-font fallbacks; it is independent
 of data access. A different basemap provider may improve a particular network
 path, but is not a measured guarantee of faster loading on every device.
 
+## Original TIFF downloads
+
+![Original TIFF download page, with a one-day archive filter](docs/tiff-downloads-preview.png)
+
+The header's **Data** link opens `downloads.html`, a separate, lightweight page
+that does not initialize the map or fetch any rasters. It offers the latest
+original SWE, snow-depth and temperature TIFFs, 0.001°/0.01° grid choices,
+inclusive UTC date filters, file sizes, pagination and a filtered URL-list export.
+The original files remain at
+<https://hpfx.collab.science.gc.ca/~chm003/tiff/>; the page does not convert them
+to COGs or relay large downloads. Map COGs remain accessible via `?panel=data`.
+
+The directory does not currently return browser CORS headers, so the page reads
+a small same-origin `download-index.json` instead. `npm run build` refreshes it
+using Python's standard library. It fetches only the directory HTML, validates
+filenames, and writes the index atomically. An offline build retains the checked-in
+snapshot with a warning. The page displays the snapshot's indexing time, actual
+simulation timestamps, and an explicit stale-index notice after 48 hours.
+
+**Keep the archive current between UI deployments:** schedule this command on
+the web host (for example hourly, or after upstream TIFF publication):
+
+```bash
+python /path/to/SnowCast/scripts/index_tiff_downloads.py \
+  --output /var/www/html/v3/download-index.json
+```
+
+Alternatively, run `npm run refresh:downloads` and upload just
+`webui/public/download-index.json` to `/v3/download-index.json`. No frontend
+rebuild is needed for an index refresh. A failed/empty refresh keeps the previous
+index intact. Do not overwrite a more recent server index with an older build
+snapshot. The source-archive link remains available if the index cannot load.
+No TIFF date is inferred from the COG catalogue, and absent files are never
+shown as download links. Source sizes are rounded Apache-index values, displayed
+as approximate binary sizes. Grid spacing is angular, not a fixed metre size.
+
 ## Publish the initial ten-day window
 
 From the repository root, with Rasterio/GDAL available (already in `spack.yaml`):

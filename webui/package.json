@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
+    "refresh:downloads": "python ../scripts/index_tiff_downloads.py",
+    "prebuild": "npm run refresh:downloads -- --allow-stale",
     "build": "vite build",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",

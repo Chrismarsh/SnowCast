@@ -126,6 +126,8 @@
 
   onMount(() => {
     load();
+    if (params.get('panel') === 'data') showDialog('data');
+    if (params.get('panel') === 'about') showDialog('about');
     const hide = () => { if (document.hidden) stop(); };
     document.addEventListener('visibilitychange', hide);
     return () => { stop(); pointController?.abort(); document.removeEventListener('visibilitychange', hide); localURLs.forEach(URL.revokeObjectURL); };
@@ -237,7 +239,7 @@
 <header class="app-header">
   <a class="brand" href={window.location.pathname + window.location.search} aria-label="SnowCast home"><svg width="40" height="29" viewBox="0 0 48 32" aria-hidden="true"><path d="M2 27 16 10l9 11M20 16 30 4l16 23" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span>SnowCast</span></a>
   <span class="brand-caption">Snowpack explorer</span>
-  <nav aria-label="Main navigation"><button class="active" onclick={() => dialog?.close()}>Explore</button><button onclick={() => showDialog('data')}>Data</button><button onclick={() => showDialog('about')}>About</button></nav>
+  <nav aria-label="Main navigation"><button class="active" onclick={() => dialog?.close()}>Explore</button><a href="./downloads.html">Data</a><button onclick={() => showDialog('about')}>About</button></nav>
   <span class:sample={catalogue?.sample_data} class="status-pill"><span class="status-dot"></span>{catalogue?.sample_data ? 'Demo · Synthetic data' : 'Daily simulations'}</span>
 </header>
 
@@ -295,6 +297,6 @@
       <li><a href={diagnosticURL('renderer', diagnosticRenderer === 'Canvas' ? 'auto' : 'canvas')}>{diagnosticRenderer === 'Canvas' ? 'Restore automatic renderer' : 'Try compatibility rendering'}</a> — remembers the choice in this browser. Automatic mode can recover with Canvas.</li>
       <li><a href={diagnosticURL('basemap', basemap === 'none' ? 'auto' : 'none')}>{basemap === 'none' ? 'Restore basemap' : 'Try without the basemap'}</a> — isolates the snow data layer.</li>
     </ul>
-  {:else if dialogMode === 'data'}<p>Daily, gridded output from the Canadian Hydrological Model. Values are sampled at full raster resolution; map colours use overviews for efficient display.</p><div class="data-list">{#each variables as v}<div><strong>{v.title}</strong><span>{v.unit} · {v.assets.length} timestamps</span><a href={v.assets.at(-1)?.href} download>Latest GeoTIFF <Icon name="download" size={16}/></a></div>{/each}</div><a class="catalogue-link" href={catalogueURL} target="_blank" rel="noreferrer">Open data catalogue ↗</a><p class="subtle small">The viewer uses the latest available timestamp in each UTC day. A missing day is shown as a gap.</p>
+  {:else if dialogMode === 'data'}<p>Daily, gridded output from the Canadian Hydrological Model. Values are sampled at full raster resolution; map colours use overviews for efficient display.</p><p><a href="./downloads.html">Browse original TIFF downloads and the full archive →</a></p><div class="data-list">{#each variables as v}<div><strong>{v.title}</strong><span>{v.unit} · {v.assets.length} timestamps</span><a href={v.assets.at(-1)?.href} download>Latest map COG <Icon name="download" size={16}/></a></div>{/each}</div><a class="catalogue-link" href={catalogueURL} target="_blank" rel="noreferrer">Open map data catalogue ↗</a><p class="subtle small">The viewer uses the latest available timestamp in each UTC day. A missing day is shown as a gap.</p>
   {:else}<button class="text-button" onclick={openDiagnostics}>Map diagnostics / slow loading</button><p>SnowCast uses meteorological forcing to drive the Canadian Hydrological Model (CHM), representing snowpack evolution over complex mountain terrain.</p><p>This viewer shows regridded simulation values, not observations or exact values from the original model triangles.</p><p>SnowCast is experimental. See the project for model details and limitations.</p><a class="catalogue-link" href="https://github.com/Chrismarsh/SnowCast" target="_blank" rel="noreferrer">SnowCast on GitHub ↗</a>{/if}
 </dialog>
