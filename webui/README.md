@@ -235,3 +235,38 @@ minutes, a genuinely stalled transfer, and cancellation during date changes.
 Browser QA also delayed the initial temperature COG response by 35 seconds:
 the slow-loading notice appeared, then the frame rendered successfully without
 a retry. [Screenshot with synthetic data](docs/temperature-loading-check.jpg).
+
+## Diagnosing slow laptop loading
+
+The initial map now waits for the catalogue and fits its actual domain before
+requesting tiles. Previously, WebGL kept the placeholder Upper Bow view even
+when the catalogue covered a much larger area. Display rendering is capped at
+2× pixel density and four million pixels per map canvas; a resize recomputes
+that limit. This affects display detail only, never full-resolution point reads.
+Switching away from an unfinished frame aborts its remote COG requests and
+disposes that frame instead of allowing abandoned loads to accumulate.
+
+After deploying the rebuilt UI, open **About → Map diagnostics / slow loading**,
+or **Loading diagnostics** in a slow-loading/error notice. While the map is
+stuck, refresh the snapshot and copy it. It shows the actual rendering path,
+viewport/display pixel ratio, projections, COG state, raster rendering state,
+and separate raster/basemap pending, settled and failed tile counts. Counts are
+per source instance, not percentages of the current viewport; settled tiles
+can include requests the renderer no longer needs. Pending raster tiles may
+be downloading, decoding or reprojecting, so this is not a network trace.
+The report omits URLs, coordinates and GPU identifiers.
+
+The dialog offers reversible comparisons (each reloads the page):
+
+- `?detail=low`: cap display density at 1× to compare a lower graphics workload.
+- `?renderer=canvas`: force the existing native-projection Canvas fallback to
+  compare against WebGL. This can be slower on some machines.
+- `?basemap=none`: hide the Esri layer to isolate COG loading/rendering.
+
+Parameters can be combined; the same links restore automatic behavior. Local
+imports must be reopened after a reload. Compare one change at a time, and
+compare phone/laptop on the same Wi-Fi without a VPN before attributing a
+difference to graphics or the host. The laptop-specific failure is not yet
+reproduced; these changes fix identified startup/cancellation problems and
+provide evidence for the remaining diagnosis. The build and automated tests
+cover this change; its local preview was blocked in the cloud test browser.

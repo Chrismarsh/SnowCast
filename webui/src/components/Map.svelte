@@ -21,6 +21,7 @@
   import { ensureProjection } from '../lib/raster';
   import { colorPixel, snowColors, temperatureColors } from '../lib/data';
   import { watchFrameLoad } from '../lib/frameLoad';
+  import { displayPixelRatio, TileProgress } from '../lib/mapPerformance';
   import 'ol/ol.css';
   export let asset: Asset | undefined;
   export let variable: Variable | undefined;
@@ -43,35 +44,81 @@
   let useWebGL = true;
   let requested = '';
   let cancel: (() => void) | undefined;
+  let fitted = false;
+  let baseProgress = new TileProgress();
+  let baseMode = '';
+  let lastFailure: Record<string, unknown> | undefined;
+  const options = new URLSearchParams(window.location.search);
+  const lowDetail = options.get('detail') === 'low';
+  const withoutBasemap = options.get('basemap') === 'none';
   const layers = new globalThis.Map<string, RasterLayer>();
   const sources = new globalThis.Map<string, GeoTIFF>();
+  const requests = new globalThis.Map<string, AbortController>();
+  const progress = new globalThis.Map<string, TileProgress>();
 
-  export function fit() { if (map) map.getView().fit(transformExtent(bounds, 'EPSG:4326', map.getView().getProjection()), { padding: [65, 30, 165, 30], duration: 400 }); }
+  export function fit(duration = 400) { if (map) map.getView().fit(transformExtent(bounds, 'EPSG:4326', map.getView().getProjection()), { padding: [65, 30, 165, 30], duration }); }
   export function zoom(delta: number) { if (map) map.getView().animate({ zoom: (map.getView().getZoom() || 8) + delta, duration: 200 }); }
   export function retry() { if (asset && variable) show(asset, variable); }
 
+  export function diagnostics() {
+    return JSON.stringify(lastFailure || snapshotDiagnostics(), null, 2);
+  }
+
+  function snapshotDiagnostics() {
+    const source = sources.get(requested);
+    const layer = layers.get(requested);
+    // Deliberately omit URLs, signed query strings, coordinates and GPU identifiers.
+    return {
+      renderer: useWebGL ? 'WebGL' : 'Canvas', detail: lowDetail ? 'low' : 'automatic',
+      viewport: map?.getSize(), devicePixelRatio: window.devicePixelRatio, mapPixelRatio: map?.getPixelRatio(),
+      projection: map?.getView().getProjection().getCode(), rasterProjection: source?.getProjection()?.getCode(),
+      sourceState: source?.getState() || 'not requested',
+      rasterRenderComplete: layer instanceof WebGLTile ? layer.getRenderer()?.renderComplete : !!layer?.get('frameReady'),
+      rasterTiles: progress.get(requested)?.snapshot(),
+      basemap: withoutBasemap ? 'none' : basemap, basemapTiles: baseProgress.snapshot(),
+      cachedFrames: layers.size,
+    };
+  }
+
+  function setBasemap(mode: string) {
+    if (baseMode === mode) return;
+    baseMode = mode;
+    const old = base.getSource();
+    baseProgress = new TileProgress();
+    const counter = baseProgress;
+    const source = new XYZ({ url: mode === 'satellite' ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', attributions: 'Tiles © Esri — Esri, HERE, Garmin, USGS, NRCan', crossOrigin: 'anonymous', maxZoom: 17 });
+    source.on('tileloadstart', e => counter.start(e.tile));
+    source.on('tileloadend', e => counter.end(e.tile));
+    source.on('tileloaderror', e => counter.end(e.tile, true));
+    base.setSource(source);
+    old?.dispose();
+  }
+
   onMount(() => {
     const probe = document.createElement('canvas').getContext('webgl2');
-    useWebGL = !!probe;
+    useWebGL = !!probe && options.get('renderer') !== 'canvas';
     probe?.getExtension('WEBGL_lose_context')?.loseContext();
-    base = new TileLayer({ source: new XYZ({ url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', attributions: 'Tiles © Esri — Esri, HERE, Garmin, USGS, NRCan', maxZoom: 16, crossOrigin: 'anonymous' }) });
+    base = new TileLayer({ visible: !withoutBasemap });
     marker = new VectorSource();
     map = new OLMap({
       target,
+      pixelRatio: displayPixelRatio(window.devicePixelRatio, [target.clientWidth, target.clientHeight], lowDetail),
       controls: defaults({ zoom: false, rotate: false, attributionOptions: { collapsible: false } }),
       layers: [base, new VectorLayer({
         source: marker, zIndex: 50,
         style: new Style({ image: new Circle({ radius: 7, fill: new Fill({ color: '#08777a' }), stroke: new Stroke({ color: 'white', width: 3 }) }) }),
       })],
-      view: new View({ center: fromLonLat([-115.7, 51.24]), zoom: 9, maxZoom: 17 }),
+      // No tile requests until the first asset supplies the actual domain bounds.
+      view: new View({ maxZoom: 17 }),
     });
+    map.on('change:size', () => map.setPixelRatio(displayPixelRatio(window.devicePixelRatio, map.getSize() || [1, 1], lowDetail)));
     map.on('singleclick', e => onpick(toLonLat(e.coordinate, map.getView().getProjection())));
     mounted = true;
-    fit();
     return () => { cancel?.(); for (const [id, layer] of layers) disposeLayer(id, layer); map.setTarget(undefined); map.dispose(); };
   });
 
   function disposeLayer(id: string, layer: RasterLayer) {
+    requests.get(id)?.abort(); requests.delete(id); progress.delete(id);
     map.removeLayer(layer);
     layer.getSource()?.dispose();
     sources.get(id)?.dispose(); sources.delete(id);
@@ -85,6 +132,7 @@
 
   function show(next: Asset, v: Variable) {
     cancel?.();
+    lastFailure = undefined;
     requested = next.id;
     try {
       ensureProjection(next.projection, next.proj4);
@@ -93,14 +141,25 @@
       // image tiles are reprojected by OpenLayers' Canvas renderer instead.
       if (!useWebGL && map.getView().getProjection().getCode() !== next.projection) {
         map.setView(new View({ projection: next.projection }));
-        fit(); updateMarker();
+        fitted = false;
       }
+      if (!fitted) { fit(0); updateMarker(); fitted = true; }
       let layer = layers.get(next.id);
       if (!layer) {
         const colors = v.palette === 'temperature' ? temperatureColors : snowColors;
         const expression: any[] = ['interpolate', ['linear'], ['+', ['*', ['band', 1], next.scale], next.offset]];
         colors.forEach((color, i) => expression.push(v.range[0] + (v.range[1] - v.range[0]) * i / (colors.length - 1), color));
-        const cog = new GeoTIFF({ normalize: false, interpolate: false, transition: 0, projection: next.projection, sources: [{ ...(next.blob ? { blob: next.blob } : { url: next.href }), bands: [1], nodata: next.nodata === 'NaN' || next.nodata == null ? NaN : next.nodata }], sourceOptions: { allowFullFile: false, cacheSize: 64 } });
+        const controller = new AbortController();
+        requests.set(next.id, controller);
+        const cog = new GeoTIFF({ normalize: false, interpolate: false, transition: 0, projection: next.projection, sources: [{ ...(next.blob ? { blob: next.blob } : {
+          url: next.href,
+          loader: (url, headers, signal) => fetch(url, { headers, signal: AbortSignal.any([signal, controller.signal]) }),
+        }), bands: [1], nodata: next.nodata === 'NaN' || next.nodata == null ? NaN : next.nodata }], sourceOptions: { allowFullFile: false, cacheSize: 64 } });
+        const counter = new TileProgress();
+        progress.set(next.id, counter);
+        cog.on('tileloadstart', e => counter.start(e.tile));
+        cog.on('tileloadend', e => counter.end(e.tile));
+        cog.on('tileloaderror', e => counter.end(e.tile, true));
         sources.set(next.id, cog);
         if (useWebGL) layer = new WebGLTile({ source: cog, style: { color: expression as any }, cacheSize: 64, opacity: 0.01, zIndex: 10 });
         else {
@@ -127,6 +186,7 @@
       const fail = (message: string) => {
         if (finished) return;
         finished = true; cleanup();
+        lastFailure = { ...snapshotDiagnostics(), capturedAtFailure: message };
         nextLayer.setVisible(nextLayer === active);
         if (nextLayer === active) nextLayer.setOpacity(opacity);
         // A failed source must not poison future retries.
@@ -168,6 +228,7 @@
         finished = true; cleanup();
         nextLayer.setVisible(nextLayer === active);
         if (nextLayer === active) nextLayer.setOpacity(opacity);
+        else disposeLayer(next.id, nextLayer);
       };
       map.render();
     } catch (e) { onerror(e instanceof Error ? e.message : 'Could not display raster'); }
@@ -179,7 +240,7 @@
     point; updateMarker();
   }
   $: if (mounted) {
-    base.setSource(new XYZ({ url: basemap === 'satellite' ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', attributions: 'Tiles © Esri — Esri, HERE, Garmin, USGS, NRCan', crossOrigin: 'anonymous', maxZoom: 17 }));
+    setBasemap(basemap);
   }
 </script>
 <div bind:this={target} class="map-canvas" aria-label="Interactive snowpack map"></div>

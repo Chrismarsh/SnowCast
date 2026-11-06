@@ -33,7 +33,9 @@
   let loop = true;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let dialog: HTMLDialogElement;
-  let dialogMode: 'import' | 'about' | 'data' = 'import';
+  let dialogMode: 'import' | 'about' | 'data' | 'diagnostics' = 'import';
+  let diagnosticText = '';
+  let copiedDiagnostics = false;
   let importURL = '';
   let importFiles: FileList | undefined;
   let importDate = new Date().toISOString().slice(0, 10);
@@ -45,6 +47,23 @@
   let importError = '';
   let custom: Variable[] = [];
   const localURLs: string[] = [];
+
+  function refreshDiagnostics() {
+    diagnosticText = map?.diagnostics() || 'Map is not initialized yet.';
+    copiedDiagnostics = false;
+  }
+  function openDiagnostics() {
+    refreshDiagnostics(); showDialog('diagnostics');
+  }
+  async function copyDiagnostics() {
+    try { await navigator.clipboard.writeText(diagnosticText); copiedDiagnostics = true; }
+    catch { copiedDiagnostics = false; }
+  }
+  function diagnosticURL(setting: string, value: string) {
+    const url = new URL(window.location.href);
+    url.searchParams.set(setting, value);
+    return url.href;
+  }
   const sharedLon = Number(initial.get('lon')), sharedLat = Number(initial.get('lat'));
   if (initial.has('lon') && initial.has('lat') && Number.isFinite(sharedLon) && Number.isFinite(sharedLat) && Math.abs(sharedLon) <= 180 && Math.abs(sharedLat) <= 90) point = [sharedLon, sharedLat];
 
@@ -219,8 +238,8 @@
     <div class="map-tools"><div class="surface tool-pair"><button aria-label="Zoom in" onclick={() => map?.zoom(1)}><Icon name="plus"/></button><button aria-label="Zoom out" onclick={() => map?.zoom(-1)}><Icon name="minus"/></button></div><button class="surface icon-button" aria-label="Fit model domain" onclick={() => map?.fit()}><Icon name="target"/></button><button class="surface icon-button" aria-label={basemap === 'terrain' ? 'Show satellite basemap' : 'Show terrain basemap'} onclick={() => basemap = basemap === 'terrain' ? 'satellite' : 'terrain'}><Icon name="layers"/></button></div>
     {#if loading}<div class="map-message surface"><span class="spinner"></span>Loading simulation catalogue…</div>
     {:else if !variables.length}<div class="map-message empty surface"><Icon name="layers" size={32}/><h2>Your snowpack, in context.</h2><p>No simulation catalogue is available yet. Publish SnowCast COGs or open a local raster to get started.</p><button class="primary" onclick={() => showDialog('import')}>Add a COG</button><button class="text-button" onclick={load}>Retry catalogue</button><small>{error}</small></div>
-    {:else if error}<div class="map-banner error" role="alert">{error}<button class="text-button" onclick={() => { error = ''; slowFrameId = ''; frameLoading = true; map?.retry(); }}>Retry</button></div>
-    {:else if frameLoading}<div class="map-banner" role="status"><span class="spinner"></span>{#if slowFrameId === selected?.id}Still loading {variable?.label} for {dateLabel(selected!.datetime)}. Waiting for map data…{:else}Loading {selected ? dateLabel(selected.datetime) : 'frame'}…{/if}</div>
+    {:else if error}<div class="map-banner error" role="alert">{error}<button class="text-button" onclick={() => { error = ''; slowFrameId = ''; frameLoading = true; map?.retry(); }}>Retry</button><button class="text-button" onclick={openDiagnostics}>Loading diagnostics</button></div>
+    {:else if frameLoading}<div class="map-banner" role="status"><span class="spinner"></span>{#if slowFrameId === selected?.id}Still loading {variable?.label} for {dateLabel(selected!.datetime)}. Waiting for map data…<button class="text-button" onclick={openDiagnostics}>Loading diagnostics</button>{:else}Loading {selected ? dateLabel(selected.datetime) : 'frame'}…{/if}</div>
     {:else if stale && !catalogue?.sample_data}<div class="map-banner">Latest model output is over 48 hours old. <button class="text-button" onclick={load}>Refresh</button></div>{/if}
     {#if variable}
       <div class="legend surface"><div>{variable.title} <span>· {variable.unit}</span></div><div class="colour-ramp" style={`background:linear-gradient(90deg,${colors.join(',')})`}></div><div class="legend-labels">{#each [0, .25, .5, .75, 1] as fraction}<span>{formatValue(variable.range[0] + (variable.range[1] - variable.range[0]) * fraction, variable.unit)}{fraction === 1 ? '+' : ''}</span>{/each}</div></div>
@@ -248,8 +267,18 @@
   </aside>
 </main>
 
-<dialog bind:this={dialog} class="dialog"><div class="dialog-heading"><h2>{dialogMode === 'import' ? 'Add a COG' : dialogMode === 'data' ? 'Simulation data' : 'About SnowCast'}</h2><button class="icon-button" aria-label="Close dialog" onclick={() => dialog.close()}><Icon name="close"/></button></div>
+<dialog bind:this={dialog} class="dialog"><div class="dialog-heading"><h2>{dialogMode === 'import' ? 'Add a COG' : dialogMode === 'data' ? 'Simulation data' : dialogMode === 'diagnostics' ? 'Map diagnostics' : 'About SnowCast'}</h2><button class="icon-button" aria-label="Close dialog" onclick={() => dialog.close()}><Icon name="close"/></button></div>
   {#if dialogMode === 'import'}<p class="subtle">Open a single-band numeric GeoTIFF from your computer or a web URL. Local files stay in your browser.</p><form onsubmit={e => { e.preventDefault(); importRaster(); }}><label>COG URL<input type="url" placeholder="https://your-server/data/swe.tif" bind:value={importURL}/></label><div class="or">or select local files</div><input aria-label="Local TIFF files" type="file" accept=".tif,.tiff" multiple bind:files={importFiles}/><p class="subtle small">For a time series, filenames must include YYYYMMDDTHHMMSS.</p><div class="form-grid"><label>Layer name<input required bind:value={importLabel}/></label><label>Units<input required bind:value={importUnit}/></label><label>Date (UTC)<input type="date" required bind:value={importDate}/></label><label>Minimum<input type="number" step="any" required bind:value={importMin}/></label><label>Maximum<input type="number" step="any" required bind:value={importMax}/></label></div>{#if importError}<p class="query-error" role="alert">{importError}</p>{/if}<button class="primary" type="submit" disabled={importing}>{importing ? 'Opening raster…' : 'Add to map'}<Icon name="arrow" size={18}/></button></form>
+  {:else if dialogMode === 'diagnostics'}
+    <p>Tile counts distinguish pending work from errors. Settled tiles can include cancelled requests. Take a snapshot while the map is stuck.</p>
+    <textarea class="diagnostic-report" aria-label="Map diagnostic report" readonly value={diagnosticText}></textarea>
+    <div class="diagnostic-actions"><button class="primary" onclick={refreshDiagnostics}>Refresh snapshot</button><button class="outlined" onclick={copyDiagnostics}>{copiedDiagnostics ? 'Copied' : 'Copy diagnostics'}</button></div>
+    <p class="small">These comparisons reload the page. Imported local files will need reopening. Point queries always retain full raster resolution.</p>
+    <ul class="diagnostic-links">
+      <li><a href={diagnosticURL('detail', params.get('detail') === 'low' ? 'auto' : 'low')}>{params.get('detail') === 'low' ? 'Restore automatic map detail' : 'Try lower map detail'}</a> — reduces display pixels.</li>
+      <li><a href={diagnosticURL('renderer', params.get('renderer') === 'canvas' ? 'auto' : 'canvas')}>{params.get('renderer') === 'canvas' ? 'Restore automatic renderer' : 'Try compatibility rendering'}</a> — compares the Canvas and WebGL paths.</li>
+      <li><a href={diagnosticURL('basemap', params.get('basemap') === 'none' ? 'auto' : 'none')}>{params.get('basemap') === 'none' ? 'Restore basemap' : 'Try without the basemap'}</a> — isolates the snow data layer.</li>
+    </ul>
   {:else if dialogMode === 'data'}<p>Daily, gridded output from the Canadian Hydrological Model. Values are sampled at full raster resolution; map colours use overviews for efficient display.</p><div class="data-list">{#each variables as v}<div><strong>{v.title}</strong><span>{v.unit} · {v.assets.length} timestamps</span><a href={v.assets.at(-1)?.href} download>Latest GeoTIFF <Icon name="download" size={16}/></a></div>{/each}</div><a class="catalogue-link" href={catalogueURL} target="_blank" rel="noreferrer">Open data catalogue ↗</a><p class="subtle small">The viewer uses the latest available timestamp in each UTC day. A missing day is shown as a gap.</p>
-  {:else}<p>SnowCast uses meteorological forcing to drive the Canadian Hydrological Model (CHM), representing snowpack evolution over complex mountain terrain.</p><p>This viewer shows regridded simulation values, not observations or exact values from the original model triangles.</p><p>SnowCast is experimental. See the project for model details and limitations.</p><a class="catalogue-link" href="https://github.com/Chrismarsh/SnowCast" target="_blank" rel="noreferrer">SnowCast on GitHub ↗</a>{/if}
+  {:else}<button class="text-button" onclick={openDiagnostics}>Map diagnostics / slow loading</button><p>SnowCast uses meteorological forcing to drive the Canadian Hydrological Model (CHM), representing snowpack evolution over complex mountain terrain.</p><p>This viewer shows regridded simulation values, not observations or exact values from the original model triangles.</p><p>SnowCast is experimental. See the project for model details and limitations.</p><a class="catalogue-link" href="https://github.com/Chrismarsh/SnowCast" target="_blank" rel="noreferrer">SnowCast on GitHub ↗</a>{/if}
 </dialog>
