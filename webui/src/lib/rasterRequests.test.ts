@@ -11,9 +11,22 @@ function setup(fetcher: typeof fetch, pool = new RequestPool()) {
   const requests = new RasterRequests(frame.signal, pool, fetcher);
   return { frame, tile, requests, load: () => requests.load(url, headers, tile.signal) };
 }
-afterEach(() => vi.useRealTimers());
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe('COG byte-range requests', () => {
+  it('calls the browser fetch with its global receiver', async () => {
+    const browserFetch = vi.fn(function (this: unknown) {
+      if (this !== globalThis) throw new TypeError("'fetch' called on an object that does not implement interface Window.");
+      return Promise.resolve(partial());
+    });
+    vi.stubGlobal('fetch', browserFetch);
+    const requests = new RasterRequests(new AbortController().signal, new RequestPool());
+    const response = await requests.load(url, headers, new AbortController().signal);
+    expect(Array.from(new Uint8Array(await response.arrayBuffer()))).toEqual([1, 2, 3, 4]);
+    expect(browserFetch).toHaveBeenCalledOnce();
+    expect(requests.snapshot()).toMatchObject({ completed: 1, retries: 0, failed: 0 });
+  });
+
   it('recovers a temporary HTTP failure before it becomes a failed map tile', async () => {
     vi.useFakeTimers();
     const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(new Response(null, { status: 503 })).mockResolvedValueOnce(partial());

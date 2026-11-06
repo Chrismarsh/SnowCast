@@ -82,7 +82,8 @@ export class RasterRequests {
         return await this.pool.run(signal, async () => {
           waiting = false; this.queued--; this.active++; this.attempts++;
           try {
-            const response = await this.fetcher(url, { headers, signal });
+            // Firefox's native fetch requires the global Window receiver.
+            const response = await this.fetcher.call(globalThis, url, { headers, signal });
             phase = 'response';
             if (!response.ok || (range && response.status !== 206)) {
               await response.body?.cancel().catch(() => {});
