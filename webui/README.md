@@ -229,8 +229,28 @@ filenames, and writes the index atomically. An offline build retains the checked
 snapshot with a warning. The page displays the snapshot's indexing time, actual
 simulation timestamps, and an explicit stale-index notice after 48 hours.
 
-**Keep the archive current between UI deployments:** schedule this command on
-the web host (for example hourly, or after upstream TIFF publication):
+**Keep the archive current between UI deployments:** the normal v3 uploader now
+refreshes and atomically publishes this index after uploading the COG catalogue.
+It reads the public original-TIFF listing after the normal pipeline's TIFF upload;
+it does not depend on a frontend rebuild. The index goes in the parent of the
+remote data directory (`/var/www/html/v3/` for `/var/www/html/v3/data`). For a
+different layout, set `webui_download_index_dir` or pass
+`--download-index-directory` to `webupload/v3.py`.
+
+To update the download links immediately from the simulation/upload host, without
+retransferring COGs or rebuilding the UI:
+
+```bash
+python webupload/v3.py --downloads-only \
+  --host root@snowcast.ca --directory /var/www/html/v3/data
+```
+
+A failed refresh retains the live index and logs a warning without undoing a
+successful COG publication. The standalone `--downloads-only` command returns a
+failure status if it cannot refresh or upload the index.
+
+For directly served local data, or as an independent scheduled refresh on the
+web host (for example hourly, or after upstream TIFF publication):
 
 ```bash
 python /path/to/SnowCast/scripts/index_tiff_downloads.py \

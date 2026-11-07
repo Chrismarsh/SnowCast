@@ -160,4 +160,5 @@ def upload(settings):
         from . import v3
         if not settings.get('webui_upload_dir'):
             raise ValueError('webui_upload_dir is required with webui_upload_host')
-        v3.upload(settings['webui_data_dir'], settings['webui_upload_host'], settings['webui_upload_dir'])
+        v3.upload(settings['webui_data_dir'], settings['webui_upload_host'], settings['webui_upload_dir'],
+                  settings.get('webui_download_index_dir'))
