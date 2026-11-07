@@ -25,7 +25,10 @@ existing resolutions; point values use the full-resolution rasters.
 Point details show the two endpoint values and their signed difference.
 **Difference CSV** exports both UTC timestamps, both values, the difference,
 units, coordinates and status. Shared location links retain the date pair.
-History charts and CanSWE comparisons continue to show absolute values.
+Point history charts continue to show absolute values. In Difference mode,
+CanSWE displays observations only: model curves, markers, legends and same-date
+model columns are hidden, and chart scaling uses observations alone. Switch
+back to Value to restore the model comparison.
 Dates and legends follow the successfully rendered pair while another loads.
 
 Comparisons cover dates retained in `catalog.json` (currently a rolling 10-day
@@ -217,7 +220,8 @@ shorter records show individual year medians. Reference periods, sample counts,
 flags, and terrain-representativeness limitations are visible in the panel.
 See [snapshot provenance and processing](data/README.md) for the precise method.
 
-Both comparison tabs keep the available SnowCast series visible. In Observations,
+In Value mode, both comparison tabs keep the available SnowCast series visible.
+Difference mode shows CanSWE observations without a model overlay. In Observations,
 the season picker changes only the historical observations; model and observation
 seasons are labelled separately and aligned by month/day. Model coverage dates
 are shown explicitly. The table's **Same-date model** column still requires an
