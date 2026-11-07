@@ -3,7 +3,7 @@
   import Icon from './Icon.svelte';
   import type { PointValue } from '../lib/types';
   import { formatValue } from '../lib/data';
-  import { binExtent, binLabel, flagsLabel, halfMonth, loadStation, matchedModel, observationCSV, observationValue, seasonDay, snowVariable, snowYear, type SnowStation, type StationData, type StationIndex } from '../lib/canswe';
+  import { binExtent, binLabel, flagsLabel, halfMonth, loadStation, matchedModel, observationComparison, observationCSV, observationValue, seasonDay, snowVariable, snowYear, type SnowStation, type StationData, type StationIndex } from '../lib/canswe';
   export let station: SnowStation;
   export let index: StationIndex;
   export let variableId: string;
@@ -28,18 +28,21 @@
   $: if (!years.includes(year)) year = years[0] || 0;
   $: bins = data && variable ? data.seasonal[variable] : [];
   $: selectedBin = selectedTime ? bins[halfMonth(selectedTime)] : undefined;
-  $: observations = records.filter(r => snowYear(r[0]) === year);
-  $: shownModel = tab === 'seasonal' ? model : model.filter(v => snowYear(v.time) === year);
-  $: modelFinite = shownModel.filter(v => v.value !== null && !v.error);
+  $: comparison = observationComparison(records, model, year);
+  $: observations = comparison.observations;
+  $: modelFinite = comparison.modelFinite;
+  $: modelSeasons = comparison.modelSeasons;
+  $: differentSeasons = comparison.differentSeasons;
+  $: modelDates = comparison.modelDates;
   $: chartValues = tab === 'seasonal' ? bins.flatMap(b => [b.q75 ?? 0, ...b.samples.map(s => s[1])]) : observations.map(r => observationValue(r, variable!)!);
   $: maximum = Math.max(variable === 'depth' ? 0.1 : 1, ...chartValues, ...modelFinite.map(v => v.value!)) * 1.12;
   $: last = records.at(-1);
   $: currentModel = model.find(v => v.time === selectedTime && !v.error)?.value;
   const x = (day: number) => left + day / 365 * (W - left - right);
   $: y = (value: number) => top + (1 - value / maximum) * (H - top - bottom);
-  $: modelPath = shownModel.reduce((state, v, i) => {
+  $: modelPath = comparison.model.reduce((state, v, i) => {
     if (v.value === null || v.error) return { path: state.path, open: false };
-    const previous = shownModel[i - 1];
+    const previous = comparison.model[i - 1];
     const consecutive = state.open && previous && Date.parse(v.time) - Date.parse(previous.time) <= 36 * 3600000 && seasonDay(v.time) >= seasonDay(previous.time);
     return { path: state.path + `${consecutive ? 'L' : 'M'}${x(seasonDay(v.time))},${y(v.value)} `, open: true };
   }, { path: '', open: false }).path;
@@ -72,9 +75,10 @@
     {#if tab === 'seasonal'}
       <h2>Historical seasonal context</h2><p class="chart-subtitle">All available years · {records[0][0].slice(0, 4)}–{last![0].slice(0, 4)}</p>
     {:else}
-      <div class="observation-heading"><h2>Dated observations</h2><label>Snow season<select aria-label="Observation snow season" bind:value={year}>{#each years as option}<option value={option}>{option - 1}–{option}</option>{/each}</select></label></div>
+      <div class="observation-heading"><h2>Dated observations</h2><label>Observed season<select aria-label="Observation snow season" bind:value={year}>{#each years as option}<option value={option}>{option - 1}–{option}</option>{/each}</select></label></div>
+      <p class="chart-subtitle">{#if differentSeasons}Different snow seasons · aligned by month and day{:else}Aligned by month and day{/if}</p>
     {/if}
-    <svg class="station-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={tab === 'seasonal' ? `Historical half-month ${variable} ranges and available SnowCast values. Individual year medians shown when fewer than ${index.minimum_years} years are available.` : `${observations.length} dated ${variable} observations in snow season ${year - 1}–${year}. See the observation table below.`}>
+    <svg class="station-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={tab === 'seasonal' ? `Historical half-month ${variable} ranges and available SnowCast values. Individual year medians shown when fewer than ${index.minimum_years} years are available.` : `${observations.length} dated ${variable} observations in snow season ${year - 1}–${year}, with available SnowCast values${modelSeasons ? ` from ${modelSeasons}` : ''}, aligned by month and day. See the observation table below for same-date matches.`}>
       {#each [0, .5, 1] as fraction}<line x1={left} x2={W-right} y1={y(fraction * maximum)} y2={y(fraction * maximum)} stroke="#e4e9e6"/><text x={left-7} y={y(fraction * maximum)+3} text-anchor="end">{formatValue(fraction * maximum, unit)}</text>{/each}
       {#if tab === 'seasonal'}
         {#each bins as bin}
@@ -91,10 +95,11 @@
       {/if}
       <path d={modelPath} fill="none" stroke="#08777a" stroke-width="2"/>
       {#each modelFinite as value}<circle cx={x(seasonDay(value.time))} cy={y(value.value!)} r={value.time === selectedTime ? 4 : 2.5} fill="#08777a" stroke="white" stroke-width="1"><title>SnowCast {value.time.slice(0,10)}: {formatValue(value.value,unit)} {unit}</title></circle>{/each}
-      {#if selectedTime && (tab === 'seasonal' || snowYear(selectedTime) === year)}<line x1={x(seasonDay(selectedTime))} x2={x(seasonDay(selectedTime))} y1={top} y2={H-bottom} stroke="#08777a" stroke-dasharray="2 4" opacity=".55"/>{/if}
+      {#if selectedTime}<line x1={x(seasonDay(selectedTime))} x2={x(seasonDay(selectedTime))} y1={top} y2={H-bottom} stroke="#08777a" stroke-dasharray="2 4" opacity=".55"/>{/if}
       {#each months as month, i}{#if i%2 === 0}<text x={x(binExtent(i*2)[0])} y={H-8} text-anchor="middle">{month}</text>{/if}{/each}<text x={left} y="10">{unit}</text>
     </svg>
-    <div class="chart-legend"><span><i class="model-key"></i>SnowCast</span>{#if tab === 'observations' || bins.some(b => b.median !== null)}<span><i class="observation-key"></i>{tab === 'seasonal' ? 'Historical median / 25–75%' : 'Observed'}</span>{/if}{#if tab === 'seasonal' && bins.some(b => b.samples.length)}<span><i class="sparse-key"></i>Individual year medians (&lt;10 years)</span>{/if}</div>
+    <div class="chart-legend"><span><i class="model-key"></i>SnowCast{modelSeasons ? ` · ${modelSeasons}` : ''}</span>{#if tab === 'observations' || bins.some(b => b.median !== null)}<span><i class="observation-key"></i>{tab === 'seasonal' ? 'Historical median / 25–75%' : `Observed · ${year - 1}–${year}`}</span>{/if}{#if tab === 'seasonal' && bins.some(b => b.samples.length)}<span><i class="sparse-key"></i>Individual year medians (&lt;10 years)</span>{/if}</div>
+    {#if modelDates.length}<p class="comparison-note">SnowCast dates: {modelDates[0]}{modelDates.at(-1) !== modelDates[0] ? ` to ${modelDates.at(-1)}` : ''}.</p>{/if}
     {#if modelLoading}<p class="comparison-note" role="status">Reading model values at the station…</p>{/if}
     {#if !modelLoading && model.some(v => v.error)}<p class="comparison-note" role="status">Some model values could not be read. <button class="text-button" onclick={onretrymodel}>Retry model values</button></p>{/if}
     {#if tab === 'seasonal'}
@@ -102,9 +107,9 @@
       <p class="comparison-note">Historical context, not a same-year observation comparison. Each half-month gives equal weight to each year; gaps are not interpolated.</p>
       <details class="station-details"><summary>Historical values and method</summary><p>{index.summary}</p><p>Agency sampling problems, estimates, distant locations and uncertain dates are excluded from the summaries. Original values and flags remain in the observation download.</p><div class="observation-table"><table><caption>Historical half-month summaries ({unit})</caption><thead><tr><th>Period</th><th>Years</th><th>Median</th><th>25–75%</th></tr></thead><tbody>{#each bins as bin}<tr><td>{binLabel(bin.bin)}</td><td>{bin.years}</td><td>{formatValue(bin.median,unit)}</td><td>{bin.q25 === null ? '—' : `${formatValue(bin.q25,unit)}–${formatValue(bin.q75,unit)}`}</td></tr>{/each}</tbody></table></div></details>
     {:else}
-      {#if !modelFinite.length && !modelLoading}<p class="comparison-note">No SnowCast output is available in this view for the {year-1}–{year} snow season.</p>{/if}
-      <p class="comparison-note">Observed dates are shown as reported. Model matches use the same calendar date in UTC, not an exact measurement time.</p>
-      <div class="observation-table"><table><caption>{tableExpanded ? 'All' : 'Latest'} observations · {unit}</caption><thead><tr><th>Date</th><th>Observed</th><th>Model</th><th>Flags</th></tr></thead><tbody>{#each [...observations].reverse().slice(0,tableExpanded ? observations.length : 8) as row}<tr><td>{row[0]}</td><td>{formatValue(observationValue(row,variable!),unit)}</td><td>{formatValue(matchedModel(row,model,variable!)?.value ?? null,unit)}</td><td title={flagsLabel(row,variable!)}>{flagsLabel(row,variable!) || '—'}</td></tr>{/each}</tbody></table></div>
+      {#if !modelFinite.length && !modelLoading && !model.some(v => v.error)}<p class="comparison-note">No SnowCast values are available at this station in the current model window.</p>{/if}
+      <p class="comparison-note">{#if differentSeasons}The chart compares different years by time of year. {/if}The table matches only the same calendar date in UTC, not an exact measurement time. A dash means no same-date model match.</p>
+      <div class="observation-table"><table><caption>{tableExpanded ? 'All' : 'Latest'} observations · {unit}</caption><thead><tr><th>Date</th><th>Observed</th><th>Same-date model</th><th>Flags</th></tr></thead><tbody>{#each [...observations].reverse().slice(0,tableExpanded ? observations.length : 8) as row}<tr><td>{row[0]}</td><td>{formatValue(observationValue(row,variable!),unit)}</td><td>{formatValue(matchedModel(row,model,variable!)?.value ?? null,unit)}</td><td title={flagsLabel(row,variable!)}>{flagsLabel(row,variable!) || '—'}</td></tr>{/each}</tbody></table></div>
       {#if observations.length > 8}<button class="text-button table-toggle" onclick={() => tableExpanded = !tableExpanded}>{tableExpanded ? 'Show latest eight' : `Show all ${observations.length} observations`}</button>{/if}
     {/if}
     <p class="last-observation">Last observation: <strong>{last![0]}</strong> · {formatValue(observationValue(last!,variable!),unit)} {unit}</p>

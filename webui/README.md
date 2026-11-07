@@ -190,6 +190,12 @@ shorter records show individual year medians. Reference periods, sample counts,
 flags, and terrain-representativeness limitations are visible in the panel.
 See [snapshot provenance and processing](data/README.md) for the precise method.
 
+Both comparison tabs keep the available SnowCast series visible. In Observations,
+the season picker changes only the historical observations; model and observation
+seasons are labelled separately and aligned by month/day. Model coverage dates
+are shown explicitly. The table's **Same-date model** column still requires an
+exact calendar-date match in UTC; an overlay from a different year is not a match.
+
 The committed 6.3 MB bundle includes 750 western-Canada stations. `npm run dev`
 and `npm run build` automatically extract the static assets using Python's
 standard library. Builds require no CanSWE network access or netCDF4 install.

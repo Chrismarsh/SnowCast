@@ -58,6 +58,20 @@ export function matchedModel(row: Observation, values: PointValue[], variable: S
   if (row[variable === 'swe' ? 3 : 4] === 'Y') return undefined;
   return values.find(v => v.time.slice(0, 10) === row[0] && !v.error && v.value !== null);
 }
+export function observationComparison(records: Observation[], model: PointValue[], year: number) {
+  // The observation-year picker never restricts model coverage. Charts align
+  // seasons by month/day; only matchedModel may make calendar-date matches.
+  const modelFinite = model.filter(v => v.value !== null && !v.error);
+  const modelYears = [...new Set(modelFinite.map(v => snowYear(v.time)))].sort((a, b) => a - b);
+  return {
+    observations: records.filter(r => snowYear(r[0]) === year),
+    model, // Retain missing/failed samples so chart paths break at gaps.
+    modelFinite,
+    modelSeasons: modelYears.map(y => `${y - 1}–${y}`).join(', '),
+    differentSeasons: modelYears.some(y => y !== year),
+    modelDates: modelFinite.map(v => v.time.slice(0, 10)).sort(),
+  };
+}
 export function parseIndex(value: unknown): StationIndex {
   const data = value as StationIndex;
   if (data?.version !== 1 || !Array.isArray(data.stations) || !data.dataset?.doi || data.minimum_years < 1) throw new Error('Invalid CanSWE index');
