@@ -13,6 +13,7 @@ function readableBands(expression: EncodedExpression): EncodedExpression {
 }
 
 const cases = [
+  { id: 'difference', palette: 'difference' as const, range: [-400, 400] as [number, number], valid: 0 },
   { id: 't', palette: 'temperature' as const, range: [-25, 10] as [number, number], valid: -40 },
   { id: 'swe', palette: 'snow' as const, range: [0, 400] as [number, number], valid: 0 },
   { id: 'snowdepthavg', palette: 'snow' as const, range: [0, 2] as [number, number], valid: 0 },

@@ -6,6 +6,33 @@ a full-resolution point history, point CSV downloads, shareable links, and a res
 map/inspector layout. There is no application server, database, S3 dependency,
 or connection from the public browser to the model's compute environment.
 
+## Compare two dates
+
+Switch the timeline from **Value** to **Difference**, then choose **From** and
+**To** independently. The map shows **To − From** for SWE, snow depth or air
+temperature. Swap reverses the subtraction; comparing a date with itself gives
+zero wherever data is valid. Brown means decrease, blue means increase, and
+the neutral midpoint is zero. Symmetric colour limits stay fixed across pairs:
+±400 mm SWE, ±2 m snow depth and ±35 °C temperature for the default catalogue.
+
+The browser range-reads the two existing numeric COGs and subtracts aligned
+native tiles before styling and map reprojection, with both WebGL and Canvas
+rendering. Both date masks must be valid. Missing data is never treated as zero;
+incompatible grids/overviews and failed reads report an error. No pairwise COGs
+or publisher changes are needed. Display overviews are subtracted at their
+existing resolutions; point values use the full-resolution rasters.
+
+Point details show the two endpoint values and their signed difference.
+**Difference CSV** exports both UTC timestamps, both values, the difference,
+units, coordinates and status. Shared location links retain the date pair.
+History charts and CanSWE comparisons continue to show absolute values.
+Dates and legends follow the successfully rendered pair while another loads.
+
+Comparisons cover dates retained in `catalog.json` (currently a rolling 10-day
+window), using the latest timestamp of each UTC day. Older original TIFFs on
+the downloads page are not automatically available for map comparisons. A
+shared pair that has expired is reported instead of silently substituted.
+
 ![Working explorer with explicitly labelled synthetic COG data](docs/explorer-demo-20261105.jpg)
 
 ## How the COGs are generated

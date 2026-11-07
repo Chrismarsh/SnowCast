@@ -7,6 +7,8 @@ import { get as getProjection, transformExtent, fromLonLat } from 'ol/proj';
 import { ProjectedRaster } from './projectedRaster';
 import { colorPixel } from './data';
 import { TileFailures } from './rasterRequests';
+import { DifferenceSource } from './differenceSource';
+import type { Asset } from './types';
 import * as canvas from '@napi-rs/canvas';
 
 vi.stubGlobal('document', {createElement: (tag: string) => {
@@ -25,6 +27,41 @@ vi.stubGlobal('HTMLVideoElement', class {});
 vi.stubGlobal('ImageBitmap', class {});
 vi.stubGlobal('requestAnimationFrame', (callback: () => void) => setTimeout(callback, 0));
 afterAll(() => vi.unstubAllGlobals());
+
+it('renders signed date differences and the intersection of masks through Canvas reprojection', async () => {
+  const native = getProjection('EPSG:4326')!, mercator = getProjection('EPSG:3857')!;
+  const bounds = [-130, 50, -110, 60];
+  const asset: Asset = { id: 'test', href: '', datetime: '', projection: 'EPSG:4326', bounds,
+    shape: [32, 64], transform: [20 / 64, 0, -130, 0, -20 / 64, 60], nodata: -9999, scale: 1, offset: 0 };
+  const a = new Float32Array(64 * 64 * 2), b = new Float32Array(a.length);
+  for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
+    const i = (y * 64 + x) * 2;
+    a[i] = 10; a[i + 1] = x < 16 ? 0 : 255;
+    b[i] = x < 32 ? 5 : x < 48 ? 10 : 15; b[i + 1] = 255;
+  }
+  const numeric = (data: Float32Array) => {
+    const s = new DataTileSource({ projection: native, bandCount: 2, tileSize: 64,
+      tileGrid: new TileGrid({ extent: bounds, resolutions: [20 / 64], tileSize: 64 }), loader: () => data });
+    vi.spyOn(s, 'getView').mockResolvedValue({ projection: native, extent: bounds }); return s;
+  };
+  const delta = new DifferenceSource(numeric(a), numeric(b), asset, asset, new AbortController().signal);
+  await delta.getView();
+  const settings = { colors: [[179,88,6], [247,247,247], [33,102,172]], min: -5, max: 5, scale: 1, offset: 0, nodata: 'NaN' };
+  const raster = new RasterSource({ sources: [delta], threads: 0, operation: colorPixel });
+  raster.on('beforeoperations', e => Object.assign(e.data, settings));
+  const source = new ProjectedRaster(raster, native);
+  const extent = transformExtent(bounds, native, mercator), resolution = (extent[2] - extent[0]) / 256;
+  try {
+    let image;
+    await vi.waitFor(() => { image = source.getImage(extent, resolution, 1, mercator); image?.load(); expect(source.frameReady).toBe(true); });
+    const output = image!.getImage() as HTMLCanvasElement;
+    for (const [lon, value, alpha] of [[-128, 0, 0], [-123, -5, 255], [-118, 0, 255], [-113, 5, 255]]) {
+      const p = fromLonLat([lon, 55]);
+      const pixel = output.getContext('2d')!.getImageData(Math.floor((p[0] - extent[0]) / resolution), Math.floor((extent[3] - p[1]) / resolution), 1, 1).data;
+      expect(Array.from(pixel)).toEqual(Array.from(new Uint8ClampedArray(colorPixel([[value, alpha]], settings))));
+    }
+  } finally { source.dispose(); delta.dispose(); }
+});
 
 it('renders masked numeric data into the correct Mercator positions using only Canvas 2D', async () => {
   const native = getProjection('EPSG:4326')!;

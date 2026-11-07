@@ -5,7 +5,7 @@ export interface Asset {
 }
 export interface Variable {
   id: string; label: string; title: string; unit: string;
-  range: [number, number]; palette: 'snow' | 'temperature'; assets: Asset[];
+  range: [number, number]; palette: 'snow' | 'temperature' | 'difference'; assets: Asset[];
 }
 export interface Catalogue {
   version: number; title: string; generated_at: string; latest_time: string;

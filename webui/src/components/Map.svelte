@@ -7,6 +7,9 @@
   import ImageLayer from 'ol/layer/Image';
   import RasterSource from 'ol/source/Raster';
   import GeoTIFF from 'ol/source/GeoTIFF';
+  import type DataTileSource from 'ol/source/DataTile';
+  import { DifferenceSource } from '../lib/differenceSource';
+  import type { MapAsset } from '../lib/difference';
   import DataTile, { disposedError } from 'ol/DataTile';
   import XYZ from 'ol/source/XYZ';
   import VectorLayer from 'ol/layer/Vector';
@@ -22,7 +25,7 @@
   import type { Asset, Variable } from '../lib/types';
   import type { SnowStation } from '../lib/canswe';
   import { ensureProjection } from '../lib/raster';
-  import { colorPixel, rasterColor, snowColors, temperatureColors } from '../lib/data';
+  import { colorPixel, rasterColor, paletteColors } from '../lib/data';
   import { basemaps, DEFAULT_BASEMAP, type BasemapId } from '../lib/basemaps';
   import { watchFrameLoad } from '../lib/frameLoad';
   import { displayPixelRatio, TileProgress } from '../lib/mapPerformance';
@@ -30,7 +33,7 @@
   import { RasterRequests, RequestPool, TileFailures, rasterSourceOptions } from '../lib/rasterRequests';
   import { initialRenderer, isRendererPreference, RendererSelection, RENDERER_STORAGE_KEY, type RendererPreference } from '../lib/renderer';
   import 'ol/ol.css';
-  export let asset: Asset | undefined;
+  export let asset: MapAsset | undefined;
   export let variable: Variable | undefined;
   export let opacity = 0.7;
   export let point: number[] | null = null;
@@ -66,7 +69,7 @@
   const options = new URLSearchParams(window.location.search);
   const lowDetail = options.get('detail') === 'low';
   const layers = new globalThis.Map<string, RasterLayer>();
-  const sources = new globalThis.Map<string, GeoTIFF>();
+  const sources = new globalThis.Map<string, DataTileSource>();
   const requests = new globalThis.Map<string, AbortController>();
   const progress = new globalThis.Map<string, TileProgress>();
   const http = new globalThis.Map<string, RasterRequests>();
@@ -112,6 +115,7 @@
     return {
       renderer: useWebGL ? 'WebGL' : 'Canvas', detail: lowDetail ? 'low' : 'automatic',
       variable: variable?.id, frameTime: asset?.datetime,
+      differenceFrom: asset?.difference?.from.datetime,
       rendererPreference: rendering?.preference, fallbackReason: rendering?.fallbackReason,
       viewport: map?.getSize(), devicePixelRatio: window.devicePixelRatio, mapPixelRatio: map?.getPixelRatio(),
       projection: map?.getView().getProjection().getCode(), rasterProjection: source?.getProjection()?.getCode(),
@@ -218,7 +222,7 @@
     if (point) marker.addFeature(new Feature(new Point(fromLonLat(point, map.getView().getProjection()))));
   }
 
-  function show(next: Asset, v: Variable) {
+  function show(next: MapAsset, v: Variable) {
     cancel?.();
     lastFailure = undefined;
     requested = next.id;
@@ -229,17 +233,20 @@
       if (!fitted) { fit(0); updateMarker(); fitted = true; }
       let layer = layers.get(next.id);
       if (!layer) {
-        const colors = v.palette === 'temperature' ? temperatureColors : snowColors;
+        const colors = paletteColors(v);
         const controller = new AbortController();
         requests.set(next.id, controller);
         const loader = new RasterRequests(controller.signal, requestPool);
         const errors = new TileFailures();
         http.set(next.id, loader); failures.set(next.id, errors);
-        const cog = new GeoTIFF({ normalize: false, interpolate: false, transition: 0, projection: next.projection, sources: [{
-          url: next.href,
+        const openCOG = (a: Asset) => new GeoTIFF({ normalize: false, interpolate: false, transition: 0, projection: a.projection, sources: [{
+          url: a.href,
           loader: (url, headers, signal) => loader.load(url, headers, signal),
-          bands: [1], nodata: next.nodata === 'NaN' || next.nodata == null ? NaN : next.nodata,
+          bands: [1], nodata: a.nodata === 'NaN' || a.nodata == null ? NaN : a.nodata,
         }], sourceOptions: rasterSourceOptions });
+        const cog = next.difference
+          ? new DifferenceSource(openCOG(next.difference.from), openCOG(next.difference.to), next.difference.from, next.difference.to, controller.signal)
+          : openCOG(next);
         const counter = new TileProgress();
         progress.set(next.id, counter);
         cog.on('tileloadstart', e => { counter.start(e.tile); errors.start(e.tile); });
@@ -298,7 +305,7 @@
         if (!(e.tile instanceof DataTile) || e.tile.getError() !== disposedError) tileFailure();
       });
       const stateKey = source.on('change', () => {
-        if (source.getState() === 'error') fail('The COG could not be opened. Check its projection, format and hosting.');
+        if (source.getState() === 'error') fail(source instanceof DifferenceSource ? source.error : 'The COG could not be opened. Check its projection, format and hosting.');
         else if (source.getState() === 'ready') watchdog.progress();
       });
       const progressKey = source.on('tileloadend', () => watchdog.progress());

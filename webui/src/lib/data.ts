@@ -1,12 +1,14 @@
 import type { Asset, Catalogue, PointValue, Variable } from './types';
 import type { EncodedExpression } from 'ol/expr/expression';
+import { differenceColors } from './difference';
 
 export const snowColors = ['#e4f8fc', '#9ae2ed', '#62b8ed', '#6981e5', '#7852de', '#6630bd'];
 export const temperatureColors = ['#284ba3', '#70b6d5', '#e7f1ef', '#f9ca99', '#df815d', '#b8353d'];
+export const paletteColors = (variable: Pick<Variable, 'palette'>) => variable.palette === 'difference' ? differenceColors : variable.palette === 'temperature' ? temperatureColors : snowColors;
 
 /** Single-band numeric GeoTIFF sources also supply validity in band 2. */
 export function rasterColor(asset: Pick<Asset, 'nodata' | 'scale' | 'offset'>, variable: Pick<Variable, 'palette' | 'range'>): EncodedExpression {
-  const colors = variable.palette === 'temperature' ? temperatureColors : snowColors;
+  const colors = paletteColors(variable);
   const raw: EncodedExpression = ['band', 1];
   const valid: EncodedExpression = ['all', ['>', ['band', 2], 0], ['==', raw, raw]];
   // Mask in raw units, before scaling or clamping to the display range.
