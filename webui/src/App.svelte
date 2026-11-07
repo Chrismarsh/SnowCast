@@ -33,8 +33,8 @@
   try { savedBasemap = localStorage.getItem(BASEMAP_STORAGE_KEY); } catch { /* Storage may be unavailable. */ }
   let basemap = initialBasemap(params.get('basemap'), savedBasemap);
   let basemapOpen = false;
-  let stationsVisible = true;
-  try { stationsVisible = localStorage.getItem('snowcast-canswe-visible') !== 'false'; } catch { /* Session choice. */ }
+  let stationsVisible = false;
+  try { stationsVisible = localStorage.getItem('snowcast-canswe-visible') === 'true'; } catch { /* Session choice. */ }
   let stationIndex: StationIndex | null = null;
   let stationLoading = false;
   let stationError = '';
