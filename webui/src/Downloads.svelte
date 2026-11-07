@@ -1,4 +1,5 @@
 <script lang="ts">
+  import snowflake from './assets/snowcast-snowflake.png';
   import { onMount } from 'svelte';
   import Icon from './components/Icon.svelte';
   import HelpDialog from './components/HelpDialog.svelte';
@@ -66,7 +67,7 @@
 <svelte:head><title>SnowCast · Data downloads</title></svelte:head>
 <a class="skip-link" href="#downloads-main">Skip to downloads</a>
 <header class="app-header downloads-header">
-  <a class="brand" href="./" aria-label="SnowCast home"><svg width="40" height="29" viewBox="0 0 48 32" aria-hidden="true"><path d="M2 27 16 10l9 11M20 16 30 4l16 23" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span>SnowCast</span></a>
+  <a class="brand" href="./" aria-label="SnowCast home"><img class="brand-icon" src={snowflake} width="40" height="40" alt=""/><span>SnowCast</span></a>
   <span class="brand-caption">Snowpack explorer</span>
   <nav aria-label="Main navigation"><a class="nav-explore" href="./">Explore</a><a class="active" aria-current="page" href="./downloads.html">Data</a><a href="./about.html">About</a><button onclick={() => help.open()}>Help</button></nav>
   <a class="back-to-map" href="./">Back to map <Icon name="arrow" size={16}/></a>

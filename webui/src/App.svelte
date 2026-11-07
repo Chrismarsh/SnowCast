@@ -1,4 +1,5 @@
 <script lang="ts">
+  import snowflake from './assets/snowcast-snowflake.png';
   import { onMount, tick } from 'svelte';
   import Map from './components/Map.svelte';
   import Icon from './components/Icon.svelte';
@@ -262,7 +263,7 @@
 
 <svelte:head><title>SnowCast · Snowpack explorer</title></svelte:head>
 <header class="app-header">
-  <a class="brand" href={window.location.pathname + window.location.search} aria-label="SnowCast home"><svg width="40" height="29" viewBox="0 0 48 32" aria-hidden="true"><path d="M2 27 16 10l9 11M20 16 30 4l16 23" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span>SnowCast</span></a>
+  <a class="brand" href={window.location.pathname + window.location.search} aria-label="SnowCast home"><img class="brand-icon" src={snowflake} width="40" height="40" alt=""/><span>SnowCast</span></a>
   <span class="brand-caption">Snowpack explorer</span>
   <nav aria-label="Main navigation"><button class="active nav-explore" aria-current="page" onclick={() => dialog?.close()}>Explore</button><a href="./downloads.html">Data</a><a href="./about.html">About</a><button onclick={() => help.open()}>Help</button></nav>
   <span class:sample={catalogue?.sample_data} class="status-pill"><span class="status-dot"></span>{catalogue?.sample_data ? 'Demo · Synthetic data' : 'Daily simulations'}</span>
