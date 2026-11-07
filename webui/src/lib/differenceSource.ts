@@ -44,7 +44,11 @@ export class DifferenceSource extends DataTileSource {
     }
     const sizes: number[][] = [];
     for (let z = 0; z <= b.getMaxZoom(); z++) {
-      if (!close(a.getOrigin(z), b.getOrigin(z), tolerance) || !close(toSize(a.getTileSize(z)), toSize(b.getTileSize(z)), 0)) {
+      // OL adjusts rendered tile height by the pixel aspect ratio. It can be
+      // fractional, and equivalent COG exports differ by ~1e-10 display pixels.
+      // Origins/extents remain checked in CRS units above, while the decoded
+      // integer tile dimensions below must still match exactly.
+      if (!close(a.getOrigin(z), b.getOrigin(z), tolerance) || !close(toSize(a.getTileSize(z)), toSize(b.getTileSize(z)), 1e-6)) {
         throw new Error('These dates have incompatible raster tile grids.');
       }
       // Native tile data size can differ from the rendered tile grid size.

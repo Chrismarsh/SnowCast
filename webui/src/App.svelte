@@ -328,6 +328,7 @@
     {:else if frameLoading}<div class="map-banner" role="status"><span class="spinner"></span>{#if slowFrameId === selected?.id}Still loading {variable?.label} for {dateLabel(selected!.datetime)}. Waiting for map data…<button class="text-button" onclick={openDiagnostics}>Loading diagnostics</button>{:else}Loading {selected ? dateLabel(selected.datetime) : 'frame'}…{/if}</div>
     {:else if stale && !catalogue?.sample_data}<div class="map-banner">Latest model output is over 48 hours old. <button class="text-button" onclick={load}>Refresh</button></div>{/if}
     {#if variable}
+      <div class="map-bottom">
       <div class="legend surface"><div>{legendVariable?.title} <span>· {variable.unit}</span></div><div class="colour-ramp" style={`background:linear-gradient(90deg,${colors.join(',')})`}></div><div class="legend-labels">{#each [0, .25, .5, .75, 1] as fraction}<span>{formatValue(legendVariable.range[0] + (legendVariable.range[1] - legendVariable.range[0]) * fraction, variable.unit)}{fraction === 1 ? '+' : ''}</span>{/each}</div>{#if displayed?.difference}<div class="difference-key"><span>Decrease</span><span>0</span><span>Increase</span></div>{/if}</div>
       <div class="timeline surface">
         <div class="timeline-heading"><div class="map-mode" role="group" aria-label="Map display"><button class:active={mode === 'value'} aria-pressed={mode === 'value'} onclick={() => chooseMode('value')}>Value</button><button class:active={mode === 'difference'} aria-pressed={mode === 'difference'} onclick={() => chooseMode('difference')}>Difference</button></div><span>{displayed?.difference ? `${dateLabel(displayed.difference.from.datetime)} → ${dateLabel(displayed.datetime)} · To − From` : displayed ? timeLabel(displayed.datetime) : 'Preparing map'}</span></div>
@@ -341,6 +342,7 @@
         </div>
         {/if}
         {#if available < dates.length}<div class="missing-note">{dates.length - available} dates unavailable · gaps are not interpolated</div>{/if}
+      </div>
       </div>
     {/if}
   </section>
