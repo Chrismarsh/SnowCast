@@ -11,8 +11,9 @@ or connection from the public browser to the model's compute environment.
 Switch the timeline from **Value** to **Difference**, then choose **From** and
 **To** independently. The map shows **To − From** for SWE, snow depth or air
 temperature. Swap reverses the subtraction; comparing a date with itself gives
-zero wherever data is valid. Brown means decrease, blue means increase, and
-the neutral midpoint is zero. Symmetric colour limits stay fixed across pairs:
+zero wherever data is valid. SWE and snow depth use brown for decreases and
+blue for increases. Air temperature uses blue for cooling and red for warming.
+The neutral midpoint is zero. Symmetric colour limits stay fixed across pairs:
 ±400 mm SWE, ±2 m snow depth and ±35 °C temperature for the default catalogue.
 
 The browser range-reads the two existing numeric COGs and subtracts aligned

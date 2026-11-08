@@ -2,6 +2,7 @@ import type { Asset, PointValue, Variable } from './types';
 
 export interface MapAsset extends Asset { difference?: { from: Asset; to: Asset } }
 export const differenceColors = ['#b35806', '#f1a340', '#f7f7f7', '#67a9cf', '#2166ac'];
+export const temperatureDifferenceColors = ['#2166ac', '#67a9cf', '#f7f7f7', '#ef8a62', '#b2182b'];
 
 export function differenceAsset(from: Asset, to: Asset): MapAsset {
   return { ...to, id: JSON.stringify(['difference', from.id, to.id]), scale: 1, offset: 0, nodata: 'NaN', difference: { from, to } };
@@ -9,7 +10,7 @@ export function differenceAsset(from: Asset, to: Asset): MapAsset {
 
 export function differenceVariable(variable: Variable): Variable {
   const limit = variable.range[1] - variable.range[0];
-  return { ...variable, id: `${variable.id}:difference`, title: `${variable.title} change`, palette: 'difference', range: [-limit, limit] };
+  return { ...variable, id: `${variable.id}:difference`, title: `${variable.title} change`, palette: variable.palette === 'temperature' ? 'temperature-difference' : 'difference', range: [-limit, limit] };
 }
 
 /** Only subtract aligned cells; allow floating point noise from raster export. */
