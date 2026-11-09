@@ -27,7 +27,8 @@ VARIABLES = {
     "snowdepthavg": {"label": "Snow depth", "title": "Snow depth", "unit": "m", "range": [0, 2], "palette": "snow"},
     "t": {"label": "Temperature", "title": "Air temperature", "unit": "°C", "range": [-25, 10], "palette": "temperature"},
 }
-PATTERN = re.compile(r"^(?P<variable>swe|snowdepthavg|t)-[^_]+_(?P<time>\d{8}T\d{6})\.tiff?$", re.I)
+PATTERN = re.compile(r"^(?P<variable>swe|snowdepthavg|t)-(?P<grid>[^_]+)_(?P<time>\d{8}T\d{6})\.tiff?$", re.I)
+DEFAULT_GRID = "0.001x0.001"
 UTC = timezone.utc
 # Include the encoding in immutable asset identities, independently of the input
 # hash. Older publications must be rebuilt even when the source TIFF is unchanged.
@@ -46,6 +47,7 @@ def atomic_json(path: Path, value: dict) -> None:
             json.dump(value, stream, indent=2, allow_nan=False)
             stream.write("\n")
             stream.flush()
+            os.fchmod(stream.fileno(), 0o644)
             os.fsync(stream.fileno())
         os.replace(temporary, path)
     finally:
@@ -58,6 +60,48 @@ def sha256(path: Path) -> str:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def dataset_sha256(path: Path) -> str:
+    """Identify the TIFF and GDAL-reported sidecars, independent of its directory."""
+    path = path.resolve()
+    with rasterio.open(path) as src:
+        files = {Path(name).resolve() for name in src.files} | {path}
+    # Hash the manifest as well as the bytes: adding/removing a .msk or .aux.xml
+    # must invalidate the COG even when the TIFF itself has not changed.
+    manifest = sorted((os.path.relpath(name, path.parent), sha256(name)) for name in files)
+    return hashlib.sha256(json.dumps(manifest, separators=(",", ":")).encode()).hexdigest()
+
+
+def grid_resolution(grid: str) -> tuple[float, float]:
+    try:
+        dx, dy = map(float, grid.split("x"))
+        if all(math.isfinite(v) and v > 0 for v in (dx, dy)):
+            return dx, dy
+    except ValueError:
+        pass
+    raise ValueError("grid must contain two positive resolutions, e.g. 0.001x0.001")
+
+
+def matches_resolution(asset: dict, resolution: tuple[float, float]) -> bool:
+    a, b, _, d, e, _ = asset["transform"]
+    dx, dy = resolution
+    # Filenames name the nominal spacing. Fitting domain bounds to integer
+    # dimensions produces ~0.00100005 degrees in the live 0.001-degree grid.
+    # This tolerance only identifies resolution; date alignment remains strict.
+    return (b == 0 and d == 0 and math.isclose(a, dx, rel_tol=1e-3)
+            and math.isclose(e, -dy, rel_tol=1e-3))
+
+
+def validate_alignment(assets: list[dict], variable: str) -> None:
+    """Use the same cell-alignment tolerance as the browser's date differences."""
+    reference = assets[-1]
+    tolerance = max(abs(reference["transform"][0]), abs(reference["transform"][4])) * 1e-6
+    for asset in assets:
+        if (asset["projection"] != reference["projection"] or asset["shape"] != reference["shape"]
+                or any(abs(a - b) > tolerance for a, b in zip(asset["transform"], reference["transform"]))):
+            raise ValueError(f"Unaligned {variable} grids at {asset['datetime']} and {reference['datetime']}; "
+                             "rebuild these dates on the same grid before publishing")
 
 
 def convert(source: Path, destination: Path) -> dict:
@@ -122,9 +166,11 @@ def convert(source: Path, destination: Path) -> dict:
 
 
 def publish(inputs: list[Path], output: Path, days: int = 10, run_id: str | None = None,
-            base_url: str | None = None, now: datetime | None = None) -> dict:
+            base_url: str | None = None, now: datetime | None = None,
+            grid: str = DEFAULT_GRID) -> dict:
     if not 1 <= days <= 366:
         raise ValueError("days must be between 1 and 366")
+    resolution = grid_resolution(grid)
     now = now or datetime.now(UTC)
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
@@ -136,20 +182,25 @@ def publish(inputs: list[Path], output: Path, days: int = 10, run_id: str | None
         previous = json.loads(catalogue_path.read_text()) if catalogue_path.exists() else {}
         if previous and previous.get("version") != 1:
             raise ValueError("Unsupported existing catalogue version")
-        assets = {v["id"]: {a["datetime"]: a for a in v["assets"]}
-                  for v in previous.get("variables", [])}
+        assets = {}
+        for variable in previous.get("variables", []):
+            retained = {a["datetime"]: a for a in variable["assets"] if matches_resolution(a, resolution)}
+            omitted = len(variable["assets"]) - len(retained)
+            if omitted:
+                warnings.warn(f"Omitting {omitted} previously published {variable['id']} assets outside grid {grid}")
+            assets[variable["id"]] = retained
         candidates = {}
         # Later input directories take precedence, so archive first / current last.
         for directory in inputs:
             for path in sorted(Path(directory).glob("*")):
                 match = PATTERN.match(path.name)
-                if not match or not path.is_file():
+                if not match or match["grid"] != grid or not path.is_file():
                     continue
                 stamp = datetime.strptime(match["time"], "%Y%m%dT%H%M%S").replace(tzinfo=UTC)
                 candidates[(match["variable"].lower(), iso(stamp))] = path
         times = [stamp for _, stamp in candidates] + [s for group in assets.values() for s in group]
         if not times:
-            raise ValueError("No timestamped SnowCast TIFFs or existing catalogue assets found")
+            raise ValueError(f"No timestamped SnowCast TIFFs or existing catalogue assets found for grid {grid}")
         latest = datetime.fromisoformat(max(times).replace("Z", "+00:00"))
         # Ten calendar dates including latest, rather than ten files or ten runs.
         cutoff = (latest - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -157,7 +208,7 @@ def publish(inputs: list[Path], output: Path, days: int = 10, run_id: str | None
         for (variable, stamp), source in sorted(candidates.items()):
             if stamp < cutoff_iso:
                 continue
-            digest = sha256(source)
+            digest = dataset_sha256(source)
             current = assets.setdefault(variable, {}).get(stamp)
             if (current and current.get("source_sha256") == digest
                     and current.get("cog_encoding") == COG_ENCODING and (output / current["path"]).exists()):
@@ -166,6 +217,8 @@ def publish(inputs: list[Path], output: Path, days: int = 10, run_id: str | None
             identity = f"{compact}-{digest[:20]}-{COG_ENCODING}"
             relative = f"cogs/{variable}/{identity}.tif"
             metadata = convert(source, output / relative)
+            if not matches_resolution(metadata, resolution):
+                raise ValueError(f"Raster resolution does not match grid {grid}: {source}")
             assets[variable][stamp] = {
                 "id": f"{variable}-{identity}", "path": relative,
                 "href": relative, "datetime": stamp, "run_id": run_id,
@@ -179,11 +232,12 @@ def publish(inputs: list[Path], output: Path, days: int = 10, run_id: str | None
                     raise FileNotFoundError(f"Catalogue asset missing: {asset['path']}")
                 asset["href"] = f"{base_url.rstrip('/')}/{asset['path']}" if base_url else asset["path"]
             if retained:
+                validate_alignment(retained, variable)
                 variables.append({"id": variable, **settings, "assets": retained})
         all_bounds = [a["bounds"] for v in variables for a in v["assets"]]
         catalogue = {
             "version": 1, "title": "SnowCast model domain", "generated_at": iso(now),
-            "latest_time": iso(latest), "window_days": days, "sample_data": False,
+            "latest_time": iso(latest), "window_days": days, "sample_data": False, "grid": grid,
             "bounds": [min(b[0] for b in all_bounds), min(b[1] for b in all_bounds),
                        max(b[2] for b in all_bounds), max(b[3] for b in all_bounds)],
             "variables": variables,
@@ -198,10 +252,12 @@ def main():
                         help="TIFF directory; repeat with archive first and current last")
     parser.add_argument("--output", type=Path, required=True, help="Published static-data directory")
     parser.add_argument("--days", type=int, default=10)
+    parser.add_argument("--grid", default=DEFAULT_GRID,
+                        help="Source filename grid and pixel spacing in CRS units (default: %(default)s)")
     parser.add_argument("--run-id", help="Actual model run identifier, if known; not inferred from file time")
     parser.add_argument("--base-url", help="Optional absolute HTTPS base URL of the data directory")
     args = parser.parse_args()
-    catalogue = publish(args.input, args.output, args.days, args.run_id, args.base_url)
+    catalogue = publish(args.input, args.output, args.days, args.run_id, args.base_url, grid=args.grid)
     print(f"Published {sum(len(v['assets']) for v in catalogue['variables'])} assets to {args.output / 'catalog.json'}")
 
 

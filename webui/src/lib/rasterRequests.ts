@@ -79,7 +79,7 @@ export class RasterRequests {
   private cancelled = 0;
   private bytes = 0;
   private lastError: Record<string, unknown> | null = null;
-  private metadata?: { key: string; promise: Promise<Metadata> };
+  private metadata = new Map<string, Promise<Metadata>>();
   private metadataHits = 0;
 
   constructor(private frameSignal: AbortSignal, private pool: RequestPool, private fetcher: typeof fetch = fetch) {}
@@ -96,22 +96,21 @@ export class RasterRequests {
     const requestHeaders = new Headers(headers);
     const range = requestHeaders.get('Range')?.match(/^bytes=(\d+)-(\d+)$/);
     if (range && Number(range[1]) <= Number(range[2]) && Number(range[2]) < METADATA_BYTES) {
-      // Pin only this file's prefix. No evictable/shared block cache, and data
-      // ranges outside the prefix still go directly to the server.
+      // Pin each input file's prefix (two in difference mode). No evictable
+      // shared block cache; ranges outside the prefix go directly to the server.
       requestHeaders.delete('Range');
       const key = JSON.stringify([url, [...requestHeaders]]);
-      let entry = this.metadata;
-      if (!entry || entry.key !== key) {
+      let promise = this.metadata.get(key);
+      if (!promise) {
         requestHeaders.set('Range', `bytes=0-${METADATA_BYTES - 1}`);
-        const promise = this.request(url, requestHeaders, this.frameSignal).then(async response => ({
+        promise = this.request(url, requestHeaders, this.frameSignal).then(async response => ({
           body: await response.arrayBuffer(), headers: response.headers,
         }));
-        entry = { key, promise };
-        this.metadata = entry;
-        const pending = entry;
-        void promise.catch(() => { if (this.metadata === pending) this.metadata = undefined; });
+        this.metadata.set(key, promise);
+        const pending = promise;
+        void promise.catch(() => { if (this.metadata.get(key) === pending) this.metadata.delete(key); });
       } else this.metadataHits++;
-      const metadata = await waitForMetadata(entry.promise, signal);
+      const metadata = await waitForMetadata(promise, signal);
       signal.throwIfAborted();
       const start = Number(range[1]);
       const end = Math.min(Number(range[2]), metadata.body.byteLength - 1);

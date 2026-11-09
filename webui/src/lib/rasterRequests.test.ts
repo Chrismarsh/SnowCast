@@ -168,6 +168,47 @@ describe('per-file TIFF metadata cache', () => {
     expect(fetcher).toHaveBeenCalledTimes(4);
   });
 
+  it.each(['url', 'headers'])('reuses both pending and completed prefixes when %s keys interleave', async kind => {
+    const pending: (() => void)[] = [];
+    const fetcher = vi.fn<typeof fetch>().mockImplementation((_url, init) => new Promise(resolve => {
+      const value = pending.length + 1;
+      pending.push(() => resolve(partial([value, value, value, value])));
+    }));
+    const { requests, tile } = setup(fetcher);
+    const secondUrl = kind === 'url' ? url + '&revision=2' : url;
+    const secondHeaders = kind === 'headers' ? { ...headers, Authorization: 'test' } : headers;
+    const readA = () => requests.load(url, headers, tile.signal);
+    const readB = () => requests.load(secondUrl, secondHeaders, tile.signal);
+    const reads = [readA(), readB(), readA(), readB()];
+    await Promise.resolve();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    pending.forEach(complete => complete());
+    reads.push(readA(), readB());
+    const values = await Promise.all(reads.map(async read => Array.from(new Uint8Array(await (await read).arrayBuffer()))));
+    expect(values).toEqual([1, 2, 1, 2, 1, 2].map(value => [value, value, value, value]));
+    // Alternate again after both transfers complete, including header normalization.
+    await requests.load(url, { range: 'bytes=0-3' }, tile.signal);
+    await readB();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(requests.snapshot()).toMatchObject({ completed: 2, metadataHits: 6, failed: 0 });
+  });
+
+  it('retries only the failed metadata key while preserving another input prefix', async () => {
+    let fail!: () => void;
+    const fetcher = vi.fn<typeof fetch>().mockImplementationOnce(() => new Promise(resolve => {
+      fail = () => resolve(new Response(null, { status: 404 }));
+    })).mockImplementation(async () => partial());
+    const { requests, tile, load } = setup(fetcher);
+    const failed = expect(load()).rejects.toThrow('HTTP 404');
+    const other = () => requests.load(url + '&revision=2', headers, tile.signal);
+    await other();
+    fail(); await failed;
+    await Promise.all([load(), other(), load()]);
+    await other();
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(requests.snapshot()).toMatchObject({ completed: 2, failed: 1, metadataHits: 3 });
+  });
+
   it('clips short files at EOF and forwards unsatisfiable or crossing ranges', async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(partial())
       .mockResolvedValueOnce(new Response(null, { status: 416 }))

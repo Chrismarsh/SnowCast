@@ -16,6 +16,8 @@ from postprocess.publish_cogs import publish, atomic_json
 def main():
     output = ROOT / "webui/public/demo"
     size = 768
+    transform = from_bounds(-116.65, 50.66, -114.77, 51.79, size, size)
+    grid = f"{transform.a}x{-transform.e}"
     y, x = np.mgrid[0:size, 0:size] / size
     ridges = np.sin(31 * (x + .65 * y)) * .5 + np.sin(74 * (x + .72 * y)) * .16
     texture = np.sin(x * 139 + np.cos(y * 61)) * np.cos(y * 131) * .13
@@ -33,12 +35,12 @@ def main():
                 elif variable == "t": values = 4 - terrain * 22 - day * .55
                 else: values = np.maximum(values, 0)
                 values = values.astype("float32"); values[mask] = -9999
-                path = folder / f"{variable}-0.001x0.001_{when:%Y%m%dT%H%M%S}.tiff"
+                path = folder / f"{variable}-{grid}_{when:%Y%m%dT%H%M%S}.tiff"
                 with rasterio.open(path, "w", driver="GTiff", width=size, height=size, count=1,
                                    dtype="float32", crs="EPSG:4326", nodata=-9999,
-                                   transform=from_bounds(-116.65, 50.66, -114.77, 51.79, size, size)) as dst:
+                                   transform=transform) as dst:
                     dst.write(values, 1)
-        catalogue = publish([folder], output, run_id="synthetic-ui-demo", now=start + timedelta(days=9, hours=1))
+        catalogue = publish([folder], output, grid=grid, run_id="synthetic-ui-demo", now=start + timedelta(days=9, hours=1))
         catalogue["sample_data"] = True
         atomic_json(output / "catalog.json", catalogue)
     print("Synthetic demo ready. Open the viewer with ?demo=1")

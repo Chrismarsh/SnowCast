@@ -17,6 +17,12 @@ with urlopen(Request(args.url, headers=headers), timeout=30) as response:
         raise SystemExit('FAIL: COG response is HTTP-compressed; disable gzip/brotli for TIFFs')
     if args.origin and response.headers.get('Access-Control-Allow-Origin') not in ('*', args.origin):
         raise SystemExit('FAIL: cross-origin access is not allowed for the viewer origin')
+    if args.origin:
+        exposed = {name.strip().lower()
+                   for value in response.headers.get_all('Access-Control-Expose-Headers', [])
+                   for name in value.split(',')}
+        if not exposed.intersection({'content-range', '*'}):
+            raise SystemExit('FAIL: Access-Control-Expose-Headers must expose Content-Range to browser JavaScript')
     print('PASS: actual byte-range GET returned HTTP 206 with the requested bytes.')
     if args.origin:
-        print('PASS: Access-Control-Allow-Origin permits the supplied viewer origin.')
+        print('PASS: the viewer origin is allowed and Content-Range is exposed to browser JavaScript.')

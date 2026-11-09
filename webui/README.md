@@ -54,6 +54,21 @@ The existing model pipeline remains:
 4. The publisher writes immutable, timestamp/content-versioned files and an
    atomic `catalog.json`. The browser styles the numeric values at runtime.
 
+The map publisher selects **0.001x0.001** source TIFFs by default. Coarse 0.01°
+files remain available in the original-TIFF downloads but cannot overwrite
+fine-grid map dates. `--grid DXxDY` explicitly selects another filename grid;
+the actual pixel spacing must be within 0.1% of that nominal spacing, in the
+raster's CRS units. This accommodates fitting domain bounds to integer raster
+dimensions. Within each variable, all retained dates must have matching CRS,
+shape and cell alignment, using the browser's much tighter alignment tolerance.
+An alignment failure leaves the previous catalogue untouched.
+
+On the first publication after this change, previously catalogued rasters at
+other resolutions are omitted with a warning. Dates with available target-grid
+originals are rebuilt; dates without them are omitted rather than sampled at a
+different resolution. Existing target-grid dates are retained when their source
+TIFFs are no longer available. The synthetic demo explicitly selects its own grid.
+
 An equivalent single-file conversion using your existing GDAL installation:
 
 ```bash
@@ -77,6 +92,14 @@ source remain usable in their previous encoding until replaced or expired.
 New URLs prevent browsers/CDNs from reusing cached Float64 bytes; the uploader
 still transfers the files before switching the catalogue. No catalogue edits
 or manual deletion are needed.
+
+Source content identities include the TIFF and GDAL-reported sidecars, including
+external validity masks and auxiliary metadata. Adding, revising or removing a
+sidecar invalidates the published asset. This replaces the former TIFF-only
+hash and rebuilds available source datasets once on upgrade. Moving a dataset
+and its sidecars together from the current directory to the archive keeps the
+same identity. `catalog.json` is made publicly readable (0644) before its atomic
+replacement, including when the publisher runs with a restrictive umask.
 
 ## Hosting on an ordinary disk
 
@@ -132,6 +155,10 @@ python scripts/check_cog_host.py https://www.snowcast.ca/v3/data/cogs/swe/FILE.t
 python scripts/check_cog_host.py https://data.example/snowcast-data/cogs/swe/FILE.tif \
   --origin https://www.snowcast.ca
 ```
+
+With `--origin`, the check verifies both origin permission and exposure of
+`Content-Range` to browser JavaScript through `Access-Control-Expose-Headers`.
+Headers visible to Python alone are insufficient for the viewer.
 
 ## Build and deploy
 
