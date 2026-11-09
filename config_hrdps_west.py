@@ -59,7 +59,7 @@ settings['plot_vars'] = ['swe', 'snowdepthavg', 't']
 # The existing Leaflet viewer and AEP exports remain available during migration.
 settings['webui_enabled'] = False
 settings['webui_keep_days'] = 10
-settings['webui_weekly_days'] = 365  # SWE/SD only; one snapshot per older UTC week
+settings['webui_weekly_days'] = None  # SWE/SD weekly since September 1; 0 disables weekly history
 settings['webui_data_dir'] = os.path.join(settings['snowcast_base'], 'postprocess', 'webdata')
 # Relative asset URLs work when the catalogue and cogs/ are hosted together.
 settings['webui_data_url'] = None

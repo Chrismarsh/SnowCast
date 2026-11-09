@@ -32,9 +32,13 @@ model columns are hidden, and chart scaling uses observations alone. Switch
 back to Value to restore the model comparison.
 Dates and legends follow the successfully rendered pair while another loads.
 
-Comparisons cover dates retained in `catalog.json`: ten recent daily dates,
+Comparisons cover dates retained in `catalog.json`: up to ten recent daily dates,
 plus one SWE and snow-depth snapshot per older Monday–Sunday UTC week within
-a rolling 365-day horizon. Temperature retains ten daily dates only. The default
+a hydrological year running September 1–August 31, selected by the latest model
+date. For example, a latest date of November 9, 2026 only includes map history
+from September 1, 2026 onward. Temperature retains recent daily dates only.
+Map history resets on September 1, including the recent daily window, which
+grows back to ten days as the new year progresses. The default
 viewer history remains the recent ten days; choose **Daily + weekly archive**
 to browse older snapshots, compare dates, and sample their point histories.
 Weekly entries are the latest available daily snapshots in their calendar week,
@@ -398,7 +402,7 @@ For automatic publishing after each model run, set in `config_hrdps_west.py`:
 ```python
 settings['webui_enabled'] = True
 settings['webui_keep_days'] = 10
-settings['webui_weekly_days'] = 365  # Older weekly snapshots: SWE and snow depth only
+settings['webui_weekly_days'] = None  # SWE/SD weekly since September 1; 0 disables weekly history
 settings['webui_upload_host'] = 'USER@HOST'  # omit for directly served local disk
 settings['webui_upload_dir'] = '/var/www/html/v3/data'
 ```
@@ -413,8 +417,15 @@ midway through rotation. Source sidecars are removed only after their TIFF has
 been transferred successfully.
 
 COG retention and cleanup are automatic on both machines. The publisher defaults
-to `--days 10 --weekly-days 365`; `--weekly-days 0` disables the weekly archive.
-The horizon is relative to the latest model date. There is at most one timestamp
+to `--days 10` plus weekly SWE/SD snapshots since September 1 of the hydrological
+year containing the latest model date (UTC), not the publication date or a rolling
+365-day window. It never hashes or converts source dates outside that year.
+The optional `--weekly-days N` caps history within that year; `--weekly-days 0`
+disables the weekly archive. Leave it unset (`webui_weekly_days = None` in the
+configuration) to retain the full hydrological year, including leap years.
+The catalogue records `retention.hydrological_year_start`; `window_days` is capped
+at the number of days since September 1 so the viewer does not show previous-year
+gap slots during the first nine days. There is at most one timestamp
 per UTC day and one snapshot per older calendar week for each snow variable.
 A week with no output contributes no snapshot. Each expired or superseded COG
 is kept for **48 hours after it first becomes unreferenced**, allowing existing
@@ -427,11 +438,14 @@ eligible; originals, unrelated files and symlinks are not removed. Missing or
 invalid catalogue/pin/state data stops cleanup without deleting files.
 
 Every successful publication/upload reports active and managed COG bytes and
-cleanup totals. At the measured November sizes, the requested archive is about
-23 GB of active COGs, with additional space required during the 48-hour grace
+cleanup totals. At the measured November sizes, a full hydrological year would
+reach about 23 GB of active COGs, with additional space required during the 48-hour grace
 period, revisions and the initial migration/backfill. A 25 GB allocation is tight;
 this is a retention policy, not a hard quota or guarantee of seasonal file sizes.
-The first run can backfill selected weekly dates where source TIFFs are available.
+The first run only backfills selected weekly dates within the current hydrological
+year where source TIFFs are available. Existing COGs from previous years leave the
+catalogue and enter the same 48-hour cleanup grace period. Original daily TIFF
+and ASCII download archives, including earlier hydrological years, are unchanged.
 Older dates without either an original or a published COG cannot be recovered.
 
 To preview cleanup without deleting COGs or starting any grace clocks:

@@ -10,7 +10,7 @@ export interface Variable {
 export interface Catalogue {
   version: number; title: string; generated_at: string; latest_time: string;
   window_days: number; sample_data: boolean; bounds: number[]; variables: Variable[];
-  retention?: { daily_days: number; weekly_days: number; weekly_variables: string[]; week_starts: string };
+  retention?: { daily_days: number; weekly_days: number | null; hydrological_year_start?: string; weekly_variables: string[]; week_starts: string };
   storage_bytes?: number;
 }
 export interface PointValue { time: string; value: number | null; error?: string }

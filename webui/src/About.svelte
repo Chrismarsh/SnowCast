@@ -58,7 +58,7 @@
 
       <section id="history" class="about-section" aria-labelledby="history-title">
         <h2 id="history-title">Map history and daily downloads</h2>
-        <p>The interactive map shows the most recent 10 days at daily intervals. SWE and snow depth also have one snapshot per older week, for up to a year. Temperature is limited to the recent 10 daily dates. Weekly snapshots are individual daily outputs, not weekly averages.</p>
+        <p>The interactive map shows up to 10 recent daily dates, plus one SWE and snow-depth snapshot per older week within the current hydrological year (September 1–August 31). The year follows the latest model date, and map history resets on September 1. Temperature has recent daily dates only. Weekly snapshots are individual daily outputs, not weekly averages.</p>
         <p>The <a href="./downloads.html">downloadable data archive</a> keeps daily outputs, including older dates. The map's weekly retention does not change the daily archive. Choose 0.001° GeoTIFFs or 0.036° ASCII grids (AEP) on the Data page; availability depends on which files have been published.</p>
       </section>
 

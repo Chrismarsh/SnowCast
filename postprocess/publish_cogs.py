@@ -43,17 +43,30 @@ def iso(value: datetime) -> str:
     return value.astimezone(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
-def retained_times(times, latest, days, weekly_days=365):
-    """Latest output per day, then latest available output per Monday–Sunday UTC week."""
-    daily_cutoff = (latest - timedelta(days=days - 1)).date()
-    oldest = (latest - timedelta(days=max(days, weekly_days) - 1)).date()
+def hydrological_year_start(latest: datetime):
+    """September 1 of the hydrological year containing the latest model date (UTC)."""
+    day = latest.astimezone(UTC).date()
+    return day.replace(year=day.year if day.month >= 9 else day.year - 1, month=9, day=1)
+
+
+def retained_times(times, latest, days, weekly_days=None):
+    """Daily outputs and Monday–Sunday weekly snapshots within the current hydrological year.
+
+    An optional weekly_days cap can shorten this history, but never extend it
+    before September 1. Zero disables weekly snapshots; None keeps the full year.
+    """
+    latest_day = latest.astimezone(UTC).date()
+    daily_cutoff = latest_day - timedelta(days=days - 1)
+    oldest = hydrological_year_start(latest)
+    if weekly_days is not None:
+        oldest = max(oldest, latest_day - timedelta(days=max(days, weekly_days) - 1))
     daily = {}
     for stamp in sorted(times):
-        day = datetime.fromisoformat(stamp.replace("Z", "+00:00")).date()
-        if day >= oldest:
+        day = datetime.fromisoformat(stamp.replace("Z", "+00:00")).astimezone(UTC).date()
+        if oldest <= day <= latest_day:
             daily[day] = stamp
     selected = {stamp for day, stamp in daily.items() if day >= daily_cutoff}
-    if weekly_days:
+    if weekly_days != 0:
         weeks = {}
         for day, stamp in sorted(daily.items()):
             weeks[day - timedelta(days=day.weekday())] = stamp
@@ -179,11 +192,11 @@ def convert(source: Path, destination: Path) -> dict:
 
 def publish(inputs: list[Path], output: Path, days: int = 10, run_id: str | None = None,
             base_url: str | None = None, now: datetime | None = None,
-            grid: str = DEFAULT_GRID, weekly_days: int = 365) -> dict:
+            grid: str = DEFAULT_GRID, weekly_days: int | None = None) -> dict:
     if not 1 <= days <= 366:
         raise ValueError("days must be between 1 and 366")
-    if not 0 <= weekly_days <= 366:
-        raise ValueError("weekly_days must be between 0 and 366")
+    if weekly_days is not None and not 0 <= weekly_days <= 366:
+        raise ValueError("weekly_days must be None or between 0 and 366")
     resolution = grid_resolution(grid)
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
@@ -213,6 +226,10 @@ def publish(inputs: list[Path], output: Path, days: int = 10, run_id: str | None
         if not times:
             raise ValueError(f"No timestamped SnowCast TIFFs or existing catalogue assets found for grid {grid}")
         latest = datetime.fromisoformat(max(times).replace("Z", "+00:00"))
+        year_start = hydrological_year_start(latest)
+        # At the September rollover, do not fill the recent window with dates
+        # from the previous hydrological year (including missing UI slots).
+        window_days = min(days, (latest.astimezone(UTC).date() - year_start).days + 1)
         selected = {variable: retained_times(
             set(assets.get(variable, {})) | {stamp for name, stamp in candidates if name == variable},
             latest, days, weekly_days if variable in ("swe", "snowdepthavg") else 0,
@@ -260,8 +277,9 @@ def publish(inputs: list[Path], output: Path, days: int = 10, run_id: str | None
         catalogue = {
             "version": 1, "title": "SnowCast model domain",
             "generated_at": generated.isoformat(timespec="microseconds").replace("+00:00", "Z"),
-            "latest_time": iso(latest), "window_days": days, "sample_data": False, "grid": grid,
+            "latest_time": iso(latest), "window_days": window_days, "sample_data": False, "grid": grid,
             "retention": {"daily_days": days, "weekly_days": weekly_days,
+                          "hydrological_year_start": year_start.isoformat(),
                           "weekly_variables": ["swe", "snowdepthavg"], "week_starts": "Monday"},
             "storage_bytes": sum(a["bytes"] for v in variables for a in v["assets"]),
             "bounds": [min(b[0] for b in all_bounds), min(b[1] for b in all_bounds),
@@ -283,8 +301,9 @@ def main():
                         help="TIFF directory; repeat with archive first and current last")
     parser.add_argument("--output", type=Path, required=True, help="Published static-data directory")
     parser.add_argument("--days", type=int, default=10)
-    parser.add_argument("--weekly-days", type=int, default=365,
-                        help="Total history horizon for weekly SWE/SD (default: 365; 0 disables archive)")
+    parser.add_argument("--weekly-days", type=int,
+                        help="Optional history cap within the current September–August hydrological year "
+                             "(default: full hydrological year; 0 disables weekly SWE/SD snapshots)")
     parser.add_argument("--grid", default=DEFAULT_GRID,
                         help="Source filename grid and pixel spacing in CRS units (default: %(default)s)")
     parser.add_argument("--run-id", help="Actual model run identifier, if known; not inferred from file time")
