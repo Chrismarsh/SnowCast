@@ -328,6 +328,15 @@ This copies referenced COGs first, then transfers a catalogue snapshot and
 atomically renames it on the remote filesystem. It does not update live COGs in
 place and does not delete older files. Use a single upload process per destination.
 
+SSH/rsync failures are retried up to 10 attempts per upload step, with a
+30-second delay that doubles after each failure (the same schedule as v2).
+This applies to both normal uploads and `--downloads-only`. Catalogue and
+download-index publication retries resend the same snapshot before renaming it,
+so a disconnect after a successful remote rename can recover safely. COG
+transfer failure after all attempts still fails the upload; download-index
+failure after a successful COG publication remains a warning. No delay is
+added after the last failed attempt.
+
 For automatic publishing after each model run, set in `config_hrdps_west.py`:
 
 ```python

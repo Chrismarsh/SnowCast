@@ -7,7 +7,30 @@ import shlex
 import subprocess
 import sys
 import tempfile
+import time
 import uuid
+
+
+def _run_with_retry(*commands):
+    """Retry SSH/rsync failures using v2's ten attempts and 30s backoff.
+
+    Keep a snapshot's transfer and rename together: if SSH drops after the
+    rename succeeds, the next attempt must recreate the temporary remote file.
+    """
+    delay = 30
+    for attempt in range(1, 11):
+        try:
+            for command in commands:
+                subprocess.run(command, check=True)
+            return
+        except subprocess.CalledProcessError as error:
+            if attempt == 10:
+                print(f'V3 upload failed after {attempt} attempts: {error}', file=sys.stderr, flush=True)
+                raise
+            print(f'V3 upload attempt {attempt}/10 failed: {error}. Retrying in {delay}s.',
+                  file=sys.stderr, flush=True)
+            time.sleep(delay)
+            delay *= 2
 
 
 def _validate_destination(host, directory):
@@ -30,9 +53,11 @@ def upload_download_index(host: str, directory: str):
         # No stale fallback: a failed/empty listing must leave the live index alone.
         _build_download_index(snapshot)
         remote_temp = f'{directory}/.download-index-{uuid.uuid4().hex}.json'
-        subprocess.run(['ssh', host, f'mkdir -p -- {shlex.quote(directory)}'], check=True)
-        subprocess.run(['rsync', '-t', '--protect-args', str(snapshot), f'{host}:{remote_temp}'], check=True)
-        subprocess.run(['ssh', host, f'mv -- {shlex.quote(remote_temp)} {shlex.quote(directory + "/download-index.json")}'], check=True)
+        _run_with_retry(['ssh', host, f'mkdir -p -- {shlex.quote(directory)}'])
+        _run_with_retry(
+            ['rsync', '-t', '--protect-args', str(snapshot), f'{host}:{remote_temp}'],
+            ['ssh', host, f'mv -- {shlex.quote(remote_temp)} {shlex.quote(directory + "/download-index.json")}'],
+        )
     print(f'Published TIFF download index → {host}:{directory}/download-index.json')
 
 
@@ -48,16 +73,18 @@ def upload(data: Path, host: str, directory: str, download_index_directory=None)
     for path in paths:
         if not path.startswith('cogs/') or '\n' in path or not (data / path).resolve().is_relative_to(data) or not (data / path).is_file():
             raise ValueError(f"Invalid or missing asset: {path}")
-    subprocess.run(['ssh', host, f'mkdir -p -- {shlex.quote(directory)}'], check=True)
+    _run_with_retry(['ssh', host, f'mkdir -p -- {shlex.quote(directory)}'])
     with tempfile.TemporaryDirectory(prefix='snowcast-upload-') as temporary:
         file_list = Path(temporary) / 'files.txt'
         file_list.write_text('\n'.join(paths) + '\n')
-        subprocess.run(['rsync', '-rt', '--protect-args', f'--files-from={file_list}', f'{data}/', f'{host}:{directory}/'], check=True)
+        _run_with_retry(['rsync', '-rt', '--protect-args', f'--files-from={file_list}', f'{data}/', f'{host}:{directory}/'])
         snapshot = Path(temporary) / 'catalog.json'
         snapshot.write_bytes(content)
         remote_temp = f'{directory}/.catalog-{uuid.uuid4().hex}.json'
-        subprocess.run(['rsync', '-t', '--protect-args', str(snapshot), f'{host}:{remote_temp}'], check=True)
-        subprocess.run(['ssh', host, f'mv -- {shlex.quote(remote_temp)} {shlex.quote(directory + "/catalog.json")}'], check=True)
+        _run_with_retry(
+            ['rsync', '-t', '--protect-args', str(snapshot), f'{host}:{remote_temp}'],
+            ['ssh', host, f'mv -- {shlex.quote(remote_temp)} {shlex.quote(directory + "/catalog.json")}'],
+        )
 
     # The normal pipeline uploads original TIFFs before calling us. Read the
     # public listing after publication rather than shipping a UI-build snapshot.
