@@ -97,6 +97,7 @@ def main(settings):
             [Path(postprocess_dir) / 'archive_tiff', Path(postprocess_dir) / 'tiff'],
             Path(settings['webui_data_dir']),
             days=settings.get('webui_keep_days', 10),
+            weekly_days=settings.get('webui_weekly_days', 365),
             base_url=settings.get('webui_data_url'),
         )
 

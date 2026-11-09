@@ -13,7 +13,7 @@ import math
 import os
 from pathlib import Path
 import re
-import tempfile
+import sys
 import warnings
 import xml.etree.ElementTree as ET
 
@@ -21,6 +21,10 @@ import numpy as np
 import rasterio
 from rasterio.shutil import copy as raster_copy
 from rasterio.warp import transform_bounds
+
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from postprocess.cog_store import atomic_json, cleanup_locked, store_lock
 
 VARIABLES = {
     "swe": {"label": "SWE", "title": "Snow water equivalent", "unit": "mm", "range": [0, 400], "palette": "snow"},
@@ -39,19 +43,22 @@ def iso(value: datetime) -> str:
     return value.astimezone(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
-def atomic_json(path: Path, value: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temporary = tempfile.mkstemp(prefix=".catalog-", dir=path.parent)
-    try:
-        with os.fdopen(fd, "w") as stream:
-            json.dump(value, stream, indent=2, allow_nan=False)
-            stream.write("\n")
-            stream.flush()
-            os.fchmod(stream.fileno(), 0o644)
-            os.fsync(stream.fileno())
-        os.replace(temporary, path)
-    finally:
-        Path(temporary).unlink(missing_ok=True)
+def retained_times(times, latest, days, weekly_days=365):
+    """Latest output per day, then latest available output per Monday–Sunday UTC week."""
+    daily_cutoff = (latest - timedelta(days=days - 1)).date()
+    oldest = (latest - timedelta(days=max(days, weekly_days) - 1)).date()
+    daily = {}
+    for stamp in sorted(times):
+        day = datetime.fromisoformat(stamp.replace("Z", "+00:00")).date()
+        if day >= oldest:
+            daily[day] = stamp
+    selected = {stamp for day, stamp in daily.items() if day >= daily_cutoff}
+    if weekly_days:
+        weeks = {}
+        for day, stamp in sorted(daily.items()):
+            weeks[day - timedelta(days=day.weekday())] = stamp
+        selected.update(weeks.values())
+    return selected
 
 
 def sha256(path: Path) -> str:
@@ -149,6 +156,8 @@ def convert(source: Path, destination: Path) -> dict:
                 nodata_element.text = str(nodata)
             tree.write(virtual, encoding="utf-8", xml_declaration=True)
             raster_copy(virtual, temporary, driver="COG", compress="DEFLATE",
+                        # Keep square 512px blocks: OpenLayers' strip fallback
+                        # can override rasterRequests.ts's direct-range option.
                         blocksize=512, predictor="YES", overview_resampling="AVERAGE",
                         OVERVIEWS="IGNORE_EXISTING", BIGTIFF="IF_SAFER")
             with rasterio.open(temporary) as cog:
@@ -156,6 +165,8 @@ def convert(source: Path, destination: Path) -> dict:
                     raise RuntimeError(f"GDAL did not produce a COG: {source}")
                 if cog.dtypes != ("float32",):
                     raise RuntimeError(f"GDAL did not produce Float32 data: {source}")
+                if cog.block_shapes != [(512, 512)]:
+                    raise RuntimeError(f"Unexpected COG tile layout: {source}")
                 if cog.crs.to_epsg() != epsg or list(cog.transform)[:6] != transform:
                     raise RuntimeError(f"Georeferencing changed during conversion: {source}")
             os.replace(temporary, destination)
@@ -167,17 +178,16 @@ def convert(source: Path, destination: Path) -> dict:
 
 def publish(inputs: list[Path], output: Path, days: int = 10, run_id: str | None = None,
             base_url: str | None = None, now: datetime | None = None,
-            grid: str = DEFAULT_GRID) -> dict:
+            grid: str = DEFAULT_GRID, weekly_days: int = 365) -> dict:
     if not 1 <= days <= 366:
         raise ValueError("days must be between 1 and 366")
+    if not 0 <= weekly_days <= 366:
+        raise ValueError("weekly_days must be between 0 and 366")
     resolution = grid_resolution(grid)
-    now = now or datetime.now(UTC)
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
-    # One publisher at a time; flock is released even after a killed process.
-    import fcntl
-    with (output / ".publish.lock").open("a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+    # Also held by the uploader, so cleanup cannot remove its snapshot's files.
+    with store_lock(output):
         catalogue_path = output / "catalog.json"
         previous = json.loads(catalogue_path.read_text()) if catalogue_path.exists() else {}
         if previous and previous.get("version") != 1:
@@ -202,11 +212,12 @@ def publish(inputs: list[Path], output: Path, days: int = 10, run_id: str | None
         if not times:
             raise ValueError(f"No timestamped SnowCast TIFFs or existing catalogue assets found for grid {grid}")
         latest = datetime.fromisoformat(max(times).replace("Z", "+00:00"))
-        # Ten calendar dates including latest, rather than ten files or ten runs.
-        cutoff = (latest - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
-        cutoff_iso = iso(cutoff)
+        selected = {variable: retained_times(
+            set(assets.get(variable, {})) | {stamp for name, stamp in candidates if name == variable},
+            latest, days, weekly_days if variable in ("swe", "snowdepthavg") else 0,
+        ) for variable in VARIABLES}
         for (variable, stamp), source in sorted(candidates.items()):
-            if stamp < cutoff_iso:
+            if stamp not in selected[variable]:
                 continue
             digest = dataset_sha256(source)
             current = assets.setdefault(variable, {}).get(stamp)
@@ -222,27 +233,38 @@ def publish(inputs: list[Path], output: Path, days: int = 10, run_id: str | None
             assets[variable][stamp] = {
                 "id": f"{variable}-{identity}", "path": relative,
                 "href": relative, "datetime": stamp, "run_id": run_id,
-                "published_at": iso(now), "source_sha256": digest, "cog_encoding": COG_ENCODING, **metadata,
+                "published_at": iso(now or datetime.now(UTC)), "source_sha256": digest, "cog_encoding": COG_ENCODING, **metadata,
             }
         variables = []
         for variable, settings in VARIABLES.items():
-            retained = [a for t, a in sorted(assets.get(variable, {}).items()) if t >= cutoff_iso]
+            retained = [a for t, a in sorted(assets.get(variable, {}).items()) if t in selected[variable]]
             for asset in retained:
                 if not (output / asset["path"]).is_file():
                     raise FileNotFoundError(f"Catalogue asset missing: {asset['path']}")
                 asset["href"] = f"{base_url.rstrip('/')}/{asset['path']}" if base_url else asset["path"]
+                asset["bytes"] = (output / asset["path"]).stat().st_size
             if retained:
                 validate_alignment(retained, variable)
                 variables.append({"id": variable, **settings, "assets": retained})
         all_bounds = [a["bounds"] for v in variables for a in v["assets"]]
+        # Conversion/backfill can take hours; grace starts when this catalogue
+        # actually replaces the old references, not when conversion started.
+        now = now or datetime.now(UTC)
         catalogue = {
             "version": 1, "title": "SnowCast model domain", "generated_at": iso(now),
             "latest_time": iso(latest), "window_days": days, "sample_data": False, "grid": grid,
+            "retention": {"daily_days": days, "weekly_days": weekly_days,
+                          "weekly_variables": ["swe", "snowdepthavg"], "week_starts": "Monday"},
+            "storage_bytes": sum(a["bytes"] for v in variables for a in v["assets"]),
             "bounds": [min(b[0] for b in all_bounds), min(b[1] for b in all_bounds),
                        max(b[2] for b in all_bounds), max(b[3] for b in all_bounds)],
             "variables": variables,
         }
         atomic_json(catalogue_path, catalogue)
+        try:
+            cleanup_locked(output, now=now.timestamp())
+        except Exception as error:
+            warnings.warn(f"Catalogue published; COG cleanup deferred: {error}")
         return catalogue
 
 
@@ -252,12 +274,15 @@ def main():
                         help="TIFF directory; repeat with archive first and current last")
     parser.add_argument("--output", type=Path, required=True, help="Published static-data directory")
     parser.add_argument("--days", type=int, default=10)
+    parser.add_argument("--weekly-days", type=int, default=365,
+                        help="Total history horizon for weekly SWE/SD (default: 365; 0 disables archive)")
     parser.add_argument("--grid", default=DEFAULT_GRID,
                         help="Source filename grid and pixel spacing in CRS units (default: %(default)s)")
     parser.add_argument("--run-id", help="Actual model run identifier, if known; not inferred from file time")
     parser.add_argument("--base-url", help="Optional absolute HTTPS base URL of the data directory")
     args = parser.parse_args()
-    catalogue = publish(args.input, args.output, args.days, args.run_id, args.base_url, grid=args.grid)
+    catalogue = publish(args.input, args.output, args.days, args.run_id, args.base_url,
+                        grid=args.grid, weekly_days=args.weekly_days)
     print(f"Published {sum(len(v['assets']) for v in catalogue['variables'])} assets to {args.output / 'catalog.json'}")
 
 

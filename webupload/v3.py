@@ -4,6 +4,7 @@ import json
 from pathlib import Path, PurePosixPath
 import re
 import shlex
+import socket
 import subprocess
 import sys
 import tempfile
@@ -11,7 +12,12 @@ import time
 import uuid
 
 
-def _run_with_retry(*commands):
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from postprocess.cog_store import referenced_paths, store_lock, verify_assets
+
+
+def _run_with_retry(*commands, input=None):
     """Retry SSH/rsync failures using v2's ten attempts and 30s backoff.
 
     Keep a snapshot's transfer and rename together: if SSH drops after the
@@ -21,7 +27,7 @@ def _run_with_retry(*commands):
     for attempt in range(1, 11):
         try:
             for command in commands:
-                subprocess.run(command, check=True)
+                subprocess.run(command, check=True, **({"input": input} if input is not None else {}))
             return
         except subprocess.CalledProcessError as error:
             if attempt == 10:
@@ -61,33 +67,46 @@ def upload_download_index(host: str, directory: str):
     print(f'Published TIFF download index → {host}:{directory}/download-index.json')
 
 
+def _remote_store(host, directory, action, token):
+    # Ship the stdlib-only helper with the command; no repo install on the host.
+    source = (Path(__file__).resolve().parents[1] / 'postprocess/cog_store.py').read_text()
+    command = ' '.join(shlex.quote(part) for part in ('python3', '-c', source, action, directory, token))
+    return ['ssh', host, command]
+
+
 def upload(data: Path, host: str, directory: str, download_index_directory=None):
     _validate_destination(host, directory)
     index_directory = download_index_directory or str(PurePosixPath(directory).parent)
     _validate_destination(host, index_directory)
     data = Path(data).resolve()
-    # Read one snapshot; do not re-read a catalogue that may change mid-upload.
-    content = (data / 'catalog.json').read_bytes()
-    catalogue = json.loads(content)
-    paths = [a['path'] for v in catalogue['variables'] for a in v['assets']]
-    for path in paths:
-        if not path.startswith('cogs/') or '\n' in path or not (data / path).resolve().is_relative_to(data) or not (data / path).is_file():
-            raise ValueError(f"Invalid or missing asset: {path}")
-    _run_with_retry(['ssh', host, f'mkdir -p -- {shlex.quote(directory)}'])
-    with tempfile.TemporaryDirectory(prefix='snowcast-upload-') as temporary:
-        file_list = Path(temporary) / 'files.txt'
-        file_list.write_text('\n'.join(paths) + '\n')
-        _run_with_retry(['rsync', '-rt', '--protect-args', f'--files-from={file_list}', f'{data}/', f'{host}:{directory}/'])
-        snapshot = Path(temporary) / 'catalog.json'
-        snapshot.write_bytes(content)
-        remote_temp = f'{directory}/.catalog-{uuid.uuid4().hex}.json'
-        _run_with_retry(
-            ['rsync', '-t', '--protect-args', str(snapshot), f'{host}:{remote_temp}'],
-            ['ssh', host, f'mv -- {shlex.quote(remote_temp)} {shlex.quote(directory + "/catalog.json")}'],
-        )
+    # One local publisher/uploader at a time, including retries. A failed process
+    # releases the lock automatically. Its next attempt replaces the remote pin.
+    with store_lock(data):
+        content = (data / 'catalog.json').read_bytes()
+        catalogue = json.loads(content)
+        verify_assets(data, catalogue)
+        paths = sorted(referenced_paths(catalogue))
+        token = uuid.uuid5(uuid.NAMESPACE_URL, f'{socket.gethostname()}:{data}').hex
+        pin = _remote_store(host, directory, 'pin', token)
+        commit = _remote_store(host, directory, 'commit', token)
+        committed = False
+        try:
+            # Protect this snapshot on the host before any asset transfer.
+            _run_with_retry(pin, input=content)
+            with tempfile.TemporaryDirectory(prefix='snowcast-upload-') as temporary:
+                file_list = Path(temporary) / 'files.txt'
+                file_list.write_text('\n'.join(paths) + '\n')
+                _run_with_retry(['rsync', '-rt', '--protect-args', f'--files-from={file_list}', f'{data}/', f'{host}:{directory}/'])
+            # Re-pin on retries: the commit may have succeeded before SSH dropped.
+            _run_with_retry(pin, commit, input=content)
+            committed = True
+        finally:
+            if not committed:
+                try:
+                    subprocess.run(_remote_store(host, directory, 'unpin', token), check=True)
+                except Exception as error:
+                    print(f'WARNING: upload pin retained on host; next upload from this source will replace it: {error}', file=sys.stderr)
 
-    # The normal pipeline uploads original TIFFs before calling us. Read the
-    # public listing after publication rather than shipping a UI-build snapshot.
     try:
         upload_download_index(host, index_directory)
     except Exception as error:

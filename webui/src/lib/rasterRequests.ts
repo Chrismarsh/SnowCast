@@ -7,10 +7,12 @@ export function errorDetail(error: unknown) {
   };
 }
 
-// geotiff 3.1's shared block cache can evict bytes still needed by concurrent
+// OpenLayers' geotiff 3.1.0-beta.0 cache can evict bytes needed by concurrent
 // tile reads (reproduced with successful HTTP responses). Explicit undefined
 // overrides its default block size and selects direct byte-range reads.
 // OpenLayers still caches decoded tiles; browser HTTP caching is unchanged.
+// publish_cogs.py keeps square 512px tiles so OL's strip-image fallback does
+// not reopen the source with a different blockSize.
 export const rasterSourceOptions = { allowFullFile: false, blockSize: undefined };
 
 const METADATA_BYTES = 64 * 1024;

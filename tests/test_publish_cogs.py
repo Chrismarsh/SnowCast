@@ -40,19 +40,20 @@ def test_numeric_values_georeferencing_mask_and_scale_survive(tmp_path):
         assert cog.scales == src.scales and cog.offsets == src.offsets
         assert cog.tags(ns="IMAGE_STRUCTURE")["LAYOUT"] == "COG"
         assert cog.overviews(1)
+        assert cog.block_shapes == [(512, 512)]
     assert asset["scale"] == .1 and asset["offset"] == 2
 
 
 def test_window_merges_existing_publication_and_keeps_missing_days(tmp_path):
     src = tmp_path / "input"; dst = tmp_path / "published"
     first = write(src, "20261027T230000")
-    publisher.publish([src], dst)
+    publisher.publish([src], dst, weekly_days=0)
     first.unlink()
     write(src, "20261105T230000")
-    c = publisher.publish([src], dst)
+    c = publisher.publish([src], dst, weekly_days=0)
     assert len(c["variables"][0]["assets"]) == 2
     write(src, "20261106T230000")
-    c = publisher.publish([src], dst)
+    c = publisher.publish([src], dst, weekly_days=0)
     assert all(a["datetime"] >= "2026-10-28" for a in c["variables"][0]["assets"])
 
 

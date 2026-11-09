@@ -21,7 +21,7 @@
     return { path: state.path + `${state.open ? 'L' : 'M'}${x(v.time)},${y(v.value)} `, open: true };
   }, { path: '', open: false }).path;
 </script>
-<svg class="trend" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Daily ${unit} values. Use the date buttons below the chart to select a frame.`}>
+<svg class="trend" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Model ${unit} values. Use the date buttons below the chart to select a frame.`}>
   {#each [0, 0.5, 1] as step}
     {@const value = low + step * (high - low)}
     <line x1={left} x2={W - right} y1={y(value)} y2={y(value)} stroke="#e0e7e7" />
@@ -40,8 +40,8 @@
     {#if values.length > 1}<text x={W - right} y={H - 5} text-anchor="end">{dateLabel(values[values.length - 1].time)}</text>{/if}
   {/if}
 </svg>
-<div class="chart-dates" aria-label="Choose chart date">
+<div class="chart-dates" class:archived={values.length > 10} aria-label="Choose chart date">
   {#each values as v}
-    <button class:selected={v.time === selectedTime} title={`${dateLabel(v.time)}: ${formatValue(v.value, unit)} ${unit}`} onclick={() => onselect(v.time)} disabled={!!v.error}>{new Date(v.time).getUTCDate()}</button>
+    <button class:selected={v.time === selectedTime} title={`${dateLabel(v.time)}: ${formatValue(v.value, unit)} ${unit}`} onclick={() => onselect(v.time)} disabled={!!v.error}>{values.length > 10 ? dateLabel(v.time) : new Date(v.time).getUTCDate()}</button>
   {/each}
 </div>

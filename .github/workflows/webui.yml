@@ -1,10 +1,10 @@
 name: SnowCast explorer
 on:
   pull_request:
-    paths: ['webui/**', 'postprocess/publish_cogs.py', 'webupload/v3.py', 'scripts/**', 'tests/**', '.github/workflows/webui.yml']
+    paths: ['webui/**', 'postprocess/**', 'config_hrdps_west.py', 'webupload/v3.py', 'scripts/**', 'tests/**', '.github/workflows/webui.yml']
   push:
     branches: [develop]
-    paths: ['webui/**', 'postprocess/publish_cogs.py', 'webupload/v3.py', 'scripts/**', 'tests/**', '.github/workflows/webui.yml']
+    paths: ['webui/**', 'postprocess/**', 'config_hrdps_west.py', 'webupload/v3.py', 'scripts/**', 'tests/**', '.github/workflows/webui.yml']
 permissions:
   contents: read
 jobs:

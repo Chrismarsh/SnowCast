@@ -32,8 +32,13 @@ model columns are hidden, and chart scaling uses observations alone. Switch
 back to Value to restore the model comparison.
 Dates and legends follow the successfully rendered pair while another loads.
 
-Comparisons cover dates retained in `catalog.json` (currently a rolling 10-day
-window), using the latest timestamp of each UTC day. Older original TIFFs on
+Comparisons cover dates retained in `catalog.json`: ten recent daily dates,
+plus one SWE and snow-depth snapshot per older Monday–Sunday UTC week within
+a rolling 365-day horizon. Temperature retains ten daily dates only. The default
+viewer history remains the recent ten days; choose **Daily + weekly archive**
+to browse older snapshots, compare dates, and sample their point histories.
+Weekly entries are the latest available daily snapshots in their calendar week,
+not weekly averages. No missing days are interpolated. Other original TIFFs on
 the downloads page are not automatically available for map comparisons. A
 shared pair that has expired is reported instead of silently substituted.
 
@@ -53,6 +58,8 @@ The existing model pipeline remains:
    retain their original precision and are never modified.
 4. The publisher writes immutable, timestamp/content-versioned files and an
    atomic `catalog.json`. The browser styles the numeric values at runtime.
+   Retention is selected before hashing/conversion, so unused archive dates are
+   not converted. Previously published weekly COGs survive source-TIFF rotation.
 
 The map publisher selects **0.001x0.001** source TIFFs by default. Coarse 0.01°
 files remain available in the original-TIFF downloads but cannot overwrite
@@ -352,13 +359,18 @@ python webupload/v3.py --data postprocess/webdata \
 ```
 
 This copies referenced COGs first, then transfers a catalogue snapshot and
-atomically renames it on the remote filesystem. It does not update live COGs in
-place and does not delete older files. Use a single upload process per destination.
+publishes it atomically on the remote filesystem. The host needs **Python 3.9+**
+(standard library only); the uploader sends the helper code over SSH. The local
+publisher and uploader share a filesystem lock. Before transferring assets, the
+uploader pins its catalogue on the host; remote cleanup protects all such pins.
+The remote catalogue switches only after every referenced file exists with its
+expected size. A late older upload cannot replace a newer catalogue. Keep one
+production source directory per destination.
 
 SSH/rsync failures are retried up to 10 attempts per upload step, with a
 30-second delay that doubles after each failure (the same schedule as v2).
 This applies to both normal uploads and `--downloads-only`. Catalogue and
-download-index publication retries resend the same snapshot before renaming it,
+download-index publication retries restage the same snapshot before publishing it,
 so a disconnect after a successful remote rename can recover safely. COG
 transfer failure after all attempts still fails the upload; download-index
 failure after a successful COG publication remains a warning. No delay is
@@ -368,6 +380,8 @@ For automatic publishing after each model run, set in `config_hrdps_west.py`:
 
 ```python
 settings['webui_enabled'] = True
+settings['webui_keep_days'] = 10
+settings['webui_weekly_days'] = 365  # Older weekly snapshots: SWE and snow depth only
 settings['webui_upload_host'] = 'USER@HOST'  # omit for directly served local disk
 settings['webui_upload_dir'] = '/var/www/html/v3/data'
 ```
@@ -375,12 +389,46 @@ settings['webui_upload_dir'] = '/var/www/html/v3/data'
 This is opt-in until the real host is configured. Model physics, output cadence,
 checkpoint retention, existing AEP exports, and the legacy v2 path are unchanged.
 
-The catalogue retains ten days, but immutable files on disk are deliberately
-not automatically removed. For disk cleanup, remove only files no longer
-referenced by the current catalogue **after a grace period of at least 48 hours
-from when they became unreferenced**, allowing old browser sessions to finish.
-Keep long-term scientific archives separately. Do not prune by file creation age
-alone; an old file can still be referenced. No original TIFF is deleted.
+COG retention and cleanup are automatic on both machines. The publisher defaults
+to `--days 10 --weekly-days 365`; `--weekly-days 0` disables the weekly archive.
+The horizon is relative to the latest model date. There is at most one timestamp
+per UTC day and one snapshot per older calendar week for each snow variable.
+A week with no output contributes no snapshot. Each expired or superseded COG
+is kept for **48 hours after it first becomes unreferenced**, allowing existing
+browser sessions to finish. Cleanup never uses file mtime as its age criterion.
+Reintroducing a file into a catalogue or upload pin resets its grace period.
+Only publisher-named COGs under `cogs/swe`, `cogs/snowdepthavg` and `cogs/t` are
+eligible; originals, unrelated files and symlinks are not removed. Missing or
+invalid catalogue/pin/state data stops cleanup without deleting files.
+
+Every successful publication/upload reports active and managed COG bytes and
+cleanup totals. At the measured November sizes, the requested archive is about
+23 GB of active COGs, with additional space required during the 48-hour grace
+period, revisions and the initial migration/backfill. A 25 GB allocation is tight;
+this is a retention policy, not a hard quota or guarantee of seasonal file sizes.
+The first run can backfill selected weekly dates where source TIFFs are available.
+Older dates without either an original or a published COG cannot be recovered.
+
+To preview cleanup without deleting COGs or starting any grace clocks:
+
+```bash
+python -m postprocess.cog_store cleanup postprocess/webdata --dry-run
+```
+
+To inspect the web host using the same stdlib-only helper from your updated repo:
+
+```bash
+ssh root@snowcast.ca 'python3 - cleanup /var/www/html/v3/data --dry-run' < postprocess/cog_store.py
+```
+
+Omit `--dry-run` to record unreferenced files and remove those already past the
+grace period. Regular publisher/uploads do this automatically; no extra cron is
+needed. Do not remove `.cog-cleanup.json` while relying on its recorded grace
+periods. A process crash releases its local lock. Failed uploads unpin their
+snapshot when the host is reachable; otherwise the next upload from the same
+machine/source directory replaces that stale pin. If permanently retiring that
+source, remove its specific `.uploads/*.json` pin only after confirming no upload
+from it is running. Pins from active uploads must be preserved.
 
 ## Areas of interest
 

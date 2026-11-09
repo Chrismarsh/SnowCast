@@ -12,6 +12,7 @@
   import type { Asset, Catalogue, PointValue, Variable } from './lib/types';
   import { dateLabel, timeLabel, formatValue, normalizeCatalogue, seriesCSV, paletteColors } from './lib/data';
   import { differenceAsset, differenceVariable, differenceCSV, pointDifference, type MapAsset } from './lib/difference';
+  import { historyDates, historySelection } from './lib/history';
   import { sampleSeries } from './lib/raster';
   import { basemaps, basemapIds, BASEMAP_STORAGE_KEY, initialBasemap, isBasemap } from './lib/basemaps';
   import { areaBounds, type Area } from './lib/areas';
@@ -25,6 +26,7 @@
   let error = '';
   let notice = '';
   let variableId = initial.get('variable') || 'swe';
+  let showArchive = initial.get('history') === 'all';
   let requestedIndex = -1;
   let displayedIndex = -1;
   let displayId = '';
@@ -98,7 +100,8 @@
 
   $: variables = catalogue?.variables || [];
   $: variable = variables.find(v => v.id === variableId) || variables[0];
-  $: dates = dailyDates(variable, catalogue?.window_days || 10);
+  $: dates = historyDates(variable, catalogue, showArchive);
+  $: hasArchive = historyDates(variable, catalogue, true).length > (catalogue?.window_days || 10);
   $: targetAsset = dates[requestedIndex]?.asset;
   $: fromAsset = dates[fromIndex]?.asset;
   $: selected = mode === 'difference' && fromAsset && targetAsset ? differenceAsset(fromAsset, targetAsset) : targetAsset;
@@ -122,16 +125,17 @@
   $: if (point && variable) query(point, dates);
   $: if (playing && !frameLoading) schedule(speed, requestedIndex, variableId);
 
-  function dailyDates(v?: Variable, days = 10): { time: string; asset?: Asset }[] {
-    if (!v?.assets.length) return [];
-    const latest = new Date(catalogue?.latest_time || v.assets[v.assets.length - 1].datetime);
-    const start = new Date(latest); start.setUTCDate(start.getUTCDate() - days + 1);
-    return Array.from({ length: days }, (_, index) => {
-      const day = new Date(start); day.setUTCDate(day.getUTCDate() + index);
-      const prefix = day.toISOString().slice(0, 10);
-      const asset = v.assets.filter(a => a.datetime.startsWith(prefix)).at(-1);
-      return { time: asset?.datetime || day.toISOString(), asset };
-    });
+  function chooseHistory(archive: boolean) {
+    stop();
+    const toTime = dates[requestedIndex]?.time, fromTime = dates[fromIndex]?.time;
+    showArchive = archive;
+    const list = historyDates(variable, catalogue, archive);
+    const selection = historySelection(list, toTime, fromTime);
+    requestedIndex = selection.to; fromIndex = selection.from;
+    displayedIndex = list.findIndex(d => d.asset?.datetime === displayed?.datetime);
+    const to = list[requestedIndex]?.asset, from = list[fromIndex]?.asset;
+    const frame = mode === 'difference' && from && to ? differenceAsset(from, to) : to;
+    frameLoading = frame?.id !== displayId; error = ''; slowFrameId = '';
   }
 
   async function load() {
@@ -142,7 +146,11 @@
       catalogue = normalizeCatalogue(await response.json(), catalogueURL);
       variableId = catalogue.variables.some(v => v.id === variableId) ? variableId : catalogue.variables[0].id;
       await tick();
-      const list = dailyDates(catalogue.variables.find(v => v.id === variableId), catalogue.window_days);
+      const v = catalogue.variables.find(v => v.id === variableId);
+      const recent = historyDates(v, catalogue);
+      const all = historyDates(v, catalogue, true);
+      if ([initial.get('time'), initial.get('from')].some(t => t && all.some(d => d.asset?.datetime === t) && !recent.some(d => d.asset?.datetime === t))) showArchive = true;
+      const list = historyDates(v, catalogue, showArchive);
       const sharedIndex = list.findIndex(d => d.asset?.datetime === initial.get('time'));
       requestedIndex = sharedIndex >= 0 ? sharedIndex : list.reduce((last, d, i) => d.asset ? i : last, -1);
       const sharedFrom = list.findIndex(d => d.asset?.datetime === initial.get('from'));
@@ -187,11 +195,12 @@
   }
   function chooseVariable(id: string) {
     if (id === variableId) return;
+    const toTime = dates[requestedIndex]?.time, fromTime = dates[fromIndex]?.time;
     stop(); variableId = id; displayId = ''; displayed = undefined; displayedVariable = undefined;
     displayedIndex = -1; series = []; slowFrameId = '';
-    const list = dailyDates(variables.find(v => v.id === id), catalogue?.window_days || 10);
-    if (!list[requestedIndex]?.asset) requestedIndex = list.reduce((last, d, i) => d.asset ? i : last, -1);
-    if (!list[fromIndex]?.asset) fromIndex = defaultFrom(list, requestedIndex);
+    const list = historyDates(variables.find(v => v.id === id), catalogue, showArchive);
+    const selection = historySelection(list, toTime, fromTime);
+    requestedIndex = selection.to; fromIndex = selection.from;
     frameLoading = true; error = '';
   }
   function markPending() {
@@ -298,6 +307,7 @@
     if (!point || !displayed) return;
     const hash = new URLSearchParams({ variable: variableId, time: displayed.datetime, lon: point[0].toFixed(6), lat: point[1].toFixed(6) });
     if (selectedStation) hash.set('station', selectedStation.id);
+    if (showArchive) hash.set('history', 'all');
     if (displayed.difference) { hash.set('mode', 'difference'); hash.set('from', displayed.difference.from.datetime); }
     window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${hash}`);
     try { await navigator.clipboard.writeText(window.location.href); notice = 'Link copied'; }
@@ -332,12 +342,13 @@
       <div class="legend surface"><div>{legendVariable?.title} <span>· {variable.unit}</span></div><div class="colour-ramp" style={`background:linear-gradient(90deg,${colors.join(',')})`}></div><div class="legend-labels">{#each [0, .25, .5, .75, 1] as fraction}<span>{formatValue(legendVariable.range[0] + (legendVariable.range[1] - legendVariable.range[0]) * fraction, variable.unit)}{fraction === 1 ? '+' : ''}</span>{/each}</div>{#if displayed?.difference}<div class="difference-key"><span>{legendVariable.palette === 'temperature-difference' ? 'Cooling' : 'Decrease'}</span><span>0</span><span>{legendVariable.palette === 'temperature-difference' ? 'Warming' : 'Increase'}</span></div>{/if}</div>
       <div class="timeline surface">
         <div class="timeline-heading"><div class="map-mode" role="group" aria-label="Map display"><button class:active={mode === 'value'} aria-pressed={mode === 'value'} onclick={() => chooseMode('value')}>Value</button><button class:active={mode === 'difference'} aria-pressed={mode === 'difference'} onclick={() => chooseMode('difference')}>Difference</button></div><span>{displayed?.difference ? `${dateLabel(displayed.difference.from.datetime)} → ${dateLabel(displayed.datetime)} · To − From` : displayed ? timeLabel(displayed.datetime) : 'Preparing map'}</span></div>
+        {#if hasArchive}<div class="history-controls"><label>History<select aria-label="History range" value={showArchive ? 'all' : 'recent'} onchange={e => chooseHistory(e.currentTarget.value === 'all')}><option value="recent">Recent {catalogue?.window_days || 10} days</option><option value="all">Daily + weekly archive</option></select></label>{#if showArchive}<span>Older dates are weekly snapshots</span>{/if}</div>{/if}
         {#if mode === 'difference'}
           <div class="comparison-row"><label>From<select value={fromIndex} onchange={e => selectFrom(Number(e.currentTarget.value))}>{#each dates as day, index}{#if day.asset}<option value={index}>{timeLabel(day.time)}</option>{/if}{/each}</select></label><button class="outlined swap-dates" onclick={swapDates} aria-label="Swap from and to dates" title="Swap dates">⇄</button><label>To<select value={requestedIndex} onchange={e => select(Number(e.currentTarget.value))}>{#each dates as day, index}{#if day.asset}<option value={index}>{timeLabel(day.time)}</option>{/if}{/each}</select></label></div>
-          <p class="comparison-note">To − From · Choose any two dates in the published {catalogue?.window_days}-day history.</p>
+          <p class="comparison-note">To − From · Choose any two available dates in the selected history.</p>
         {:else}
-        <div class="playback-row"><button class="play-button" aria-label={playing ? 'Pause animation' : 'Play animation'} onclick={togglePlayback} disabled={available < 2 || !!error}><Icon name={playing ? 'pause' : 'play'} size={22}/></button><div class="step-controls"><button class="icon-button outlined" aria-label="Previous day" onclick={() => step(-1)} disabled={requestedIndex <= dates.findIndex(d => d.asset)}><Icon name="previous" size={15}/></button><button class="icon-button outlined" aria-label="Next day" onclick={() => step(1)} disabled={requestedIndex >= dates.length - 1}><Icon name="next" size={15}/></button></div><span class="days-count">{dates.length} days</span>
-          <div class="date-track" role="group" aria-label="Simulation date">{#each dates as day, index}<button class:current={index === displayedIndex && !!displayId} class:pending={frameLoading && index === requestedIndex} class:missing={!day.asset} disabled={!day.asset} aria-pressed={index === displayedIndex} title={day.asset ? timeLabel(day.time) : `${dateLabel(day.time)}: no data`} onclick={() => select(index)}><span class="date-dot"></span><span class="date-text">{index === 0 || new Date(day.time).getUTCDate() === 1 ? dateLabel(day.time) : new Date(day.time).getUTCDate().toString().padStart(2, '0')}</span></button>{/each}</div>
+        <div class="playback-row"><button class="play-button" aria-label={playing ? 'Pause animation' : 'Play animation'} onclick={togglePlayback} disabled={available < 2 || !!error}><Icon name={playing ? 'pause' : 'play'} size={22}/></button><div class="step-controls"><button class="icon-button outlined" aria-label="Previous date" onclick={() => step(-1)} disabled={requestedIndex <= dates.findIndex(d => d.asset)}><Icon name="previous" size={15}/></button><button class="icon-button outlined" aria-label="Next date" onclick={() => step(1)} disabled={requestedIndex >= dates.length - 1}><Icon name="next" size={15}/></button></div><span class="days-count">{showArchive && hasArchive ? `${available} dates` : `${dates.length} days`}</span>
+          <div class="date-track" class:archived={showArchive && hasArchive} role="group" aria-label="Simulation date">{#each dates as day, index}<button class:current={index === displayedIndex && !!displayId} class:pending={frameLoading && index === requestedIndex} class:missing={!day.asset} disabled={!day.asset} aria-pressed={index === displayedIndex} title={day.asset ? timeLabel(day.time) : `${dateLabel(day.time)}: no data`} onclick={() => select(index)}><span class="date-dot"></span><span class="date-text">{(showArchive && hasArchive) || index === 0 || new Date(day.time).getUTCDate() === 1 ? dateLabel(day.time) : new Date(day.time).getUTCDate().toString().padStart(2, '0')}</span></button>{/each}</div>
           <select class="speed" aria-label="Playback speed" bind:value={speed}><option value={0.5}>0.5×</option><option value={1}>1×</option><option value={2}>2×</option></select><button class:enabled={loop} class="icon-button loop" aria-label="Loop playback" aria-pressed={loop} onclick={() => loop = !loop}><Icon name="loop"/></button>
         </div>
         {/if}
@@ -353,8 +364,8 @@
     {:else}<p class="intro">Click the map for model values, or a CanSWE station for historical snow observations. Find stations in Map layers.</p>{/if}
     <section class="value-section"><div class="eyebrow">{legendVariable?.title || 'Snow water equivalent'}</div><div class="large-value">{querying ? '…' : `${displayed?.difference && currentValue != null && currentValue > 0 ? '+' : ''}${formatValue(currentValue, variable?.unit)}`}<span>{variable?.unit || 'mm'}</span></div>
       {#if displayed?.difference}<p class="subtle selected-time">To − From · {dateLabel(displayed.difference.from.datetime)} → {dateLabel(displayed.datetime)}</p><div class="stats"><div><strong>{formatValue(fromPoint?.value, variable?.unit)} <span>{variable?.unit}</span></strong><span>From · {timeLabel(displayed.difference.from.datetime)}</span></div><div><strong>{formatValue(toPoint?.value, variable?.unit)} <span>{variable?.unit}</span></strong><span>To · {timeLabel(displayed.datetime)}</span></div></div>{#if point && !querying && currentValue == null}<p class="subtle small">A valid model value is needed on both dates to calculate a difference.</p>{/if}
-      {:else}<p class="subtle selected-time">{displayed ? timeLabel(displayed.datetime) : 'Select a simulation'}</p>{#if !selectedStation}<div class="stats"><div><strong>{change == null ? '—' : `${change > 0 ? '+' : ''}${formatValue(change, variable?.unit)} ${variable?.unit}`}</strong><span>Since first frame</span></div><div><strong>{available} <span>/ {dates.length || 10}</span></strong><span>Days available</span></div></div>{/if}{/if}</section>
-    {#if selectedStation && stationIndex}<StationPanel station={selectedStation} index={stationIndex} {variableId} showModel={mode === 'value' && !displayed?.difference} model={series} selectedTime={displayed?.datetime || ''} modelLoading={querying} onretrymodel={() => { if (point) query(point, dates); }}/>{:else}<section class="history-section"><div class="section-heading"><h2>{dates.length}-day history</h2><span>{variable?.label || 'SWE'} · {variable?.unit || 'mm'}</span></div>{#if querying}<div class="chart-empty"><span class="spinner"></span>Reading full-resolution values…</div>{:else if point && series.length}<Trend values={series} selectedTime={displayed?.datetime || ''} unit={variable?.unit || 'mm'} onselect={selectTime}/><p class="subtle small">{mode === 'difference' ? 'Absolute model values. Select a day to change the To date.' : 'Select a day to view it on the map.'}</p>{#if series.some(v => v.error)}<p class="query-error" role="status">Some raster reads failed. Check range requests and CORS. <button class="text-button" onclick={() => point && query(point, dates)}>Retry</button></p>{:else if series.every(v => v.value === null)}<p class="subtle small">No model data at this location.</p>{/if}{:else}<div class="chart-empty"><Icon name="pin" size={28}/><span>Select a point to reveal its history.</span></div>{/if}</section>
+      {:else}<p class="subtle selected-time">{displayed ? timeLabel(displayed.datetime) : 'Select a simulation'}</p>{#if !selectedStation}<div class="stats"><div><strong>{change == null ? '—' : `${change > 0 ? '+' : ''}${formatValue(change, variable?.unit)} ${variable?.unit}`}</strong><span>Since first frame</span></div><div><strong>{available} <span>/ {dates.length || 10}</span></strong><span>Dates available</span></div></div>{/if}{/if}</section>
+    {#if selectedStation && stationIndex}<StationPanel station={selectedStation} index={stationIndex} {variableId} showModel={mode === 'value' && !displayed?.difference} model={series} selectedTime={displayed?.datetime || ''} modelLoading={querying} onretrymodel={() => { if (point) query(point, dates); }}/>{:else}<section class="history-section"><div class="section-heading"><h2>{showArchive && hasArchive ? 'Daily + weekly history' : `${dates.length}-day history`}</h2><span>{variable?.label || 'SWE'} · {variable?.unit || 'mm'}</span></div>{#if querying}<div class="chart-empty"><span class="spinner"></span>Reading full-resolution values…</div>{:else if point && series.length}<Trend values={series} selectedTime={displayed?.datetime || ''} unit={variable?.unit || 'mm'} onselect={selectTime}/><p class="subtle small">{mode === 'difference' ? 'Absolute model values. Select a date to change the To date.' : 'Select a date to view it on the map.'}</p>{#if series.some(v => v.error)}<p class="query-error" role="status">Some raster reads failed. Check range requests and CORS. <button class="text-button" onclick={() => point && query(point, dates)}>Retry</button></p>{:else if series.every(v => v.value === null)}<p class="subtle small">No model data at this location.</p>{/if}{:else}<div class="chart-empty"><Icon name="pin" size={28}/><span>Select a point to reveal its history.</span></div>{/if}</section>
     {/if}
     <section class="settings-section"><h2>Layer settings</h2><label class="setting-row"><span>Opacity</span><input type="range" min="0" max="1" step="0.05" bind:value={opacity}/><span class="percentage">{Math.round(opacity * 100)}%</span></label><div class="setting-row"><span>Colour range</span><span class="fixed-range">Fixed across dates <Icon name="info" size={14}/></span></div></section>
     <div class="inspector-actions"><button class="outlined" disabled={!point || querying || !series.length || !displayed || frameLoading} onclick={download}><Icon name="download" size={17}/>{displayed?.difference ? 'Difference CSV' : selectedStation ? 'Model CSV' : 'Download CSV'}</button><button class="outlined" disabled={!point || !displayed || frameLoading} onclick={share}><Icon name="share" size={17}/>Share location</button></div>
@@ -374,7 +385,7 @@
       <li><a href={diagnosticURL('renderer', diagnosticRenderer === 'Canvas' ? 'auto' : 'canvas')}>{diagnosticRenderer === 'Canvas' ? 'Restore automatic renderer' : 'Try compatibility rendering'}</a> — remembers the choice in this browser. Automatic mode can recover with Canvas.</li>
       <li><a href={diagnosticURL('basemap', basemap === 'none' ? 'auto' : 'none')}>{basemap === 'none' ? 'Restore basemap' : 'Try without the basemap'}</a> — isolates the snow data layer.</li>
     </ul>
-  {:else}<p>Daily, gridded output from the Canadian Hydrological Model. Values are sampled at full raster resolution; map colours use overviews for efficient display.</p><p><a href="./downloads.html">Browse original TIFF downloads and the full archive →</a></p><div class="data-list">{#each variables as v}<div><strong>{v.title}</strong><span>{v.unit} · {v.assets.length} timestamps</span><a href={v.assets.at(-1)?.href} download>Latest map COG <Icon name="download" size={16}/></a></div>{/each}</div><a class="catalogue-link" href={catalogueURL} target="_blank" rel="noreferrer">Open map data catalogue ↗</a><p class="subtle small">The viewer uses the latest available timestamp in each UTC day. A missing day is shown as a gap.</p>
+  {:else}<p>Daily, gridded output from the Canadian Hydrological Model. Values are sampled at full raster resolution; map colours use overviews for efficient display.</p><p><a href="./downloads.html">Browse original TIFF downloads and the full archive →</a></p><div class="data-list">{#each variables as v}<div><strong>{v.title}</strong><span>{v.unit} · {v.assets.length} timestamps</span><a href={v.assets.at(-1)?.href} download>Latest map COG <Icon name="download" size={16}/></a></div>{/each}</div><a class="catalogue-link" href={catalogueURL} target="_blank" rel="noreferrer">Open map data catalogue ↗</a><p class="subtle small">The viewer uses the latest available timestamp in each UTC day. Recent missing days are shown as gaps. Older SWE and snow-depth dates are weekly snapshots.</p>
   {/if}
 </dialog>
 
