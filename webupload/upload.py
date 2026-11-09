@@ -3,7 +3,10 @@ import shutil
 import glob
 import os
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
+from pathlib import Path
+
+from postprocess.cog_store import store_lock
 
 @contextmanager
 def set_cwd(path):
@@ -16,6 +19,31 @@ def set_cwd(path):
 
 
 from collections import defaultdict
+
+
+def _transfer_dataset(source, directory, move=False):
+    """Transfer TIFF sidecars with their raster; retention counts rasters only."""
+    source = Path(source)
+    destination = Path(directory) / source.name
+    if destination.exists() and os.path.samefile(source, destination):
+        return
+    # GDAL's external masks, PAM metadata, overviews, and their PAM metadata.
+    # Copy sidecars first so a new TIFF never appears without its dependencies.
+    # Keep the source sidecars until its TIFF has been transferred successfully.
+    suffixes = ('.msk', '.aux.xml', '.ovr', '.msk.aux.xml', '.ovr.aux.xml') if source.suffix.lower() in ('.tif', '.tiff') else ()
+    copied = []
+    for suffix in suffixes:
+        sidecar = Path(str(source) + suffix)
+        target = Path(str(destination) + suffix)
+        if sidecar.is_file():
+            shutil.copy2(sidecar, target)
+            copied.append(sidecar)
+        else:
+            target.unlink(missing_ok=True)  # Do not reuse metadata from an older revision.
+    (shutil.move if move else shutil.copy2)(source, destination)
+    if move:
+        for sidecar in copied:
+            sidecar.unlink()
 
 
 def _rolling_copy(filemask, path, archive_dir, ntokeep=3):
@@ -43,10 +71,7 @@ def _rolling_copy(filemask, path, archive_dir, ntokeep=3):
         for f in var_files:
             if f not in keep:
                 print(f"Archiving {f}")
-                shutil.move(
-                    f,
-                    os.path.join(archive_dir, os.path.basename(f))
-                )
+                _transfer_dataset(f, archive_dir, move=True)
 
         for f in sorted(keep):
             dest = os.path.join(path, os.path.basename(f))
@@ -58,7 +83,7 @@ def _rolling_copy(filemask, path, archive_dir, ntokeep=3):
                 print(f"Keeping {f} in place (already at {dest})")
                 continue
             print(f"Copying {f} for webupload")
-            shutil.copy2(f, path)
+            _transfer_dataset(f, path)
 
 def upload(settings):
 
@@ -146,7 +171,9 @@ def upload(settings):
     # *.tiff exists, so it silently archived nothing. TIFFs now live in
     # postprocess/tiff/; run the glob there. The path/archive_dir targets below
     # are absolute, so they are unaffected by the cwd.
-    with set_cwd("postprocess/tiff/"):
+    # A publisher must not hash/read a TIFF midway through moving its sidecars.
+    rotation_lock = store_lock(settings['webui_data_dir']) if settings.get('webui_data_dir') else nullcontext()
+    with rotation_lock, set_cwd("postprocess/tiff/"):
         _rolling_copy(
             "*.tiff",
             path="/home/chm003/project/Snowcast-www/SnowCast/postprocess/tiff/",

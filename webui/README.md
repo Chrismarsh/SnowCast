@@ -373,8 +373,16 @@ publishes it atomically on the remote filesystem. The host needs **Python 3.9+**
 publisher and uploader share a filesystem lock. Before transferring assets, the
 uploader pins its catalogue on the host; remote cleanup protects all such pins.
 The remote catalogue switches only after every referenced file exists with its
-expected size. A late older upload cannot replace a newer catalogue. Keep one
-production source directory per destination.
+expected size and public permissions: 0755 on the data root and COG directories,
+0644 on referenced rasters and `catalog.json`. Both publishing and uploading
+repair permissions on reused files, including files created under umask 0077.
+Ancestors outside the data root must already allow the web server to traverse them.
+Publication timestamps preserve microseconds and increase under the local store
+lock even when the clock repeats or moves backwards. A late older upload cannot
+replace a newer catalogue; equal timestamps are accepted only for identical
+catalogues. A conflicting equal timestamp fails without replacing the live
+catalogue; republish locally to create a new version. Keep one production source
+directory per destination.
 
 SSH/rsync failures are retried up to 10 attempts per upload step, with a
 30-second delay that doubles after each failure (the same schedule as v2).
@@ -398,6 +406,12 @@ settings['webui_upload_dir'] = '/var/www/html/v3/data'
 This is opt-in until the real host is configured. Model physics, output cadence,
 checkpoint retention, existing AEP exports, and the legacy v2 path are unchanged.
 
+Original-TIFF rotation moves external masks, PAM metadata and overviews together
+with their raster, counting retention by TIFF rather than sidecar. With
+`webui_data_dir` configured it shares the publisher lock, preventing publication
+midway through rotation. Source sidecars are removed only after their TIFF has
+been transferred successfully.
+
 COG retention and cleanup are automatic on both machines. The publisher defaults
 to `--days 10 --weekly-days 365`; `--weekly-days 0` disables the weekly archive.
 The horizon is relative to the latest model date. There is at most one timestamp
@@ -406,7 +420,9 @@ A week with no output contributes no snapshot. Each expired or superseded COG
 is kept for **48 hours after it first becomes unreferenced**, allowing existing
 browser sessions to finish. Cleanup never uses file mtime as its age criterion.
 Reintroducing a file into a catalogue or upload pin resets its grace period.
-Only publisher-named COGs under `cogs/swe`, `cogs/snowdepthavg` and `cogs/t` are
+Catalogue and pin references must use canonical paths (no `./` or repeated `/`);
+invalid references stop cleanup before any deletion. Referenced COGs cannot use
+symlink aliases. Only publisher-named COGs under `cogs/swe`, `cogs/snowdepthavg` and `cogs/t` are
 eligible; originals, unrelated files and symlinks are not removed. Missing or
 invalid catalogue/pin/state data stops cleanup without deleting files.
 

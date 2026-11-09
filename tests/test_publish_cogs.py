@@ -353,3 +353,59 @@ def test_auxiliary_metadata_and_directory_moves_are_part_of_dataset_identity(tmp
     archive = tmp_path / "archive"
     source.parent.rename(archive)
     assert publisher.publish([archive], output)["variables"][0]["assets"][0] == revised
+
+
+def test_publication_versions_are_precise_and_increase_when_the_clock_repeats(tmp_path):
+    from datetime import datetime, timedelta, timezone
+    source, output = tmp_path / 'source', tmp_path / 'output'
+    write(source)
+    now = datetime(2026, 11, 9, 12, 0, 0, 123456, tzinfo=timezone.utc)
+    first = publisher.publish([source], output, now=now)
+    assert first['generated_at'] == '2026-11-09T12:00:00.123456Z'
+    for repeated in [now, now - timedelta(seconds=1)]:
+        following = publisher.publish([source], output, now=repeated)
+        assert datetime.fromisoformat(following['generated_at']) > datetime.fromisoformat(first['generated_at'])
+        first = following
+
+
+def test_publication_and_republish_make_all_referenced_cogs_public(tmp_path, monkeypatch):
+    source = write(tmp_path / 'source')
+    output = tmp_path / 'published'
+    original = publisher.atomic_json
+    def checked(path, catalogue):
+        for directory in [output, output / 'cogs', output / 'cogs/swe']:
+            assert stat.S_IMODE(directory.stat().st_mode) == 0o755
+        for variable in catalogue['variables']:
+            for asset in variable['assets']:
+                assert stat.S_IMODE((output / asset['path']).stat().st_mode) == 0o644
+        original(path, catalogue)
+    monkeypatch.setattr(publisher, 'atomic_json', checked)
+    mask = os.umask(0o077)
+    try:
+        first = publisher.publish([source.parent], output)
+        path = output / first['variables'][0]['assets'][0]['path']
+        path.chmod(0o600)
+        for directory in [output, output / 'cogs', path.parent]:
+            directory.chmod(0o700)
+        again = publisher.publish([source.parent], output)
+    finally:
+        os.umask(mask)
+    assert again['variables'] == first['variables']
+
+
+def test_same_second_publications_cannot_arrive_out_of_order(tmp_path):
+    from datetime import datetime, timedelta, timezone
+    import shutil
+    from postprocess.cog_store import remote_action
+    source, output, remote = (tmp_path / name for name in ('source', 'output', 'remote'))
+    now = datetime(2026, 11, 9, 12, 0, 0, 100000, tzinfo=timezone.utc)
+    write(source, value=10)
+    old = publisher.publish([source], output, now=now)
+    write(source, value=20)
+    new = publisher.publish([source], output, now=now + timedelta(microseconds=1))
+    shutil.copytree(output / 'cogs', remote / 'cogs')
+    remote_action('pin', remote, 'a' * 32, json.dumps(old))
+    remote_action('pin', remote, 'b' * 32, json.dumps(new))
+    remote_action('commit', remote, 'b' * 32)
+    remote_action('commit', remote, 'a' * 32)
+    assert json.loads((remote / 'catalog.json').read_text()) == new

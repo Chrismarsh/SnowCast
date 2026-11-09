@@ -24,7 +24,7 @@ from rasterio.warp import transform_bounds
 
 if not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from postprocess.cog_store import atomic_json, cleanup_locked, store_lock
+from postprocess.cog_store import atomic_json, cleanup_locked, make_assets_public, store_lock
 
 VARIABLES = {
     "swe": {"label": "SWE", "title": "Snow water equivalent", "unit": "mm", "range": [0, 400], "palette": "snow"},
@@ -169,6 +169,7 @@ def convert(source: Path, destination: Path) -> dict:
                     raise RuntimeError(f"Unexpected COG tile layout: {source}")
                 if cog.crs.to_epsg() != epsg or list(cog.transform)[:6] != transform:
                     raise RuntimeError(f"Georeferencing changed during conversion: {source}")
+            temporary.chmod(0o644)
             os.replace(temporary, destination)
         finally:
             temporary.unlink(missing_ok=True)
@@ -250,8 +251,15 @@ def publish(inputs: list[Path], output: Path, days: int = 10, run_id: str | None
         # Conversion/backfill can take hours; grace starts when this catalogue
         # actually replaces the old references, not when conversion started.
         now = now or datetime.now(UTC)
+        generated = now.astimezone(UTC)
+        if previous:
+            prior = datetime.fromisoformat(previous["generated_at"].replace("Z", "+00:00"))
+            # The store lock serializes publications; retain that order even if
+            # the clock repeats or moves backwards between consecutive runs.
+            generated = max(generated, prior + timedelta(microseconds=1))
         catalogue = {
-            "version": 1, "title": "SnowCast model domain", "generated_at": iso(now),
+            "version": 1, "title": "SnowCast model domain",
+            "generated_at": generated.isoformat(timespec="microseconds").replace("+00:00", "Z"),
             "latest_time": iso(latest), "window_days": days, "sample_data": False, "grid": grid,
             "retention": {"daily_days": days, "weekly_days": weekly_days,
                           "weekly_variables": ["swe", "snowdepthavg"], "week_starts": "Monday"},
@@ -260,6 +268,7 @@ def publish(inputs: list[Path], output: Path, days: int = 10, run_id: str | None
                        max(b[2] for b in all_bounds), max(b[3] for b in all_bounds)],
             "variables": variables,
         }
+        make_assets_public(output, catalogue)
         atomic_json(catalogue_path, catalogue)
         try:
             cleanup_locked(output, now=now.timestamp())

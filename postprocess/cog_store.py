@@ -52,22 +52,42 @@ def referenced_paths(catalogue):
             raise ValueError("Catalogue variable has no assets")
         for asset in variable["assets"]:
             path = asset["path"]
+            if not isinstance(path, str):
+                raise ValueError(f"Invalid COG path: {path}")
             parts = PurePosixPath(path).parts
-            if (len(parts) != 3 or parts[0] != "cogs" or parts[1] not in ("swe", "snowdepthavg", "t")
-                    or ".." in parts or "\n" in path or "\\" in path or not path.endswith(".tif")):
+            if (path != PurePosixPath(path).as_posix() or len(parts) != 3
+                    or parts[0] != "cogs" or parts[1] not in ("swe", "snowdepthavg", "t")
+                    or ".." in parts or any(c in path for c in "\n\r\0\\") or not path.endswith(".tif")):
                 raise ValueError(f"Invalid COG path: {path}")
             paths.add(path)
     return paths
 
 
 def verify_assets(root, catalogue):
+    root = Path(root)
     for relative in referenced_paths(catalogue):
         path = root / relative
+        # Symlink aliases can hide a still-referenced target from cleanup too.
+        if any(p.is_symlink() for p in (path, path.parent, root / "cogs")):
+            raise ValueError(f"Catalogue asset must not use symlinks: {relative}")
         if not path.resolve().is_relative_to(root.resolve()) or not path.is_file():
             raise FileNotFoundError(f"Missing catalogue asset: {relative}")
         asset = next(a for v in catalogue["variables"] for a in v["assets"] if a["path"] == relative)
         if "bytes" in asset and path.stat().st_size != asset["bytes"]:
             raise ValueError(f"Incomplete catalogue asset: {relative}")
+
+
+def make_assets_public(root, catalogue):
+    """Repair new and reused assets before exposing their catalogue, regardless of umask."""
+    root = Path(root)
+    verify_assets(root, catalogue)
+    directories = {root, root / "cogs"}
+    for relative in referenced_paths(catalogue):
+        path = root / relative
+        path.chmod(0o644)
+        directories.add(path.parent)
+    for directory in directories:
+        directory.chmod(0o755)
 
 
 def cleanup_locked(root, now=None, dry_run=False):
@@ -150,8 +170,14 @@ def remote_action(action, root, token, content=None):
             current_path = root / "catalog.json"
             current = json.loads(current_path.read_text()) if current_path.exists() else {}
             stamp = lambda c: datetime.fromisoformat(c["generated_at"].replace("Z", "+00:00")).astimezone(timezone.utc)
-            if not current or stamp(catalogue) >= stamp(current):
+            if current and stamp(catalogue) == stamp(current) and catalogue != current:
+                raise ValueError("Conflicting catalogues have the same publication timestamp; republish locally")
+            if not current or stamp(catalogue) > stamp(current):
+                make_assets_public(root, catalogue)
                 atomic_json(current_path, catalogue)
+            elif catalogue == current:
+                make_assets_public(root, catalogue)
+                current_path.chmod(0o644)  # Idempotent retry, including old permissions.
             else:
                 print("A newer catalogue is already published; retained it")
             pin.unlink()

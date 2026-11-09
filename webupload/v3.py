@@ -61,7 +61,7 @@ def upload_download_index(host: str, directory: str):
         remote_temp = f'{directory}/.download-index-{uuid.uuid4().hex}.json'
         _run_with_retry(['ssh', host, f'mkdir -p -- {shlex.quote(directory)}'])
         _run_with_retry(
-            ['rsync', '-t', '--protect-args', str(snapshot), f'{host}:{remote_temp}'],
+            ['rsync', '-tp', '--chmod=F644', '--protect-args', str(snapshot), f'{host}:{remote_temp}'],
             ['ssh', host, f'mv -- {shlex.quote(remote_temp)} {shlex.quote(directory + "/download-index.json")}'],
         )
     print(f'Published TIFF download index → {host}:{directory}/download-index.json')
@@ -96,7 +96,7 @@ def upload(data: Path, host: str, directory: str, download_index_directory=None)
             with tempfile.TemporaryDirectory(prefix='snowcast-upload-') as temporary:
                 file_list = Path(temporary) / 'files.txt'
                 file_list.write_text('\n'.join(paths) + '\n')
-                _run_with_retry(['rsync', '-rt', '--protect-args', f'--files-from={file_list}', f'{data}/', f'{host}:{directory}/'])
+                _run_with_retry(['rsync', '-rtp', '--chmod=D755,F644', '--protect-args', f'--files-from={file_list}', f'{data}/', f'{host}:{directory}/'])
             # Re-pin on retries: the commit may have succeeded before SSH dropped.
             _run_with_retry(pin, commit, input=content)
             committed = True

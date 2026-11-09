@@ -135,3 +135,82 @@ def test_remote_helper_executes_without_project_or_rasterio_imports(tmp_path):
                             capture_output=True)
     assert commit.returncode == 0, commit.stderr.decode()
     assert json.loads((tmp_path / 'catalog.json').read_text()) == catalogue([current])
+
+
+@pytest.mark.parametrize('prefix', ['cogs/swe/./', 'cogs//swe/', './cogs/swe/'])
+@pytest.mark.parametrize('reference', ['catalogue', 'pin'])
+def test_noncanonical_references_stop_cleanup_without_deleting_files(tmp_path, prefix, reference):
+    old, current = asset(tmp_path, 1), asset(tmp_path, 2)
+    store.atomic_json(tmp_path / 'catalog.json', catalogue([current]))
+    store.cleanup_locked(tmp_path, now=200000)
+    state = (tmp_path / '.cog-cleanup.json').read_bytes()
+    malformed = catalogue([prefix + Path(old).name])
+    target = tmp_path / ('catalog.json' if reference == 'catalogue' else '.uploads/pin.json')
+    store.atomic_json(target, malformed)
+    with pytest.raises(ValueError, match='Invalid COG path'):
+        store.cleanup_locked(tmp_path, now=400000)
+    assert (tmp_path / old).exists() and (tmp_path / current).exists()
+    assert (tmp_path / '.cog-cleanup.json').read_bytes() == state
+    with pytest.raises(ValueError, match='Invalid COG path'):
+        store.remote_action('pin', tmp_path, 'a' * 32, json.dumps(malformed))
+
+
+def test_same_version_with_different_contents_cannot_replace_the_catalogue(tmp_path):
+    a, b = asset(tmp_path, 1), asset(tmp_path, 2)
+    old, new = catalogue([a]), catalogue([b])
+    store.remote_action('pin', tmp_path, 'a' * 32, json.dumps(old))
+    store.remote_action('pin', tmp_path, 'b' * 32, json.dumps(new))
+    store.remote_action('commit', tmp_path, 'b' * 32)
+    before = (tmp_path / 'catalog.json').read_bytes()
+    with pytest.raises(ValueError, match='Conflicting catalogue'):
+        store.remote_action('commit', tmp_path, 'a' * 32)
+    assert (tmp_path / 'catalog.json').read_bytes() == before
+    store.remote_action('pin', tmp_path, 'b' * 32, json.dumps(new, sort_keys=True))
+    store.remote_action('commit', tmp_path, 'b' * 32)  # Semantic equality permits retry.
+    assert (tmp_path / 'catalog.json').read_bytes() == before
+
+
+def test_remote_publication_repairs_umask_permissions_before_switching(tmp_path, monkeypatch):
+    root = tmp_path / 'published'
+    mask = os.umask(0o077)
+    try:
+        current = asset(root, 1)
+        store.remote_action('pin', root, 'a' * 32, json.dumps(catalogue([current])))
+        original = store.atomic_json
+        def checked(path, value):
+            if path.name == 'catalog.json':
+                for directory in [root, root / 'cogs', root / 'cogs/swe']:
+                    assert directory.stat().st_mode & 0o777 == 0o755
+                assert (root / current).stat().st_mode & 0o777 == 0o644
+            original(path, value)
+        monkeypatch.setattr(store, 'atomic_json', checked)
+        store.remote_action('commit', root, 'a' * 32)
+    finally:
+        os.umask(mask)
+    assert (root / 'catalog.json').stat().st_mode & 0o777 == 0o644
+
+
+def test_symlink_reference_cannot_hide_the_live_target_from_cleanup(tmp_path):
+    old, current = asset(tmp_path, 1), asset(tmp_path, 2)
+    store.atomic_json(tmp_path / 'catalog.json', catalogue([current]))
+    store.cleanup_locked(tmp_path, now=200000)
+    alias = tmp_path / 'cogs/swe/alias.tif'; alias.symlink_to(tmp_path / old)
+    store.atomic_json(tmp_path / 'catalog.json', catalogue(['cogs/swe/alias.tif']))
+    with pytest.raises(ValueError, match='symlinks'):
+        store.cleanup_locked(tmp_path, now=400000)
+    assert (tmp_path / old).exists()
+
+
+def test_permission_failure_cannot_switch_the_remote_catalogue(tmp_path, monkeypatch):
+    a, b = asset(tmp_path, 1), asset(tmp_path, 2)
+    store.atomic_json(tmp_path / 'catalog.json', catalogue([a]))
+    store.remote_action('pin', tmp_path, 'a' * 32, json.dumps(catalogue([b], '2026-11-09T13:00:00Z')))
+    original = Path.chmod
+    def chmod(path, mode, **kwargs):
+        if path == tmp_path / b:
+            raise PermissionError('Unable to make asset public')
+        return original(path, mode, **kwargs)
+    monkeypatch.setattr(Path, 'chmod', chmod)
+    with pytest.raises(PermissionError):
+        store.remote_action('commit', tmp_path, 'a' * 32)
+    assert json.loads((tmp_path / 'catalog.json').read_text()) == catalogue([a])
