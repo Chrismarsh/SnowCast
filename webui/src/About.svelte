@@ -33,7 +33,7 @@
   </section>
 
   <div class="about-layout">
-    <aside class="about-contents"><nav aria-label="On this page"><span>On this page</span><a href="#collaboration">Research collaboration</a><a href="#chm">The model</a><a href="#publications">Publications</a><a href="#use">Using SnowCast</a></nav><a class="source-link" href="https://github.com/Chrismarsh/SnowCast" target="_blank" rel="noreferrer">SnowCast on GitHub <Icon name="external" size={13}/></a></aside>
+    <aside class="about-contents"><nav aria-label="On this page"><span>On this page</span><a href="#collaboration">Research collaboration</a><a href="#chm">The model</a><a href="#publications">Publications</a><a href="#history">Map &amp; data history</a><a href="#use">Using SnowCast</a></nav><a class="source-link" href="https://github.com/Chrismarsh/SnowCast" target="_blank" rel="noreferrer">SnowCast on GitHub <Icon name="external" size={13}/></a></aside>
     <div class="about-content">
       <section id="collaboration" class="about-section collaboration" aria-labelledby="collaboration-title">
         <p class="section-label">Research collaboration</p><h2 id="collaboration-title">ECCC &amp; University of Saskatchewan</h2>
@@ -55,6 +55,12 @@
       </section>
 
       <section id="publications" class="about-section" aria-labelledby="publications-title"><p class="section-label">Further reading</p><h2 id="publications-title">Selected publications</h2><ol class="publications">{#each publications as paper}<li><a href={`https://doi.org/${paper.doi}`} target="_blank" rel="noreferrer">{paper.title} <Icon name="external" size={12}/></a><p>{paper.authors}</p><span>{paper.journal}</span></li>{/each}</ol></section>
+
+      <section id="history" class="about-section" aria-labelledby="history-title">
+        <h2 id="history-title">Map history and daily downloads</h2>
+        <p>The interactive map shows the most recent 10 days at daily intervals. SWE and snow depth also have one snapshot per older week, for up to a year. Temperature is limited to the recent 10 daily dates. Weekly snapshots are individual daily outputs, not weekly averages.</p>
+        <p>The <a href="./downloads.html">downloadable data archive</a> keeps daily outputs, including older dates. The map's weekly retention does not change the daily archive. Choose 0.001° GeoTIFFs or 0.036° ASCII grids (AEP) on the Data page; availability depends on which files have been published.</p>
+      </section>
 
       <section id="use" class="use-note" aria-labelledby="use-title"><Icon name="info" size={22}/><div><h2 id="use-title">Experimental research product</h2><p>Despite this collaboration, no guarantees or warranties are made about reliability of output, availability, or access to data. This is not an operational product. Use is entirely at the user's own risk.</p><strong>Do not use for decision making.</strong></div></section>
       <footer class="about-footer"><a class="primary" href="./">Explore the snowpack <Icon name="arrow" size={16}/></a><a href="./downloads.html">Download model data</a></footer>

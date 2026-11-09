@@ -276,28 +276,31 @@ No new service, COG rebuild, or PNG tile generation is required. Serve
 station history filenames can be cached immutably. Station `.json.gz` files
 work either as ordinary gzip files or with `Content-Encoding: gzip`.
 
-## Original TIFF downloads
+## Daily GeoTIFF and ASCII downloads
 
 ![Original TIFF download page, with a one-day archive filter](docs/tiff-downloads-preview.png)
 
 The header's **Data** link opens `downloads.html`, a separate, lightweight page
 that does not initialize the map or fetch any rasters. It offers the latest
-original SWE, snow-depth and temperature TIFFs, 0.001°/0.01° grid choices,
+original SWE, snow-depth and temperature GeoTIFFs at 0.001°, plus AEP ASCII
+grids at 0.036° where available. The format/grid filter applies to latest links,
+the archive table, and URL exports. Legacy 0.01° TIFFs are omitted. It includes
 inclusive UTC date filters, file sizes, pagination and a filtered URL-list export.
 The original files remain at
-<https://hpfx.collab.science.gc.ca/~chm003/tiff/>; the page does not convert them
+<https://hpfx.collab.science.gc.ca/~chm003/tiff/> and
+<https://hpfx.collab.science.gc.ca/~chm003/asc/>; the page does not convert them
 to COGs or relay large downloads. Map COGs remain accessible via `?panel=data`.
 
-The directory does not currently return browser CORS headers, so the page reads
+The TIFF directory does not currently return browser CORS headers, so the page reads
 a small same-origin `download-index.json` instead. `npm run build` refreshes it
-using Python's standard library. It fetches only the directory HTML, validates
+using Python's standard library. It fetches only the two directory listings, validates
 filenames, and writes the index atomically. An offline build retains the checked-in
 snapshot with a warning. The page displays the snapshot's indexing time, actual
 simulation timestamps, and an explicit stale-index notice after 48 hours.
 
 **Keep the archive current between UI deployments:** the normal v3 uploader now
 refreshes and atomically publishes this index after uploading the COG catalogue.
-It reads the public original-TIFF listing after the normal pipeline's TIFF upload;
+It reads the public TIFF and ASCII listings after the normal pipeline's upload;
 it does not depend on a frontend rebuild. The index goes in the parent of the
 remote data directory (`/var/www/html/v3/` for `/var/www/html/v3/data`). For a
 different layout, set `webui_download_index_dir` or pass
@@ -327,10 +330,16 @@ Alternatively, run `npm run refresh:downloads` and upload just
 `webui/public/download-index.json` to `/v3/download-index.json`. No frontend
 rebuild is needed for an index refresh. A failed/empty refresh keeps the previous
 index intact. Do not overwrite a more recent server index with an older build
-snapshot. The source-archive link remains available if the index cannot load.
-No TIFF date is inferred from the COG catalogue, and absent files are never
+snapshot. The data-archive link follows the selected format and remains available
+if the index cannot load. Both listings must succeed before replacing the index.
+No download date is inferred from the COG catalogue, and absent files are never
 shown as download links. Source sizes are rounded Apache-index values, displayed
 as approximate binary sizes. Grid spacing is angular, not a fixed metre size.
+
+The downloadable archive remains daily, including older dates; map COG retention
+does not thin or delete these original downloads. Missing published files remain
+gaps. For offline indexing, pass both `--listing tiff.html` and
+`--ascii-listing ascii.html`.
 
 ## Publish the initial ten-day window
 
