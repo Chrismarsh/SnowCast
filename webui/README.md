@@ -561,7 +561,11 @@ cover site navigation, full-domain reset, date/point preservation, and dismissal
   selecting a point; **Share location** also includes the selected point/station.
   Panning/zooming updates `viewLon`, `viewLat` and `zoom` in the URL fragment with
   `replaceState`, without adding browser-history entries. These coordinates are
-  separate from the point's `lon`/`lat`. For example,
+  separate from the point's `lon`/`lat`. The displayed model timestamp (`time`)
+  and variable also update automatically when a frame finishes loading, including
+  playback. Difference mode records both dates (`time` and `from`) and `mode`;
+  returning to Value mode removes the comparison fields. Copying the address bar
+  therefore preserves the displayed model date as well as the map view. For example,
   `#viewLon=-115.732419&viewLat=51.013275&zoom=11.3752` restores the same centre and
   scale. Different screen sizes show different extents around that centre.
   A valid shared view takes precedence over the initial domain fit and station

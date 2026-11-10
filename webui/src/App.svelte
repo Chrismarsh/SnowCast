@@ -256,6 +256,12 @@
     if (id !== selected?.id) return;
     displayed = selected; displayedVariable = mapVariable;
     displayId = id; displayedIndex = requestedIndex; frameLoading = false; error = ''; slowFrameId = '';
+    // Keep a copied address tied to the frame actually on screen, including playback.
+    const url = new URL(window.location.href);
+    const hash = new URLSearchParams(url.hash.slice(1));
+    modelSelectionParams(hash);
+    url.hash = hash.toString();
+    if (url.href !== window.location.href) window.history.replaceState(null, '', url);
   }
   function failed(message: string) { error = message; frameLoading = false; stop(); }
   function step(delta: number) {
@@ -338,17 +344,25 @@
     // Panning and zooming should not add entries to browser history.
     if (url.href !== window.location.href) window.history.replaceState(null, '', url);
   }
+  function modelSelectionParams(hash: URLSearchParams) {
+    if (!displayed) return;
+    hash.set('variable', variableId);
+    hash.set('time', displayed.datetime);
+    // Clear comparison/archive settings when returning to a daily Value view.
+    hash.delete('mode'); hash.delete('from'); hash.delete('history');
+    if (showArchive) hash.set('history', 'all');
+    if (displayed.difference) { hash.set('mode', 'difference'); hash.set('from', displayed.difference.from.datetime); }
+  }
   async function share() {
     if (!displayed) return;
     // Include both states so the link overrides the recipient's saved choice.
     changeZeroSnow(hideZeroSnow);
-    const hash = new URLSearchParams({ variable: variableId, time: displayed.datetime });
+    const hash = new URLSearchParams();
+    modelSelectionParams(hash);
     if (point) { hash.set('lon', point[0].toFixed(6)); hash.set('lat', point[1].toFixed(6)); }
     const view = map?.viewState();
     if (view) mapViewParams(hash, view);
     if (selectedStation) hash.set('station', selectedStation.id);
-    if (showArchive) hash.set('history', 'all');
-    if (displayed.difference) { hash.set('mode', 'difference'); hash.set('from', displayed.difference.from.datetime); }
     const url = new URL(window.location.href);
     url.searchParams.set('basemap', basemap);
     url.hash = hash.toString();
