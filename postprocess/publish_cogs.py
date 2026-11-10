@@ -192,12 +192,16 @@ def convert(source: Path, destination: Path) -> dict:
 
 def publish(inputs: list[Path], output: Path, days: int = 10, run_id: str | None = None,
             base_url: str | None = None, now: datetime | None = None,
-            grid: str = DEFAULT_GRID, weekly_days: int | None = None) -> dict:
+            grid: str = DEFAULT_GRID, weekly_days: int | None = None,
+            domain: dict | None = None, ranges: dict | None = None) -> dict:
     if not 1 <= days <= 366:
         raise ValueError("days must be between 1 and 366")
     if weekly_days is not None and not 0 <= weekly_days <= 366:
         raise ValueError("weekly_days must be None or between 0 and 366")
     resolution = grid_resolution(grid)
+    for variable, span in (ranges or {}).items():
+        if variable not in VARIABLES or len(span) != 2 or not all(math.isfinite(v) for v in span) or span[0] >= span[1]:
+            raise ValueError('Invalid variable colour range')
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
     # Also held by the uploader, so cleanup cannot remove its snapshot's files.
@@ -206,6 +210,8 @@ def publish(inputs: list[Path], output: Path, days: int = 10, run_id: str | None
         previous = json.loads(catalogue_path.read_text()) if catalogue_path.exists() else {}
         if previous and previous.get("version") != 1:
             raise ValueError("Unsupported existing catalogue version")
+        if previous and (previous.get('domain') or {}).get('id') != (domain or {}).get('id'):
+            raise ValueError('Publication directory belongs to a different domain')
         assets = {}
         for variable in previous.get("variables", []):
             retained = {a["datetime"]: a for a in variable["assets"] if matches_resolution(a, resolution)}
@@ -257,13 +263,16 @@ def publish(inputs: list[Path], output: Path, days: int = 10, run_id: str | None
         for variable, settings in VARIABLES.items():
             retained = [a for t, a in sorted(assets.get(variable, {}).items()) if t in selected[variable]]
             for asset in retained:
+                if domain:
+                    asset['id'] = f'{domain["id"]}:{variable}:{Path(asset["path"]).stem}'
                 if not (output / asset["path"]).is_file():
                     raise FileNotFoundError(f"Catalogue asset missing: {asset['path']}")
                 asset["href"] = f"{base_url.rstrip('/')}/{asset['path']}" if base_url else asset["path"]
                 asset["bytes"] = (output / asset["path"]).stat().st_size
             if retained:
                 validate_alignment(retained, variable)
-                variables.append({"id": variable, **settings, "assets": retained})
+                variables.append({"id": variable, **settings,
+                                  "range": (ranges or {}).get(variable, settings['range']), "assets": retained})
         all_bounds = [a["bounds"] for v in variables for a in v["assets"]]
         # Conversion/backfill can take hours; grace starts when this catalogue
         # actually replaces the old references, not when conversion started.
@@ -286,6 +295,8 @@ def publish(inputs: list[Path], output: Path, days: int = 10, run_id: str | None
                        max(b[2] for b in all_bounds), max(b[3] for b in all_bounds)],
             "variables": variables,
         }
+        if domain:
+            catalogue.update(domain=domain, title=domain['name'])
         make_assets_public(output, catalogue)
         atomic_json(catalogue_path, catalogue)
         try:

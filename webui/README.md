@@ -643,3 +643,12 @@ Transparency regression checks evaluate the generated colour expression with
 OpenLayers, compile it to GLSL, and check Canvas output for missing values,
 masked pixels, valid zero snow, and cold temperatures. These are not a substitute
 for a visual WebGL check on the affected device.
+
+## Project runner integration
+
+The web application remains in this repository but is built/deployed separately
+from model data. The [project runner guide](../projects/README.md) documents
+`snowcast publish` and `snowcast deploy-ui`, independent domain workspaces, and
+the site-level `domains.json` contract. This viewer currently consumes one
+catalogue through `?catalog=...`; simultaneous registry-driven domain rendering
+is a subsequent feature.

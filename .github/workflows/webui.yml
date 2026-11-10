@@ -1,10 +1,10 @@
 name: SnowCast explorer
 on:
   pull_request:
-    paths: ['webui/**', 'postprocess/**', 'config_hrdps_west.py', 'webupload/**', 'scripts/**', 'tests/**', '.github/workflows/webui.yml']
+    paths: ['snowcast_runner/**', 'projects/**', 'pyproject.toml', 'webui/**', 'postprocess/**', 'config_hrdps_west.py', 'webupload/**', 'scripts/**', 'tests/**', '.github/workflows/webui.yml']
   push:
     branches: [develop]
-    paths: ['webui/**', 'postprocess/**', 'config_hrdps_west.py', 'webupload/**', 'scripts/**', 'tests/**', '.github/workflows/webui.yml']
+    paths: ['snowcast_runner/**', 'projects/**', 'pyproject.toml', 'webui/**', 'postprocess/**', 'config_hrdps_west.py', 'webupload/**', 'scripts/**', 'tests/**', '.github/workflows/webui.yml']
 permissions:
   contents: read
 jobs:
@@ -20,7 +20,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -m pip install 'rasterio>=1.4,<2' numpy pytest
+      - run: python -m pip install . pytest
       - run: python -m pytest -q tests
       - run: npm ci && npm run check && npm test && npm run build
         working-directory: webui

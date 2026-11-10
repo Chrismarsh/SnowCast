@@ -75,3 +75,8 @@ webui/.vite/
 www/v3/
 postprocess/webdata/
 .pytest_cache/
+*.egg-info/
+/build/
+/dist/
+/runs/
+/projects/*/work/
