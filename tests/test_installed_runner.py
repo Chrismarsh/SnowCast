@@ -42,7 +42,7 @@ class NoLegacy(importlib.abc.MetaPathFinder):
 sys.meta_path.insert(0, NoLegacy())
 import snowcast_runner
 assert pathlib.Path(snowcast_runner.__file__).is_relative_to(installed)
-for name in ['cli', 'chm_config', 'forcing', 'met', 'model', 'rasters', 'jobs', 'state', 'site', 'publish_cogs', 'upload', 'downloads']:
+for name in ['cli', 'chm_config', 'forcing', 'met', 'model', 'backfill', 'rasters', 'jobs', 'state', 'site', 'publish_cogs', 'upload', 'downloads']:
     importlib.import_module('snowcast_runner.' + name)
 from snowcast_runner.cli import main
 raise SystemExit(main(sys.argv[1:]))

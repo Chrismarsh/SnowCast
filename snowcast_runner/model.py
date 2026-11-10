@@ -60,6 +60,19 @@ def prune_checkpoints(project):
         p.unlink()
 
 
+def checkpoint_state(cwd):
+    return {p.name: (p.stat().st_mtime_ns, p.stat().st_size)
+            for p in (cwd / 'output/checkpoint').glob('checkpoint_*.json')}
+
+
+def archive_model_log(work, cwd):
+    old_log = cwd / 'log'
+    if old_log.exists():
+        destination = work / 'jobs' / f'previous-chm-log-{uuid.uuid4().hex[:12]}'
+        destination.parent.mkdir(exist_ok=True)
+        old_log.rename(destination)
+
+
 def run_model(project):
     config, forcing_end, checkpoints = prepare(project)
     if checkpoints:
@@ -69,15 +82,16 @@ def run_model(project):
     cwd = config.parent
     clean_exit = cwd / 'output' / 'clean_exit'
     clean_exit.unlink(missing_ok=True)
+    if project.model['job']['mode'] == 'pbs':
+        from .backfill import run_chain
+        outcome = run_chain(project, config)
+        if outcome == 'completed':
+            prune_checkpoints(project)
+        return outcome
     for segment in range(project.model['max_runs']):
-        checkpoint_dir = cwd / 'output' / 'checkpoint'
-        before = {p.name: (p.stat().st_mtime_ns, p.stat().st_size) for p in checkpoint_dir.glob('checkpoint_*.json')}
+        before = checkpoint_state(cwd)
         # Preserve model logs per segment; an old exception must not mark a new run failed.
-        old_log = cwd / 'log'
-        if old_log.exists():
-            destination = project.work / 'jobs' / f'previous-chm-log-{uuid.uuid4().hex[:12]}'
-            destination.parent.mkdir(exist_ok=True)
-            old_log.rename(destination)
+        archive_model_log(project.work, cwd)
         command = [part.replace('{config}', str(config)) for part in project.model['command']]
         code, log = execute(command, work=project.work, cwd=cwd, job=project.model['job'], label=f'{project.id}-chm',
                             accepted_codes=[0, *project.model['no_data_codes']])
@@ -88,7 +102,7 @@ def run_model(project):
         if clean_exit.is_file():
             prune_checkpoints(project)
             return 'completed'
-        after = {p.name: (p.stat().st_mtime_ns, p.stat().st_size) for p in checkpoint_dir.glob('checkpoint_*.json')}
+        after = checkpoint_state(cwd)
         if after == before:
             raise JobFailed(f'{project.id}: CHM exited without clean_exit or a new checkpoint; see {log}')
     raise JobFailed(f'{project.id}: CHM did not produce clean_exit after {project.model["max_runs"]} segments')

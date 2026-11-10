@@ -90,6 +90,7 @@ rejected. `defaults`, `domains`, and `work_root` no longer exist.
 | `work/chm/<mesh inputs>` | Symlinks to the configured mesh/partition and its referenced inputs |
 | `work/chm/output/` | Model output, `clean_exit`, and `checkpoint/` |
 | `work/jobs/` | Generated scripts, execution logs, exit results and pending PBS submissions |
+| `work/jobs/<project>-chm-chain-*/` | Frozen backfill request and per-segment PBS scripts, logs and outcomes |
 | `work/postprocess/` | Grid definition, current and archived TIFF/ASCII products, export staging |
 | `work/status.json` | Last recorded stage/state and failure details |
 
@@ -230,6 +231,23 @@ must agree with the allocation and partitioned mesh/checkpoint filenames.
 Local jobs can set `timeout_seconds`; PBS uses walltime and exports it as
 `CHM_WALLCLOCK_LIMIT` for checkpointing.
 
+PBS model runs queue a dependency chain of up to `model.max_runs` jobs (default
+10), each with `model.job.walltime`. The Western example therefore allows up to
+ten six-hour allocations for a backfill. Jobs use `afterok` dependencies and
+share one prepared CHM configuration and forcing snapshot. CHM must enable
+`checkpoint.save_checkpoint`, `checkpoint.on_wallclock_limit`, and
+`checkpoint.auto_resume` when more than one segment is allowed; the Western
+configuration enables all three and checkpoints five minutes before walltime.
+
+A segment that exits successfully with a new checkpoint releases the next job.
+`clean_exit` finishes the chain and permits postprocessing. Errors, no checkpoint
+progress, or reaching `max_runs` stop the chain and retain checkpoints. Each
+queued script checks a permanent chain-completion marker before environment
+setup, so unused segments never restart CHM. The first unused segment exits 99
+to stop further `afterok` dependencies; that guard exit does not mark an already
+completed model run as failed. Explicit retry codes/attempts within a PBS model
+segment run inside that allocation, with the remaining walltime passed to CHM.
+
 `run` prepares, executes CHM and postprocesses. `run --no-postprocess` stops after
 CHM. `postprocess` processes existing model output without rerunning CHM.
 `model.output_file` (default `output.nc`) must match the actual CHM output
@@ -240,11 +258,21 @@ was killed. PBS pending submissions are recovered before changing staged
 configuration or forcing. This means `prepare` may wait for an already-running
 PBS job to finish, although it never submits a new one.
 
+Once submitted, the model chain continues even if the launching `snowcast`
+process disconnects. Rerun `snowcast run PROJECT` to reconnect; it waits on the
+existing chain and postprocesses its completed output without submitting the
+model again. It also completes a partially submitted chain when all prior job
+IDs are known. `prepare` waits on known jobs but never submits missing segments.
+An uncertain `qsub` acknowledgement still needs operator resolution.
+
 If `qsub` acknowledgement is lost, inspect the scheduler and the project's
-`work/jobs/*.pending.json`. Once the actual job ID is known, set `state` to
+`work/jobs/*.pending.json` (or the segment record inside a chain directory).
+Once the actual job ID is known, set `state` to
 `submitted` and `job_id` to that ID, then retry. Clear pending state only after
-confirming that its job is no longer running. A failed `qstat` without a result
-retains pending state and does not trigger another submission.
+confirming that its job is no longer running. If the batch exit file is missing,
+the runner also checks `qstat -xf`. A finished history record with an exit status
+resolves that job; unknown jobs, missing exit status, or scheduler outages retain
+pending state and show the scheduler error.
 
 Failures stop subsequent stages and record details in `work/status.json`.
 Retries are opt-in via `attempts`, `retry_codes`, `retry_delay_seconds`.

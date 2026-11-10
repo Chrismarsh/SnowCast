@@ -58,7 +58,10 @@ def main(argv=None):
         with workspace(project):
             try:
                 # Do not alter configuration or staging files used by a live PBS job.
-                resume_pending(project.work)
+                recovered = resume_pending(project.work, submit_model_chain=args.action == 'run')
+                if 'completed' in recovered:
+                    from .model import prune_checkpoints
+                    prune_checkpoints(project)
                 status(project, 'running', stage=args.action)
                 if args.action == 'met-update':
                     from .forcing import update_forcing
@@ -79,7 +82,7 @@ def main(argv=None):
                     print(f'Published {project.id} to {args.site_dir}')
                     return 0
                 if args.action == 'run':
-                    outcome = run_model(project)
+                    outcome = recovered[-1] if recovered else run_model(project)
                     if outcome == 'up_to_date' or args.no_postprocess:
                         status(project, outcome)
                         print(f'{project.id}: {outcome}')
