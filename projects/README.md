@@ -30,15 +30,16 @@ variables, AEP exports and September 1, 2026 start date. Before using it, set:
 
 - `forcing.archive` in `snowcast.json` to the full met archive path.
 - `meshes.mesh` in `chm/western.json` to the actual partition file.
-- `environment.sh` if your Spack environment differs from the existing Western
-  installation. It sources `~/.profile`, then activates
-  `/home/chm003/project/Snowcast-www/SnowCast`. Edit that path or set
-  `SNOWCAST_SPACK_ENV` in `~/.profile` to use another environment. Both model and
-  postprocessing jobs source this file, including fresh PBS shells.
+- `environment.sh` if your Spack environment is outside the repository root.
+  It sources `~/.profile`, then activates the root found two directories above
+  that script, regardless of the batch job's working directory. For a project
+  copied outside the checkout, set `SNOWCAST_SPACK_ENV` in this script or in
+  `~/.profile` to the actual Spack environment path. Both model and postprocessing
+  jobs source this file, including fresh PBS shells.
 - The model and postprocessing PBS allocations for your cluster.
 
 The mesh and forcing paths are explicit placeholders; the environment setup
-retains the existing Western installation. Preparation does not adopt existing
+defaults to the repository's Spack environment. Preparation does not adopt existing
 checkpoints. All authored configuration lives in the project folder or
 explicitly referenced input locations.
 

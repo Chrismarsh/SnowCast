@@ -1,9 +1,11 @@
 #!/bin/bash
 # Sourced inside this project's model and postprocessing jobs.
+# Resolve the checkout root from this file, not the batch job's working directory.
+SNOWCAST_REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+
 # The Western cluster profile initializes Spack and other site settings.
 source "${HOME}/.profile"
 
-# Keep using the existing Western CHM/pyCHM environment, independently of where
-# this project lives. Edit this path or set SNOWCAST_SPACK_ENV in ~/.profile
-# when using a different installation; PBS need not inherit the login shell.
-spack env activate "${SNOWCAST_SPACK_ENV:-/home/chm003/project/Snowcast-www/SnowCast}"
+# Projects copied outside the checkout can select another environment by setting
+# SNOWCAST_SPACK_ENV here or in ~/.profile; PBS need not inherit the login shell.
+spack env activate "${SNOWCAST_SPACK_ENV:-$SNOWCAST_REPO_ROOT}"
