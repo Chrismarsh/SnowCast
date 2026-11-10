@@ -76,7 +76,7 @@ def test_merge_before_mesh_validation_and_preserve_declaring_paths(project_file,
     }
     assert config['forcing']['file'] == str(project.work / 'met/index.json')
     assert config['option']['startdate'] == '20260901T000000'
-    assert config['output'] == {'output_dir': str(project.work / 'chm/output'),
+    assert config['output'] == {'output_dir': 'output',
                                 'ugrid': {'variables': ['swe'], 'specific_time': '23:00'}}
     assert config['checkpoint'] == {'auto_resume': True}
     assert all(p.read_bytes() == before for p, before in authored.items())
@@ -148,7 +148,7 @@ def test_three_projects_share_base_but_choose_their_own_mesh_modules_and_jobs(pr
         config = json.loads((p.work / 'chm/config.json').read_text())
         assert config['modules'] == modules
         assert config['meshes']['mesh'] == f'{name}.np{ranks}.partition'
-        assert config['output']['output_dir'] == str(p.work / 'chm/output')
+        assert config['output']['output_dir'] == 'output'
         assert p.postprocess['job']['ranks'] == 1
         assert not (p.work / 'jobs').exists()
         manifests.append(p)

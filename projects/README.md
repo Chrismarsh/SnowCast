@@ -163,7 +163,8 @@ Other module-specific file inputs should use absolute
 paths or explicit `model.assets` aliases, which create read-only input references
 in the execution directory. Arbitrary CHM strings are not guessed to be paths.
 
-After resolution, SnowCast supplies `forcing.file`, `output.output_dir`, the
+After resolution, SnowCast supplies `forcing.file`, `output.output_dir` (the
+basename `output`, resolved by CHM from its `work/chm/` working directory), the
 requested output variables, and `option.startdate` when `model.start_date` is
 set. Authored files remain unchanged. CHM settings not managed by the runner,
 including physics and checkpoint options, remain under project control.

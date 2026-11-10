@@ -26,7 +26,7 @@ def prepare(project):
     config['meshes'] = {key: Path(value).name for key, value in config['meshes'].items()}
     index, end = forcing_index(project)
     config.setdefault('forcing', {})['file'] = str(index)
-    config.setdefault('output', {})['output_dir'] = str(output)
+    config.setdefault('output', {})['output_dir'] = output.name
     config['output'].setdefault('ugrid', {})['variables'] = project.postprocess['variables']
     if project.model.get('start_date'):
         config.setdefault('option', {})['startdate'] = project.model['start_date'].replace('-', '') + 'T000000'

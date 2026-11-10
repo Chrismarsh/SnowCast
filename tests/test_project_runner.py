@@ -125,7 +125,7 @@ def test_generated_model_and_forcing_leave_inputs_unchanged(project_file):
         target, latest, _ = prepare(domain)
         config = json.loads(target.read_text())
     assert domain.model['config'].read_bytes() == original
-    assert config['output']['output_dir'] == str(domain.work / 'chm' / 'output')
+    assert config['output']['output_dir'] == 'output'
     assert config['checkpoint']['auto_resume'] is True
     assert latest == '20261109T230000'
     assert json.loads(Path(config['forcing']['file']).read_text())[0]['file_name'] == str(project_file.parent / 'forcing.nc')
@@ -187,7 +187,7 @@ def test_three_projects_execute_and_one_failure_does_not_stop_others(project_fil
     # Exercise real separate CLI processes, with CHM stand-ins writing project outputs.
     fake = project_file.parent / 'model.py'
     fake.write_text('import json, pathlib, sys\nc=json.load(open(sys.argv[1]))\np=pathlib.Path(c["output"]["output_dir"])\n'
-                    'if "arctic" in str(p): sys.exit(8)\n(p/"clean_exit").write_text("done")\n')
+                    'if "arctic" in str(p.resolve()): sys.exit(8)\n(p/"clean_exit").write_text("done")\n')
     change(project_file, lambda r: r['model'].update(command=[sys.executable, str(fake), '{config}']))
     files = [project_file, clone_project(project_file, 'arctic'), clone_project(project_file, 'third')]
     def run(filename):
