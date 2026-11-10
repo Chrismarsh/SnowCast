@@ -556,8 +556,18 @@ cover site navigation, full-domain reset, date/point preservation, and dismissal
   or individual COG URL import workflow. Published rasters support EPSG:4326,
   EPSG:3857, standard WGS84 UTM, and other projections defined by `proj4` in the
   catalogue. Remote raster hosting requires range support and CORS.
-- Share links preserve variable, selected date, and point. The exact history
-  can expire when it leaves the rolling catalogue; download CSV for a snapshot.
+- Share links preserve variable, selected date, basemap, map centre and fractional
+  zoom, plus a selected point/station when present. **Share map** works without
+  selecting a point; **Share location** also includes the selected point/station.
+  Panning/zooming updates `viewLon`, `viewLat` and `zoom` in the URL fragment with
+  `replaceState`, without adding browser-history entries. These coordinates are
+  separate from the point's `lon`/`lat`. For example,
+  `#viewLon=-115.732419&viewLat=51.013275&zoom=11.3752` restores the same centre and
+  scale. Different screen sizes show different extents around that centre.
+  A valid shared view takes precedence over the initial domain fit and station
+  autofocus. Legacy links and invalid/incomplete views retain the domain fit
+  (or station autofocus). The exact history can expire when it leaves the
+  rolling catalogue; download CSV for a snapshot.
 - Error states never silently substitute synthetic data.
 
 ## Development and validation
@@ -699,7 +709,7 @@ rather than a truncated mosaic. Image/provenance caches are bounded. Changing
 opacity reuses imagery; disabling or changing imagery dates/view aborts requests.
 **Refresh / retry imagery** clears the imagery source and repeats catalogue searches.
 
-Settings are encoded in the page URL and retained by **Share location**:
+Settings are encoded in the page URL and retained by **Share map / Share location**:
 `?satellite=1&sat-mode=latest&sat-days=7&sat-view=snow&sat-opacity=0.85`, or
 `?satellite=1&sat-mode=date&sat-date=2026-11-04&sat-view=true-color`.
 

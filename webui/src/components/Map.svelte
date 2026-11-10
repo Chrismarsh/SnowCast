@@ -29,6 +29,7 @@
   import { basemaps, DEFAULT_BASEMAP, type BasemapId } from '../lib/basemaps';
   import { watchFrameLoad } from '../lib/frameLoad';
   import { displayPixelRatio, TileProgress } from '../lib/mapPerformance';
+  import { MAP_MAX_ZOOM, type MapViewState } from '../lib/mapView';
   import { ProjectedRaster } from '../lib/projectedRaster';
   import { RasterRequests, RequestPool, TileFailures, rasterSourceOptions } from '../lib/rasterRequests';
   import { initialRenderer, isRendererPreference, RendererSelection, RENDERER_STORAGE_KEY, type RendererPreference } from '../lib/renderer';
@@ -40,6 +41,8 @@
   export let opacity = 0.7;
   export let hideZeroSnow = false;
   export let point: number[] | null = null;
+  export let initialView: MapViewState | undefined = undefined;
+  export let onviewchange: (view: MapViewState) => void = () => {};
   export let bounds = [-132, 46.4, -109.8, 56];
   export let basemap: BasemapId = DEFAULT_BASEMAP;
   export let onpick: (point: number[]) => void;
@@ -86,6 +89,13 @@
   const http = new globalThis.Map<string, RasterRequests>();
   const failures = new globalThis.Map<string, TileFailures>();
   const requestPool = new RequestPool();
+
+  export function viewState(): MapViewState | undefined {
+    const view = map?.getView(), center = view?.getCenter(), zoom = view?.getZoom();
+    if (!view || !center || zoom === undefined) return;
+    const [lon, lat] = toLonLat(center, view.getProjection());
+    if ([lon, lat, zoom].every(Number.isFinite)) return { lon, lat, zoom };
+  }
 
   export function fit(duration = 400, targetBounds = bounds) {
     if (!map) return;
@@ -197,10 +207,17 @@
         source: marker, zIndex: 50,
         style: new Style({ image: new Circle({ radius: 7, fill: new Fill({ color: '#08777a' }), stroke: new Stroke({ color: 'white', width: 3 }) }) }),
       })],
-      // No tile requests until the first asset supplies the actual domain bounds.
-      view: new View({ projection: 'EPSG:3857', maxZoom: 17 }),
+      // Restore a shared view before loading tiles; otherwise await domain bounds.
+      view: new View({ projection: 'EPSG:3857', maxZoom: MAP_MAX_ZOOM,
+        ...(initialView ? { center: fromLonLat([initialView.lon, initialView.lat]), zoom: initialView.zoom } : {}),
+      }),
     });
-    map.on('moveend', queueSatelliteStatus);
+    fitted = !!initialView;
+    map.on('moveend', () => {
+      queueSatelliteStatus();
+      const view = viewState();
+      if (view) onviewchange(view);
+    });
     map.on('change:size', () => map.setPixelRatio(displayPixelRatio(window.devicePixelRatio, map.getSize() || [1, 1], lowDetail)));
     map.on('singleclick', e => {
       const cluster = map.forEachFeatureAtPixel(e.pixel, feature => feature, { layerFilter: layer => layer === stationLayer, hitTolerance: 6 });
