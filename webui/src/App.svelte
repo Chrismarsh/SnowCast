@@ -8,6 +8,8 @@
   import HelpDialog from './components/HelpDialog.svelte';
   import StationPanel from './components/StationPanel.svelte';
   import StationControls from './components/StationControls.svelte';
+  import SatelliteControls from './components/SatelliteControls.svelte';
+  import { initialHls, hlsWindow, hlsParams, sceneLabel, type HlsSettings, type HlsStatus, type HlsPick } from './lib/hls';
   import { STATION_INDEX_URL, inBounds, parseIndex, type SnowStation, type StationIndex } from './lib/canswe';
   import type { Asset, Catalogue, PointValue, Variable } from './lib/types';
   import { dateLabel, timeLabel, formatValue, normalizeCatalogue, seriesCSV, paletteColors } from './lib/data';
@@ -41,6 +43,19 @@
   try { savedBasemap = localStorage.getItem(BASEMAP_STORAGE_KEY); } catch { /* Storage may be unavailable. */ }
   let basemap = initialBasemap(params.get('basemap'), savedBasemap);
   let basemapOpen = false;
+  let satellite = initialHls(params);
+  let satelliteRevision = 0;
+  let satelliteStatus: HlsStatus = { pending: 0, loaded: 0, empty: 0, failed: 0 };
+  let satelliteZoomedOut = true;
+  let satellitePick: HlsPick | null = null;
+  $: satelliteWindow = hlsWindow(satellite);
+  function changeSatellite(settings: HlsSettings) {
+    satellite = settings;
+    const url = new URL(window.location.href); hlsParams(url.searchParams, settings);
+    window.history.replaceState(null, '', url);
+  }
+  function refreshSatellite() { satelliteRevision++; satellite = { ...satellite }; }
+  function satelliteProgress(status: HlsStatus, zoomedOut: boolean) { satelliteStatus = status; satelliteZoomedOut = zoomedOut; }
   let stationsVisible = false;
   try { stationsVisible = localStorage.getItem('snowcast-canswe-visible') === 'true'; } catch { /* Session choice. */ }
   let stationIndex: StationIndex | null = null;
@@ -324,13 +339,13 @@
 
 <main class="workspace">
   <section class="map-workspace" class:comparison={mode === 'difference'} aria-label="Map and playback">
-    <Map bind:this={map} asset={selected} variable={mapVariable} {opacity} {point} {basemap} bounds={domainBounds || [-132, 46.4, -109.8, 56]} stations={domainStations} {stationsVisible} onstation={station => selectStation(station)} onstationcluster={showCluster} onpick={pick} onready={ready} onerror={failed} onslow={id => slowFrameId = id}/>
+    <Map bind:this={map} asset={selected} variable={mapVariable} {satellite} {satelliteRevision} onsatellitestatus={satelliteProgress} onsatellitepick={value => satellitePick = value} {opacity} {point} {basemap} bounds={domainBounds || [-132, 46.4, -109.8, 56]} stations={domainStations} {stationsVisible} onstation={station => selectStation(station)} onstationcluster={showCluster} onpick={pick} onready={ready} onerror={failed} onslow={id => slowFrameId = id}/>
     <div class="map-toolbar">
       <AreaPicker bounds={domainBounds} onchoose={chooseArea}/>
       <div class="variable-tabs surface" role="group" aria-label="Map variable">{#each variables as v}<button class:active={variableId === v.id} onclick={() => chooseVariable(v.id)}>{v.label}</button>{/each}</div>
     </div>
     <div class="map-tools"><div class="surface tool-pair"><button aria-label="Zoom in" onclick={() => map?.zoom(1)}><Icon name="plus"/></button><button aria-label="Zoom out" onclick={() => map?.zoom(-1)}><Icon name="minus"/></button></div><button class="surface icon-button" aria-label="Fit model domain" onclick={() => map?.fit()}><Icon name="target"/></button><button class="surface icon-button" aria-label="Choose map layers" aria-expanded={basemapOpen} aria-controls="basemap-picker" onclick={() => { basemapOpen = !basemapOpen; stationCluster = []; }}><Icon name="layers"/></button>
-      {#if basemapOpen}<div class="basemap-picker surface" id="basemap-picker"><div class="basemap-heading"><strong>Map layers</strong><button class="icon-button" aria-label="Close map layers" onclick={() => basemapOpen = false}><Icon name="close" size={14}/></button></div><label class="basemap-label" for="basemap-select">Basemap</label><select id="basemap-select" value={basemap} onchange={e => chooseBasemap(e.currentTarget.value)}>{#each basemapIds as id}<option value={id}>{basemaps[id].label}</option>{/each}</select><p>None hides the basemap; model data and stations remain available.</p><StationControls enabled={stationsVisible} loading={stationLoading} error={stationError} stations={domainStations} cluster={stationCluster} ontoggle={toggleStations} onchoose={station => selectStation(station,true)} onretry={loadStations}/></div>{/if}</div>
+      {#if basemapOpen}<div class="basemap-picker surface" id="basemap-picker"><div class="basemap-heading"><strong>Map layers</strong><button class="icon-button" aria-label="Close map layers" onclick={() => basemapOpen = false}><Icon name="close" size={14}/></button></div><label class="basemap-label" for="basemap-select">Basemap</label><select id="basemap-select" value={basemap} onchange={e => chooseBasemap(e.currentTarget.value)}>{#each basemapIds as id}<option value={id}>{basemaps[id].label}</option>{/each}</select><p>None hides the basemap; model data and stations remain available.</p><SatelliteControls settings={satellite} onchange={changeSatellite} onrefresh={refreshSatellite}/><StationControls enabled={stationsVisible} loading={stationLoading} error={stationError} stations={domainStations} cluster={stationCluster} ontoggle={toggleStations} onchoose={station => selectStation(station,true)} onretry={loadStations}/></div>{/if}</div>
     {#if loading}<div class="map-message surface"><span class="spinner"></span>Loading simulation catalogue…</div>
     {:else if !variables.length}<div class="map-message empty surface"><Icon name="layers" size={32}/><h2>Simulation data unavailable</h2><p>The model catalogue could not be loaded. Please try again shortly.</p><button class="text-button" onclick={load}>Retry catalogue</button><small>{error}</small></div>
     {:else if error}<div class="map-banner error" role="alert">{error}<button class="text-button" onclick={() => { error = ''; slowFrameId = ''; frameLoading = true; map?.retry(); }}>Retry</button><button class="text-button" onclick={openDiagnostics}>Loading diagnostics</button></div>
@@ -338,6 +353,19 @@
     {:else if stale && !catalogue?.sample_data}<div class="map-banner">Latest model output is over 48 hours old. <button class="text-button" onclick={load}>Refresh</button></div>{/if}
     {#if variable}
       <div class="map-bottom">
+      {#if satellite.enabled}
+        <div class="satellite-caption surface" role="status">
+          <button class="text-button" onclick={() => basemapOpen = true}>Sentinel-2 / Landsat · {satellite.view === 'snow' ? 'Snow false colour' : 'True colour'}</button>
+          {#if satellite.opacity === 0}<span>Satellite layer hidden at 0% opacity.</span>
+          {:else if satelliteZoomedOut}<span>Zoom in to load 30 m imagery.</span>
+          {:else if satelliteStatus.failed}<span class="satellite-error">{satelliteStatus.error || 'Some satellite tiles failed.'} <button class="text-button" onclick={refreshSatellite}>Retry</button></span>
+          {:else if satelliteStatus.pending}<span><span class="spinner"></span> Loading satellite imagery…</span>
+          {:else if !satelliteStatus.loaded}<span>No clear observations in this view and date window.</span>
+          {/if}
+          <span>Search: {satelliteWindow.start}{satelliteWindow.start !== satelliteWindow.end ? ` → ${satelliteWindow.end}` : ''} UTC</span>
+          {#if satelliteStatus.first}<span>Visible observations: {satelliteStatus.first}{satelliteStatus.first !== satelliteStatus.last ? ` → ${satelliteStatus.last}` : ''} · Click for exact date.</span>{/if}
+        </div>
+      {/if}
       <div class="legend surface"><div>{legendVariable?.title} <span>· {variable.unit}</span></div><div class="colour-ramp" style={`background:linear-gradient(90deg,${colors.join(',')})`}></div><div class="legend-labels">{#each [0, .25, .5, .75, 1] as fraction}<span>{formatValue(legendVariable.range[0] + (legendVariable.range[1] - legendVariable.range[0]) * fraction, variable.unit)}{fraction === 1 ? '+' : ''}</span>{/each}</div>{#if displayed?.difference}<div class="difference-key"><span>{legendVariable.palette === 'temperature-difference' ? 'Cooling' : 'Decrease'}</span><span>0</span><span>{legendVariable.palette === 'temperature-difference' ? 'Warming' : 'Increase'}</span></div>{/if}</div>
       <div class="timeline surface">
         <div class="timeline-heading"><div class="map-mode" role="group" aria-label="Map display"><button class:active={mode === 'value'} aria-pressed={mode === 'value'} onclick={() => chooseMode('value')}>Value</button><button class:active={mode === 'difference'} aria-pressed={mode === 'difference'} onclick={() => chooseMode('difference')}>Difference</button></div><span>{displayed?.difference ? `${dateLabel(displayed.difference.from.datetime)} → ${dateLabel(displayed.datetime)} · To − From` : displayed ? timeLabel(displayed.datetime) : 'Preparing map'}</span></div>
@@ -365,6 +393,19 @@
       {#if displayed?.difference}<p class="subtle selected-time">To − From · {dateLabel(displayed.difference.from.datetime)} → {dateLabel(displayed.datetime)}</p><div class="stats"><div><strong>{formatValue(fromPoint?.value, variable?.unit)} <span>{variable?.unit}</span></strong><span>From · {timeLabel(displayed.difference.from.datetime)}</span></div><div><strong>{formatValue(toPoint?.value, variable?.unit)} <span>{variable?.unit}</span></strong><span>To · {timeLabel(displayed.datetime)}</span></div></div>{#if point && !querying && currentValue == null}<p class="subtle small">A valid model value is needed on both dates to calculate a difference.</p>{/if}
       {:else}<p class="subtle selected-time">{displayed ? timeLabel(displayed.datetime) : 'Select a simulation'}</p>{#if !selectedStation}<div class="stats"><div><strong>{change == null ? '—' : `${change > 0 ? '+' : ''}${formatValue(change, variable?.unit)} ${variable?.unit}`}</strong><span>Since first frame</span></div><div><strong>{available} <span>/ {dates.length || 10}</span></strong><span>Dates available</span></div></div>{/if}{/if}</section>
     {#if selectedStation && stationIndex}<StationPanel station={selectedStation} index={stationIndex} {variableId} showModel={mode === 'value' && !displayed?.difference} model={series} selectedTime={displayed?.datetime || ''} modelLoading={querying} onretrymodel={() => { if (point) query(point, dates); }}/>{:else}<section class="history-section"><div class="section-heading"><h2>History</h2><span>{variable?.label || 'SWE'} · {variable?.unit || 'mm'}</span></div>{#if querying}<div class="chart-empty"><span class="spinner"></span>Reading full-resolution values…</div>{:else if point && series.length}<Trend values={series} selectedTime={displayed?.datetime || ''} unit={variable?.unit || 'mm'} onselect={selectTime}/><p class="subtle small">{mode === 'difference' ? 'Absolute model values. Select a date to change the To date.' : 'Select a date to view it on the map.'}</p>{#if series.some(v => v.error)}<p class="query-error" role="status">Some raster reads failed. Check range requests and CORS. <button class="text-button" onclick={() => point && query(point, dates)}>Retry</button></p>{:else if series.every(v => v.value === null)}<p class="subtle small">No model data at this location.</p>{/if}{:else}<div class="chart-empty"><Icon name="pin" size={28}/><span>Select a point to reveal its history.</span></div>{/if}</section>
+    {/if}
+    {#if satellite.enabled && point}
+      <section class="satellite-point" aria-label="Satellite observation at selected location">
+        <h2>Satellite observation</h2>
+        {#if satellitePick?.state === 'ready'}
+          <p><strong>{sceneLabel(satellitePick.scene)}</strong> · {timeLabel(satellitePick.scene.datetime)}</p>
+          <p>30 m HLS · {satellite.view === 'snow' ? 'Snow false colour' : 'True colour'}</p>
+          <a href={`https://planetarycomputer.microsoft.com/api/stac/v1/collections/${satellitePick.scene.collection}/items/${encodeURIComponent(satellitePick.scene.id)}`} target="_blank" rel="noreferrer">Source scene metadata ↗</a>
+        {:else if satellitePick?.state === 'zoom'}<p>Zoom in to view satellite observations here.</p>
+        {:else if satellitePick?.state === 'error'}<p>Imagery failed here. <button class="text-button" onclick={refreshSatellite}>Retry imagery</button></p>
+        {:else if satellitePick?.state === 'empty'}<p>No clear observation here within the selected date window.</p>
+        {:else}<p>Loading imagery at this location…</p>{/if}
+      </section>
     {/if}
     <section class="settings-section"><h2>Layer settings</h2><label class="setting-row"><span>Opacity</span><input type="range" min="0" max="1" step="0.05" bind:value={opacity}/><span class="percentage">{Math.round(opacity * 100)}%</span></label><div class="setting-row"><span>Colour range</span><span class="fixed-range">Fixed across dates <Icon name="info" size={14}/></span></div></section>
     <div class="inspector-actions"><button class="outlined" disabled={!point || querying || !series.length || !displayed || frameLoading} onclick={download}><Icon name="download" size={17}/>{displayed?.difference ? 'Difference CSV' : selectedStation ? 'Model CSV' : 'Download CSV'}</button><button class="outlined" disabled={!point || !displayed || frameLoading} onclick={share}><Icon name="share" size={17}/>Share location</button></div>

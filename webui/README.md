@@ -643,3 +643,62 @@ Transparency regression checks evaluate the generated colour expression with
 OpenLayers, compile it to GLSL, and check Canvas output for missing values,
 masked pixels, valid zero snow, and cold temperatures. These are not a substitute
 for a visual WebGL check on the affected device.
+
+## Sentinel-2 / Landsat satellite overlay
+
+Open **Map layers → Sentinel-2 / Landsat** to enable recent 30 m HLS imagery.
+The layer is off by default, draws above the model and below station markers,
+and has an independent opacity slider. It works with both model renderers.
+
+- **Latest clear observations** fills each display pixel with the newest valid
+  observation from either Sentinel-2 or Landsat 8/9 in the past 3, 7 (default),
+  14 or 30 UTC calendar days, including today. It does not average observations.
+- **Single acquisition day** restricts both collections to one UTC day. The
+  imagery selection is independent of model animation and difference dates.
+- **True colour** uses red/green/blue. **Snow false colour** uses SWIR1/NIR/red;
+  snow and ice appear cyan, water clouds white, and ice clouds can also be cyan.
+- The map caption reports the search window and the acquisition-date range of
+  loaded visible tiles. Click the map to see the satellite, acquisition time and
+  source-scene metadata for the actual displayed pixel in the location panel.
+- Areas without valid observations remain transparent. Cloud/shadow filtering
+  is imperfect, especially over bright snow. This is visual context, not a
+  validated snow-cover classification or SWE measurement.
+
+### Data and hosting
+
+NASA HLS v2 is served by Microsoft Planetary Computer's public STAC and tile
+APIs (`hls2-s30` and `hls2-l30`). No visitor account, API secret, Python service,
+CHM processing change or Apache configuration change is required. The mirror's
+archive starts in 2020. HLS itself typically has 2–3 days of processing latency;
+mirror ingestion, clouds and winter darkness can make the latest clear image
+older. Both sensors are rendered at 30 m (Sentinel-2 is resampled from its native
+resolution). The overlay is a third-party network dependency; provider outages
+are reported separately and never interrupt model playback.
+
+The tile service renders three reflectance bands plus explicit alpha derived
+from Fmask. Bits 1–3 (cloud, cloud adjacency, shadow) are excluded; snow/ice and
+water flags are retained. QA fill (255) and reflectance fill (-9999) are excluded.
+Equivalent SWIR1/NIR/red bands are B11/B8A/B04 for S30 and B06/B05/B04 for L30.
+The browser composites opaque valid pixels newest-first across **both**
+collections and retains a per-pixel scene index for provenance. Failed scene
+requests fail that tile instead of silently falling back to older observations.
+Only documented outside-footprint 404 responses are treated as missing coverage.
+
+Imagery starts at map zoom 7 and uses source tiles up to zoom 12 (then
+overscales). Requests are limited to four at a time, with cancellation and
+20-second catalogue / 45-second tile timeouts. Neighbouring tiles reuse catalogue
+searches, pagination is checked, and excessive results produce an explicit error
+rather than a truncated mosaic. Image/provenance caches are bounded. Changing
+opacity reuses imagery; disabling or changing imagery dates/view aborts requests.
+**Refresh / retry imagery** clears the imagery source and repeats catalogue searches.
+
+Settings are encoded in the page URL and retained by **Share location**:
+`?satellite=1&sat-mode=latest&sat-days=7&sat-view=snow&sat-opacity=0.85`, or
+`?satellite=1&sat-mode=date&sat-date=2026-11-04&sat-view=true-color`.
+
+References: [NASA HLS products](https://hls.gsfc.nasa.gov/data-products/),
+[Planetary Computer HLS](https://planetarycomputer.microsoft.com/dataset/group/hls2),
+[STAC API](https://planetarycomputer.microsoft.com/api/stac/v1/),
+[tile API](https://planetarycomputer.microsoft.com/api/data/v1/docs).
+
+![HLS satellite imagery over synthetic model data, with source observation date](docs/hls-satellite-preview.png)
