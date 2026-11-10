@@ -47,7 +47,7 @@ and be unique among projects publishing to the same site.
 | Section | Settings |
 | --- | --- |
 | `model` | `config` (JSON/JSON5 CHM template), optional `start_date`, `command` (default `["CHM", "-f", "{config}"]`), `output_file` (default `output.nc`), `max_runs` (10), `checkpoint_keep_days` (3), `no_data_codes` (empty), `assets`, `job` |
-| `forcing` | Exactly one of `index` or `glob` |
+| `forcing` | `index`: path to the existing CHM forcing metadata JSON |
 | `postprocess` | `variables`, `source_resolution` (degrees), `method`, `recent_steps`, `exporter`, optional UGRID topology `mesh`, `grid`, `ascii`, `job` |
 | `grid` | `crs`, `[dx, dy]` `resolution` in target CRS units, optional `[west, south, east, north]` `bounds`, `resampling` (`nearest`, `bilinear`, `average`) |
 | `ascii` | `enabled` (false), `variables` (`swe`, `t`), `resolution` (0.036 degrees); exports latest selected timestamp in EPSG:4326 |
@@ -60,11 +60,24 @@ relative to that template. Use absolute references for additional CHM input
 paths or map workspace filenames/directories to input paths with `model.assets`.
 Assets are symlinked as inputs; output, config and log names are reserved.
 
-A forcing index is the existing CHM list of objects containing `start_time`,
-`end_time` (`YYYYMMDDTHHMMSS`, UTC) and `file_name`. Relative file paths resolve
-against the source index. With `glob`, the tool opens matching NetCDF files and
-reads their actual time coordinates. It writes a separate index for the domain;
-it does not download meteorology or modify the shared forcing archive.
+Forcing uses the existing CHM metadata JSON, which already lists the files and
+their time ranges. The western project points to the metadata maintained by
+`met/main.py`:
+
+```json
+"forcing": {"index": "../../met/metdata-hrdps.json"}
+```
+
+The index is a list of objects containing `start_time`, `end_time`
+(`YYYYMMDDTHHMMSS`, UTC) and `file_name`. Relative file paths resolve against
+the source index. The runner takes a workspace snapshot, preserving record
+order, timestamps and additional metadata while making file paths absolute.
+It uses the metadata's latest end time to decide whether CHM is up to date;
+it does not glob forcing directories or open NetCDF files to rediscover times.
+Each preparation refreshes the snapshot from the source index. The upstream
+meteorology workflow remains responsible for downloading forcing and updating
+the metadata; the runner does not modify either input. Domains can share an
+index or each specify their own.
 
 `job` applies independently to CHM and regridding. Defaults run locally with one
 rank. PBS projects specify `mode: "pbs"`, `nodes`, `cpus_per_node`,
@@ -97,8 +110,8 @@ snowcast status projects/western
 snowcast postprocess projects/western --domain western-cordillera
 ```
 
-`prepare` creates the workspace, resolved CHM configuration and forcing index
-without submitting a job. The CHM template is never modified. `run` executes
+`prepare` creates the workspace, resolved CHM configuration and forcing metadata
+snapshot without submitting a job. The CHM template is never modified. `run` executes
 CHM followed by postprocessing; `--no-postprocess` runs CHM only. A domain must
 be selected when a project has more than one. Use independent cron invocations
 for each domain. One domain's missing inputs or job failure does not block
@@ -180,8 +193,8 @@ work. This branch supplies their metadata contract and the runner foundation.
 ## Manual western migration check
 
 1. Keep the existing cron unchanged while validating the new project. Check the
-   template, mesh/parameter references, forcing glob and `environment.sh` on the
-   actual cluster. The sample's 2025-09-01 start date mirrors the existing config.
+   template, mesh/parameter references, forcing metadata JSON and `environment.sh`
+   on the actual cluster. The sample's 2025-09-01 start date mirrors the existing config.
 2. Run `validate`, then `prepare`; inspect the generated configuration and paths.
 3. With the old model writer stopped, **copy** compatible checkpoints into the
    new domain's `chm/output/checkpoint/`. Do not point both runners at one writable

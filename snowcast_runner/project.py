@@ -183,10 +183,10 @@ def load_project(filename):
                 raise ValueError(f'Reserved model asset name: {name}')
             model['assets'][name] = path(base, source)
         forcing = d.get('forcing', {})
-        keys(forcing, 'index glob', f'{did}.forcing')
-        if len(forcing) != 1:
-            raise ValueError('Provide exactly one forcing.index or forcing.glob')
-        forcing = {k: path(base, v) for k, v in forcing.items()}
+        keys(forcing, 'index', f'{did}.forcing')
+        if 'index' not in forcing:
+            raise ValueError('Provide forcing.index pointing to the existing CHM metadata JSON')
+        forcing = {'index': path(base, forcing['index'])}
         pp = d.get('postprocess', {})
         keys(pp, 'variables source_resolution method recent_steps exporter mesh grid ascii job', f'{did}.postprocess')
         pp = merge({'variables': ['swe', 'snowdepthavg', 't'], 'source_resolution': 0.001,
@@ -242,10 +242,7 @@ def validate_inputs(project, domains=None):
     for d in project.domains if domains is None else domains:
         inputs = [d.model['config'], *d.model['assets'].values()]
         inputs += [job['setup'] for job in (d.model['job'], d.postprocess['job']) if job['setup']]
-        if 'index' in d.forcing:
-            inputs.append(d.forcing['index'])
-        elif d.forcing['glob'].is_relative_to(project.work_root):
-            raise ValueError('Forcing inputs must be outside work_root')
+        inputs.append(d.forcing['index'])
         if d.postprocess.get('mesh'):
             inputs.append(d.postprocess['mesh'])
         for source in inputs:

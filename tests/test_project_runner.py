@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+import glob
 import json
 import os
 from pathlib import Path
@@ -81,6 +82,8 @@ def test_project_paths_and_defaults_do_not_depend_on_cwd(project_file, tmp_path,
     lambda r: r['domains'][0].update(id='../escape'),
     lambda r: r['defaults']['model'].update(output_file='../other.nc'),
     lambda r: r['defaults']['model'].update(checkpoint_keep_days=0),
+    lambda r: r['defaults'].update(forcing={}),
+    lambda r: r['defaults'].update(forcing={'glob': 'forcing*.nc'}),
     lambda r: r['defaults'].update(postprocess={'variables': ['unknown']}),
     lambda r: r['defaults'].update(postprocess={'grid': {'resoluton': [.001, .001]}}),
     lambda r: r['defaults'].update(postprocess={'grid': {'resolution': [0, 1]}}),
@@ -124,8 +127,47 @@ def test_generated_model_and_forcing_leave_inputs_unchanged(project_file):
     assert json.loads(Path(config['forcing']['file']).read_text())[0]['file_name'] == str(project_file.parent / 'forcing.nc')
 
 
-def test_forcing_glob_and_mesh_rank_validation(project_file):
-    change(project_file, lambda r: r['defaults'].update(forcing={'glob': 'forcing*.nc'}))
+def test_forcing_metadata_is_authoritative_and_snapshotted(project_file, monkeypatch):
+    folder = project_file.parent / 'met'
+    folder.mkdir()
+    source = folder / 'metdata-hrdps.json'
+    # These metadata times deliberately differ from the NetCDF time axis.
+    # Both relative and absolute filenames are accepted; record order is kept.
+    rows = [
+        {'start_time': '20261109T000000', 'end_time': '20261110T230000',
+         'file_name': str(project_file.parent / 'forcing.nc'), 'provider': 'hrdps'},
+        {'start_time': '20261108T000000', 'end_time': '20261108T230000',
+         'file_name': '../forcing.nc'},
+    ]
+    source.write_text(json.dumps(rows))
+    original = source.read_bytes()
+    change(project_file, lambda r: r['defaults'].update(forcing={'index': 'met/metdata-hrdps.json'}))
+
+    def unexpected_scan(*args, **kwargs):
+        pytest.fail('Preparing must use CHM metadata without scanning or opening NetCDF files')
+
+    monkeypatch.setattr(glob, 'glob', unexpected_scan)
+    monkeypatch.setattr(xr, 'open_dataset', unexpected_scan)
+    monkeypatch.setattr(xr, 'open_mfdataset', unexpected_scan)
+    project = load_project(project_file); domain = project.domain('west')
+    with workspace(project, domain):
+        target, latest, _ = prepare(domain)
+        staged = Path(json.loads(target.read_text())['forcing']['file'])
+        expected = [dict(row, file_name=str(project_file.parent / 'forcing.nc')) for row in rows]
+        assert json.loads(staged.read_text()) == expected
+        assert latest == '20261110T230000'
+        assert source.read_bytes() == original
+        assert staged != source
+
+        rows[0]['end_time'] = '20261111T230000'
+        source.write_text(json.dumps(rows))
+        assert json.loads(staged.read_text()) == expected  # An in-flight job keeps its snapshot.
+        _, latest, _ = prepare(domain)
+        assert latest == '20261111T230000'
+        assert json.loads(staged.read_text())[0]['end_time'] == latest
+
+
+def test_mesh_rank_validation(project_file):
     project = load_project(project_file); domain = project.domain('west')
     with workspace(project, domain):
         prepare(domain)

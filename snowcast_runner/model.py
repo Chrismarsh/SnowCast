@@ -1,7 +1,5 @@
-"""CHM adapter: resolve inputs, index forcing, and continue checkpointed runs."""
-from copy import deepcopy
+"""CHM adapter: resolve inputs, stage forcing metadata, and continue checkpointed runs."""
 from datetime import datetime
-import glob
 import json
 from pathlib import Path
 import re
@@ -35,31 +33,20 @@ def model_inputs(domain, config):
 
 
 def forcing_index(domain):
-    import xarray as xr
-    if 'index' in domain.forcing:
-        source = domain.forcing['index']
-        records = json.loads(source.read_text())
-        if not isinstance(records, list):
-            raise ValueError('Forcing index must be a list')
-        records = deepcopy(records)
-        for row in records:
-            row['file_name'] = str((source.parent / row['file_name']).resolve())
-    else:
-        records = []
-        for filename in sorted(glob.glob(str(domain.forcing['glob']))):
-            with xr.open_dataset(filename) as data:
-                if 'time' not in data or data.time.size == 0:
-                    raise ValueError(f'Forcing has no times: {filename}')
-                records.append({'start_time': str(data.time.min().dt.strftime('%Y%m%dT%H%M%S').item()),
-                                'end_time': str(data.time.max().dt.strftime('%Y%m%dT%H%M%S').item()),
-                                'file_name': str(Path(filename).resolve())})
+    # The upstream CHM metadata is authoritative; never rediscover NetCDF files
+    # or recompute their time ranges. Snapshot it so a later upstream update
+    # cannot change the forcing list of an already submitted job.
+    source = domain.forcing['index']
+    records = json.loads(source.read_text())
+    if not isinstance(records, list):
+        raise ValueError('Forcing index must be a list')
     if not records:
         raise ValueError(f'No forcing available for {domain.id}')
     for row in records:
+        row['file_name'] = str((source.parent / row['file_name']).resolve())
         start, end = [datetime.strptime(row[k], '%Y%m%dT%H%M%S') for k in ('start_time', 'end_time')]
         if start > end or not Path(row['file_name']).is_file():
             raise ValueError(f'Invalid forcing interval/file: {row}')
-    records.sort(key=lambda row: row['start_time'])
     target = domain.work / 'met' / 'index.json'
     atomic_json(target, records)
     return target, max(row['end_time'] for row in records)
