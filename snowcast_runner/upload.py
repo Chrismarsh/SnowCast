@@ -16,7 +16,7 @@ from .cog_store import referenced_paths, store_lock, verify_assets
 
 
 def _run_with_retry(*commands, input=None):
-    """Retry SSH/rsync failures using v2's ten attempts and 30s backoff.
+    """Retry SSH/rsync failures with ten attempts and exponential backoff.
 
     Keep a snapshot's transfer and rename together: if SSH drops after the
     rename succeeds, the next attempt must recreate the temporary remote file.
@@ -29,9 +29,9 @@ def _run_with_retry(*commands, input=None):
             return
         except subprocess.CalledProcessError as error:
             if attempt == 10:
-                print(f'V3 upload failed after {attempt} attempts: {error}', file=sys.stderr, flush=True)
+                print(f'COG upload failed after {attempt} attempts: {error}', file=sys.stderr, flush=True)
                 raise
-            print(f'V3 upload attempt {attempt}/10 failed: {error}. Retrying in {delay}s.',
+            print(f'COG upload attempt {attempt}/10 failed: {error}. Retrying in {delay}s.',
                   file=sys.stderr, flush=True)
             time.sleep(delay)
             delay *= 2

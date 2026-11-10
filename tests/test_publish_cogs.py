@@ -394,7 +394,7 @@ def test_publication_and_republish_make_all_referenced_cogs_public(tmp_path, mon
 def test_same_second_publications_cannot_arrive_out_of_order(tmp_path):
     from datetime import datetime, timedelta, timezone
     import shutil
-    from postprocess.cog_store import remote_action
+    from snowcast_runner.cog_store import remote_action
     source, output, remote = (tmp_path / name for name in ('source', 'output', 'remote'))
     now = datetime(2026, 11, 9, 12, 0, 0, 100000, tzinfo=timezone.utc)
     write(source, value=10)

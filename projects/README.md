@@ -35,8 +35,8 @@ variables, AEP exports and September 1, 2026 start date. Before using it, set:
 - The model and postprocessing PBS allocations for your cluster.
 
 The example contains explicit placeholder paths; it does not guess a production
-installation or adopt existing checkpoints. Its authored configuration is
-independent of `run_chm/`, `met/`, and other legacy checkout directories.
+installation or adopt existing checkpoints. All of its authored configuration
+lives in the project folder or explicitly referenced input locations.
 
 ```bash
 snowcast validate /projects/western-cordillera
@@ -189,7 +189,7 @@ are preserved in the snapshot.
 
 To share incremental indexing between projects, configure both `archive` and
 an explicit `index`. Writers lock the canonical index path, including symlink
-aliases and the legacy runner. A small archive-binding file next to the index
+aliases used by different projects. A small archive-binding file next to the index
 prevents two independent projects from updating one index from different
 archives. Different start dates filter independent snapshots without removing
 shared history. Use separate indexes for separate archives. If an archive is
@@ -285,11 +285,46 @@ continues to use Float32; source TIFFs are not converted to that precision.
 6. Manually verify one model run and postprocess on the cluster before replacing
    its cron invocation. Automated fixtures do not replace a real CHM/MPI/PBS check.
 
-The old `python snowcast.py -c config_hrdps_west.py` workflow remains available.
-Its reusable met and COG entry points delegate to the installed package. Legacy
-plotting and v2 upload orchestration remain checkout-only compatibility code.
-The new runner does not invoke them. Version 1 manifests produce an explicit
-migration error; existing run directories are never moved automatically.
+The old `python snowcast.py -c config_hrdps_west.py` entry point, its Python
+settings files, fixed PBS/cron scripts, plotting/v2 upload pipeline, and
+compatibility modules have been removed. Use the installed `snowcast` commands.
+The old source remains available in Git history. Existing output directories,
+external archives and production crontabs are not deleted or changed by this
+repository cleanup. Version 1 manifests still report an explicit migration error.
+
+A cron entry should invoke the installed executable for one project, for example:
+
+```cron
+0 12 * * * /path/to/environment/bin/snowcast run /projects/western-cordillera >> /projects/western-cordillera/run.log 2>&1
+```
+
+Set the actual environment path and schedule for your installation. Model and
+postprocessing environment setup is specified by that project's `job.setup`.
+Publication remains a separate command; sequence it after a successful run when
+configuring deployment. No cron entry is installed by SnowCast.
+
+## Original daily download archives
+
+The runner retains original daily TIFF/ASCII products inside each project.
+Synchronization to an external download archive is an explicit operator step
+until site deployment is implemented. The removed uploader's hardcoded
+`collab-lp` destination is no longer assumed. To copy one project's products,
+copy archived products first and current revisions last, without `--delete`:
+
+```bash
+rsync -rt --protect-args /projects/western-cordillera/work/postprocess/archive_tiff/ USER@ARCHIVE:/path/to/project/tiff/
+rsync -rt --protect-args /projects/western-cordillera/work/postprocess/tiff/ USER@ARCHIVE:/path/to/project/tiff/
+rsync -rt --protect-args /projects/western-cordillera/work/postprocess/archive_ascii/ USER@ARCHIVE:/path/to/project/asc/
+rsync -rt --protect-args /projects/western-cordillera/work/postprocess/ascii/ USER@ARCHIVE:/path/to/project/asc/
+```
+
+Use the existing Western archive's actual destinations to continue its URLs;
+choose separate destinations for additional projects. Run ASCII synchronization
+only when ASCII exports are enabled. Copy the complete directories so masks,
+PAM metadata, overviews and projection sidecars travel with their rasters.
+Publish/refresh download indexes after these transfers. The COG upload utility
+transfers map COGs and refreshes the existing Western public archive index; it
+does not transfer original TIFF/ASCII products.
 
 ## Existing publication helpers and the next stage
 
@@ -309,8 +344,9 @@ dates. Daily source archives remain daily. This refactor does not change COG
 encoding or digest algorithms.
 
 These helper commands do not implement the planned authoritative site config or
-remote multi-project deployment. The existing legacy SSH uploader remains a
-separate compatibility entry point. UI deployment preserves published data.
+remote multi-project deployment. For a single catalogue, the installed
+`python -m snowcast_runner.upload` utility supports SSH transfer; see the
+[web UI guide](../webui/README.md). UI deployment preserves published data.
 
 The viewer still loads one catalogue, for example
 `?catalog=./data/western-cordillera/catalog.json`. The new flat URL differs from

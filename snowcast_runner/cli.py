@@ -1,4 +1,4 @@
-"""The project CLI never runs the legacy plotting/upload pipeline implicitly."""
+"""Project commands for preparing, running, processing and publishing CHM output."""
 import argparse
 import json
 from pathlib import Path

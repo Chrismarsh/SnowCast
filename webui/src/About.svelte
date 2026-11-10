@@ -4,7 +4,7 @@
   import HelpDialog from './components/HelpDialog.svelte';
   import meshImage from './assets/chm-mesh.jpg';
   let help: HelpDialog;
-  // Copy and credits from the v2 website/index.html. Retain its scientific
+  // Copy and credits retain the original SnowCast scientific
   // descriptions, without the old domain extent or obsolete forecast controls.
   const publications = [
     { authors: 'Marsh, C. B. et al.', title: 'Snowdrift-Permitting Simulations of Seasonal Snowpack Processes Over Large Mountain Extents', journal: 'Water Resources Research, 60 · 2024', doi: '10.1029/2023WR036948' },

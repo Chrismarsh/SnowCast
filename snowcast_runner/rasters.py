@@ -99,9 +99,28 @@ def write_raster(src, destination, grid, resampling, driver='GTiff'):
                     dst.write_mask((~mask).astype('uint8') * 255, window=window)
 
 
-def dataset_files(path):
-    return [p for p in path.parent.glob(path.name + '*') if p == path or p.name in
-            {path.name + suffix for suffix in ('.msk', '.aux.xml', '.ovr', '.msk.aux.xml', '.ovr.aux.xml')}]
+def move_dataset(source, directory):
+    """Archive a raster with its sidecars, retaining the source on move failure."""
+    source, directory = Path(source), Path(directory)
+    destination = directory / source.name
+    if destination.exists() and source.samefile(destination):
+        return
+    pairs = [(Path(str(source) + suffix), Path(str(destination) + suffix))
+             for suffix in ('.msk', '.aux.xml', '.ovr', '.msk.aux.xml', '.ovr.aux.xml')]
+    if source.suffix.lower() == '.asc':
+        pairs.append((source.with_suffix('.prj'), destination.with_suffix('.prj')))
+    copied = []
+    for sidecar, target in pairs:
+        if sidecar.is_file():
+            shutil.copy2(sidecar, target)
+            copied.append(sidecar)
+        else:
+            # A revised raster must not inherit a mask or PAM metadata from
+            # an older archived copy with the same filename.
+            target.unlink(missing_ok=True)
+    source.replace(destination)
+    for sidecar in copied:
+        sidecar.unlink()
 
 
 def accept_exports(project, source, expected_times=None):
@@ -156,12 +175,7 @@ def accept_exports(project, source, expected_times=None):
             current, archive = folder / name, folder / f'archive_{name}'
             current.mkdir(exist_ok=True); archive.mkdir(exist_ok=True)
             for old in current.glob(pattern):
-                for member in dataset_files(old):
-                    member.replace(archive / member.name)
-                if name == 'ascii':
-                    projection = old.with_suffix('.prj')
-                    if projection.exists():
-                        projection.replace(archive / projection.name)
+                move_dataset(old, archive)
             for new in (staging / name).iterdir():
                 new.replace(current / new.name)
     return {'times': times, 'variables': pp['variables'], 'grid': grid['target']}

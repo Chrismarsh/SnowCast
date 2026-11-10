@@ -1,31 +1,56 @@
 # SnowCast
-[![Build Status](https://travis-ci.com/NicWayand/SnowCast.svg?token=rcbpjWbw439hZe2teEp3&branch=master)](https://travis-ci.com/NicWayand/SnowCast)
 
-The [project runner](projects/README.md) runs one model domain per independent
-project folder, with its own configuration, jobs, checkpoints and products.
-Install from the repository root (the directory containing `pyproject.toml`)
-with `python -m pip install -e .`, then validate the example with
-`snowcast validate projects/western-cordillera --config-only`. Copy the example
-to your project location and set its mesh, met archive and environment paths
-before preparing a real run. See the migration guide before changing cron.
+[![Checks](https://github.com/Chrismarsh/SnowCast/actions/workflows/webui.yml/badge.svg)](https://github.com/Chrismarsh/SnowCast/actions/workflows/webui.yml)
 
-SnowCast is an experimental data product that uses the Global Environmental Multiscale (GEM) model forecasts from Environment and Climate Change Canada (ECCC) to drive the Canadian Hydrological Model (CHM). Estimates of snowpack are provided over the a Bow River Basin, centered over Banff, Canada.
+SnowCast runs the Canadian Hydrological Model (CHM) and presents simulated snow
+water equivalent, snow depth and temperature. It is developed through
+collaboration between Environment and Climate Change Canada and the Centre for
+Hydrology, University of Saskatchewan.
 
-SnowCast is developed as part of Global Water Futures and the Centre for Hydrology, University of Saskatchewan. Thanks to collaboration with ECCC.
+Each model domain/run is an independent **project folder**, with its own CHM
+configuration, forcing references, execution settings, checkpoints and products.
+The installed **`snowcast_runner`** package contains the reusable implementation.
+The **`webui`** application has a separate build and deployment lifecycle.
 
-Two GEM forecasts are currently used:
+## Install and run
 
-* GEM 2.5 km 2-day forecasts (High Resolution Deterministic Prediction System (HRDPS))
-* GEM 25 km 6-day forecasts (Global Deterministic Forecast System (GDPS)
+From the repository root, where `pyproject.toml` is located, install into your
+existing CHM/Spack Python environment:
 
-<img src=http://www.snowcast.ca/static/HRDPS/swe_diff.png width="400" align="middle">
-Figure 1. Current 1-day forecast change in SWE. Centered over Banff, Alberta, Canada.
+```bash
+python -m pip install -e .
+snowcast validate projects/western-cordillera --config-only
+```
 
-http://www.snowcast.ca/
+Copy the Western example to your project location and set its mesh, met archive
+and environment paths. Then run:
 
-The [COG snowpack explorer](webui/README.md) provides daily/weekly playback,
-point histories, and numeric GeoTIFF viewing. Its publishing and hosting guide
-includes serving the data from an ordinary disk with Nginx or Apache.
+```bash
+snowcast validate /projects/western-cordillera
+snowcast prepare /projects/western-cordillera
+snowcast run /projects/western-cordillera
+```
 
-Experimental! Use at your own risk.
+See the [project guide](projects/README.md) for CHM overrides, forcing metadata,
+PBS execution, postprocessing and migration. The old `snowcast.py` entry point,
+Python settings files and compatibility wrappers have been removed. Model jobs
+and checkpoints live inside the project, not the tool checkout.
 
+## Repository guide
+
+| Location | Purpose |
+| --- | --- |
+| `snowcast_runner/` | Installed CLI, model orchestration, met indexing, postprocessing and publication utilities |
+| `projects/` | Independent project examples and their configuration guide |
+| `webui/` | Static map, downloads, help and about pages |
+| `scripts/` | UI data preparation/diagnostics and scientific example configurations |
+| `domain/` | Standalone mesh/domain preparation tools |
+| `tests/` | Runner, raster, publication and data-preparation checks |
+| `spack.yaml`, `spack.lock` | CHM and scientific Python environment specifications |
+
+The [web UI guide](webui/README.md) covers COG generation, daily/weekly map
+history, point sampling, observations and Apache/NGINX hosting. Site-level
+project selection and simultaneous multi-project rendering are a subsequent
+stage; the current viewer opens one catalogue at a time.
+
+SnowCast output is experimental. See [snowcast.ca](https://www.snowcast.ca/).

@@ -1,4 +1,4 @@
-"""Incremental CHM forcing metadata, shared by the project and legacy runners."""
+"""Incremental CHM forcing metadata for independent projects."""
 from datetime import datetime
 import fcntl
 import json
@@ -56,7 +56,7 @@ def read_index(index, *, start_date=None):
 def update_index(archive, index, *, start_date=None):
     """Append unindexed *.nc files, opening only their time coordinates.
 
-    Lock the canonical index path so symlink aliases and both runners share the
+    Lock the canonical index path so symlink aliases and independent projects share the
     same lock, even when the archive itself is mounted read-only. Existing
     entries are authoritative; neither archive files nor old entries are pruned.
     Daily filenames before start_date are skipped before resolution/stat/open.

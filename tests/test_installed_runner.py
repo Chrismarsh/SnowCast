@@ -62,8 +62,6 @@ raise SystemExit(main(sys.argv[1:]))
             env={**os.environ, 'PYTHONPATH': str(installed)})
 
 
-@pytest.mark.parametrize('script', ['postprocess/publish_cogs.py', 'postprocess/cog_store.py',
-                                    'webupload/v3.py', 'scripts/index_tiff_downloads.py'])
-def test_legacy_cli_wrappers_still_resolve_from_an_unrelated_directory(script, tmp_path):
-    root = Path(__file__).resolve().parents[1]
-    checked([sys.executable, str(root / script), '--help'], cwd=tmp_path)
+@pytest.mark.parametrize('module', ['publish_cogs', 'cog_store', 'upload', 'downloads'])
+def test_package_utilities_run_from_an_unrelated_directory(module, tmp_path):
+    checked([sys.executable, '-m', 'snowcast_runner.' + module, '--help'], cwd=tmp_path)

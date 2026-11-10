@@ -6,8 +6,8 @@ import subprocess
 
 import pytest
 
-from postprocess import cog_store
-from webupload import v3 as uploader
+from snowcast_runner import cog_store
+from snowcast_runner import upload as uploader
 
 
 @pytest.fixture(autouse=True)

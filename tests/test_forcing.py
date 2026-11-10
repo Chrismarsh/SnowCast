@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from met.main import update_index, update_metdata_json
+from snowcast_runner.met import update_index
 from snowcast_runner.cli import main
 from project_helpers import clone_project
 from snowcast_runner.project import load_project
@@ -251,22 +251,6 @@ def test_index_only_project_can_consume_shared_metadata(project_file):
     assert main(['met-update', str(other)]) == 1
 
 
-def test_legacy_updater_uses_the_same_incremental_metadata(project_file, monkeypatch):
-    met = project_file.parent / 'met'
-    met.mkdir()
-    archive = project_file.parent / 'external-archive'
-    (met / 'hrdps').symlink_to(archive, target_is_directory=True)
-    monkeypatch.chdir(project_file.parent)
-    assert update_metdata_json({})['added'] == 1
-    index = met / 'metdata-hrdps.json'
-    before = index.read_bytes()
-    assert update_index(archive, index)['added'] == 0
-    assert index.read_bytes() == before
-    daily_file(archive, '2026-11-10')
-    assert update_metdata_json({})['added'] == 1
-    assert len(json.loads(index.read_text())) == 2
-
-
 def test_absolute_archives_and_project_start_dates_use_local_metadata(project_file, monkeypatch):
     archive = project_file.parent / 'external-archive'
     arctic = project_file.parent / 'arctic-forcing'
@@ -388,17 +372,6 @@ def test_undated_files_use_actual_intervals_for_start_date_filter(project_file):
     domain = load_project(project_file)
     records = json.loads((domain.work / 'met' / 'index.json').read_text())
     assert {Path(row['file_name']).name for row in records} == {'spanning-data.nc', '20261109.nc'}
-
-
-def test_legacy_updater_also_honours_start_date(project_file, monkeypatch):
-    met = project_file.parent / 'met'
-    met.mkdir()
-    archive = project_file.parent / 'external-archive'
-    (archive / '20260831.nc').write_text('old invalid NetCDF')
-    (met / 'hrdps').symlink_to(archive, target_is_directory=True)
-    monkeypatch.chdir(project_file.parent)
-    result = update_metdata_json({'start_date': '2026-09-01'})
-    assert result['added'] == 1 and result['skipped_before_start'] == 1
 
 
 def test_managed_metadata_cannot_redirect_writes_outside_domain(project_file):
