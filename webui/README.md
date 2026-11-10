@@ -505,7 +505,14 @@ cover site navigation, full-domain reset, date/point preservation, and dismissal
 - SWE, snow depth, and temperature use transparent missing-data pixels in both
   renderers. The WebGL colour expression explicitly checks the validity band
   and the raw nodata sentinel before scaling/colour mapping. Valid zero snow
-  and valid temperatures below the legend minimum remain visible.
+  and valid temperatures below the legend minimum remain visible by default.
+- **Hide zero snow** under Layer settings optionally masks exactly zero SWE
+  and snow depth in Value mode, after scale/offset conversion. It works with
+  Canvas and WebGL, updates cached dates without reopening COGs, and leaves
+  nonzero snow, temperature, Difference mode, point values, charts and downloads
+  unchanged. The choice is saved locally; `?hideZeroSnow=1` enables it and
+  `?hideZeroSnow=0` disables it, overriding the saved choice. Shared point links
+  include the current setting. It is off by default.
 - Missing dates and failed point reads produce gaps in charts and CSV. The
   reported change requires a valid first frame and a valid selected frame.
 - Playback waits for the selected raster's viewport to render before changing
@@ -549,8 +556,22 @@ cover site navigation, full-domain reset, date/point preservation, and dismissal
   or individual COG URL import workflow. Published rasters support EPSG:4326,
   EPSG:3857, standard WGS84 UTM, and other projections defined by `proj4` in the
   catalogue. Remote raster hosting requires range support and CORS.
-- Share links preserve variable, selected date, and point. The exact history
-  can expire when it leaves the rolling catalogue; download CSV for a snapshot.
+- Share links preserve variable, selected date, basemap, map centre and fractional
+  zoom, plus a selected point/station when present. **Share map** works without
+  selecting a point; **Share location** also includes the selected point/station.
+  Panning/zooming updates `viewLon`, `viewLat` and `zoom` in the URL fragment with
+  `replaceState`, without adding browser-history entries. These coordinates are
+  separate from the point's `lon`/`lat`. The displayed model timestamp (`time`)
+  and variable also update automatically when a frame finishes loading, including
+  playback. Difference mode records both dates (`time` and `from`) and `mode`;
+  returning to Value mode removes the comparison fields. Copying the address bar
+  therefore preserves the displayed model date as well as the map view. For example,
+  `#viewLon=-115.732419&viewLat=51.013275&zoom=11.3752` restores the same centre and
+  scale. Different screen sizes show different extents around that centre.
+  A valid shared view takes precedence over the initial domain fit and station
+  autofocus. Legacy links and invalid/incomplete views retain the domain fit
+  (or station autofocus). The exact history can expire when it leaves the
+  rolling catalogue; download CSV for a snapshot.
 - Error states never silently substitute synthetic data.
 
 ## Development and validation
@@ -652,3 +673,62 @@ from model data. The [project runner guide](../projects/README.md) documents
 the site-level `domains.json` contract. This viewer currently consumes one
 catalogue through `?catalog=...`; simultaneous registry-driven domain rendering
 is a subsequent feature.
+
+## Sentinel-2 / Landsat satellite overlay
+
+Open **Map layers → Sentinel-2 / Landsat** to enable recent 30 m HLS imagery.
+The layer is off by default, draws above the model and below station markers,
+and has an independent opacity slider. It works with both model renderers.
+
+- **Latest clear observations** fills each display pixel with the newest valid
+  observation from either Sentinel-2 or Landsat 8/9 in the past 3, 7 (default),
+  14 or 30 UTC calendar days, including today. It does not average observations.
+- **Single acquisition day** restricts both collections to one UTC day. The
+  imagery selection is independent of model animation and difference dates.
+- **True colour** uses red/green/blue. **Snow false colour** uses SWIR1/NIR/red;
+  snow and ice appear cyan, water clouds white, and ice clouds can also be cyan.
+- The map caption reports the search window and the acquisition-date range of
+  loaded visible tiles. Click the map to see the satellite, acquisition time and
+  source-scene metadata for the actual displayed pixel in the location panel.
+- Areas without valid observations remain transparent. Cloud/shadow filtering
+  is imperfect, especially over bright snow. This is visual context, not a
+  validated snow-cover classification or SWE measurement.
+
+### Data and hosting
+
+NASA HLS v2 is served by Microsoft Planetary Computer's public STAC and tile
+APIs (`hls2-s30` and `hls2-l30`). No visitor account, API secret, Python service,
+CHM processing change or Apache configuration change is required. The mirror's
+archive starts in 2020. HLS itself typically has 2–3 days of processing latency;
+mirror ingestion, clouds and winter darkness can make the latest clear image
+older. Both sensors are rendered at 30 m (Sentinel-2 is resampled from its native
+resolution). The overlay is a third-party network dependency; provider outages
+are reported separately and never interrupt model playback.
+
+The tile service renders three reflectance bands plus explicit alpha derived
+from Fmask. Bits 1–3 (cloud, cloud adjacency, shadow) are excluded; snow/ice and
+water flags are retained. QA fill (255) and reflectance fill (-9999) are excluded.
+Equivalent SWIR1/NIR/red bands are B11/B8A/B04 for S30 and B06/B05/B04 for L30.
+The browser composites opaque valid pixels newest-first across **both**
+collections and retains a per-pixel scene index for provenance. Failed scene
+requests fail that tile instead of silently falling back to older observations.
+Only documented outside-footprint 404 responses are treated as missing coverage.
+
+Imagery starts at map zoom 7 and uses source tiles up to zoom 12 (then
+overscales). Requests are limited to four at a time, with cancellation and
+20-second catalogue / 45-second tile timeouts. Neighbouring tiles reuse catalogue
+searches, pagination is checked, and excessive results produce an explicit error
+rather than a truncated mosaic. Image/provenance caches are bounded. Changing
+opacity reuses imagery; disabling or changing imagery dates/view aborts requests.
+**Refresh / retry imagery** clears the imagery source and repeats catalogue searches.
+
+Settings are encoded in the page URL and retained by **Share map / Share location**:
+`?satellite=1&sat-mode=latest&sat-days=7&sat-view=snow&sat-opacity=0.85`, or
+`?satellite=1&sat-mode=date&sat-date=2026-11-04&sat-view=true-color`.
+
+References: [NASA HLS products](https://hls.gsfc.nasa.gov/data-products/),
+[Planetary Computer HLS](https://planetarycomputer.microsoft.com/dataset/group/hls2),
+[STAC API](https://planetarycomputer.microsoft.com/api/stac/v1/),
+[tile API](https://planetarycomputer.microsoft.com/api/data/v1/docs).
+
+![HLS satellite imagery over synthetic model data, with source observation date](docs/hls-satellite-preview.png)

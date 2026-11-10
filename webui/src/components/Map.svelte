@@ -29,14 +29,20 @@
   import { basemaps, DEFAULT_BASEMAP, type BasemapId } from '../lib/basemaps';
   import { watchFrameLoad } from '../lib/frameLoad';
   import { displayPixelRatio, TileProgress } from '../lib/mapPerformance';
+  import { MAP_MAX_ZOOM, type MapViewState } from '../lib/mapView';
   import { ProjectedRaster } from '../lib/projectedRaster';
   import { RasterRequests, RequestPool, TileFailures, rasterSourceOptions } from '../lib/rasterRequests';
   import { initialRenderer, isRendererPreference, RendererSelection, RENDERER_STORAGE_KEY, type RendererPreference } from '../lib/renderer';
+  import { HlsSource } from '../lib/hlsSource';
+  import { HLS_MIN_ZOOM, hlsWindow, initialHls, type HlsSettings, type HlsStatus, type HlsPick } from '../lib/hls';
   import 'ol/ol.css';
   export let asset: MapAsset | undefined;
   export let variable: Variable | undefined;
   export let opacity = 0.7;
+  export let hideZeroSnow = false;
   export let point: number[] | null = null;
+  export let initialView: MapViewState | undefined = undefined;
+  export let onviewchange: (view: MapViewState) => void = () => {};
   export let bounds = [-132, 46.4, -109.8, 56];
   export let basemap: BasemapId = DEFAULT_BASEMAP;
   export let onpick: (point: number[]) => void;
@@ -47,6 +53,13 @@
   export let stationsVisible = true;
   export let onstation: (station: SnowStation) => void = () => {};
   export let onstationcluster: (stations: SnowStation[]) => void = () => {};
+  export let satellite: HlsSettings = initialHls();
+  export let satelliteRevision = 0;
+  export let onsatellitestatus: (status: HlsStatus, zoomedOut: boolean) => void = () => {};
+  export let onsatellitepick: (pick: HlsPick | null) => void = () => {};
+  let satelliteLayer: TileLayer<HlsSource>;
+  let satelliteKey = '';
+  let satelliteStatusFrame = 0;
   let target: HTMLDivElement;
   let map: OLMap;
   let mounted = false;
@@ -70,11 +83,19 @@
   const lowDetail = options.get('detail') === 'low';
   const layers = new globalThis.Map<string, RasterLayer>();
   const sources = new globalThis.Map<string, DataTileSource>();
+  const restyleLayers = new globalThis.Map<string, (hideZero: boolean) => void>();
   const requests = new globalThis.Map<string, AbortController>();
   const progress = new globalThis.Map<string, TileProgress>();
   const http = new globalThis.Map<string, RasterRequests>();
   const failures = new globalThis.Map<string, TileFailures>();
   const requestPool = new RequestPool();
+
+  export function viewState(): MapViewState | undefined {
+    const view = map?.getView(), center = view?.getCenter(), zoom = view?.getZoom();
+    if (!view || !center || zoom === undefined) return;
+    const [lon, lat] = toLonLat(center, view.getProjection());
+    if ([lon, lat, zoom].every(Number.isFinite)) return { lon, lat, zoom };
+  }
 
   export function fit(duration = 400, targetBounds = bounds) {
     if (!map) return;
@@ -114,7 +135,7 @@
     // Deliberately omit URLs, signed query strings, coordinates and GPU identifiers.
     return {
       renderer: useWebGL ? 'WebGL' : 'Canvas', detail: lowDetail ? 'low' : 'automatic',
-      variable: variable?.id, frameTime: asset?.datetime,
+      variable: variable?.id, frameTime: asset?.datetime, hideZeroSnow,
       differenceFrom: asset?.difference?.from.datetime,
       rendererPreference: rendering?.preference, fallbackReason: rendering?.fallbackReason,
       viewport: map?.getSize(), devicePixelRatio: window.devicePixelRatio, mapPixelRatio: map?.getPixelRatio(),
@@ -126,6 +147,8 @@
       rasterTileFailures: failures.get(requested)?.snapshot(),
       basemap, basemapTiles: baseProgress.snapshot(),
       cachedFrames: layers.size,
+      satellite: satellite.enabled ? { mode: satellite.mode, view: satellite.view, ...hlsWindow(satellite),
+        ...satelliteLayer?.getSource()?.status(map.getView().calculateExtent(map.getSize()), map.getView().getResolution() || 1) } : { enabled: false },
       ...(webglFailure ? { previousWebGLFailure: webglFailure } : {}),
     };
   }
@@ -160,6 +183,7 @@
     useWebGL = rendering.mode === 'webgl';
     probe?.getExtension('WEBGL_lose_context')?.loseContext();
     base = new TileLayer({ preload: 0 });
+    satelliteLayer = new TileLayer({ zIndex: 20, preload: 0, cacheSize: 64, visible: false, minZoom: HLS_MIN_ZOOM - 0.001 });
     marker = new VectorSource();
     stationSource = new VectorSource();
     const stationStyles = new globalThis.Map<string, Style>();
@@ -179,12 +203,20 @@
       target,
       pixelRatio: displayPixelRatio(window.devicePixelRatio, [target.clientWidth, target.clientHeight], lowDetail),
       controls: defaults({ zoom: false, rotate: false, attributionOptions: { collapsible: false } }),
-      layers: [base, stationLayer, new VectorLayer({
+      layers: [base, satelliteLayer, stationLayer, new VectorLayer({
         source: marker, zIndex: 50,
         style: new Style({ image: new Circle({ radius: 7, fill: new Fill({ color: '#08777a' }), stroke: new Stroke({ color: 'white', width: 3 }) }) }),
       })],
-      // No tile requests until the first asset supplies the actual domain bounds.
-      view: new View({ projection: 'EPSG:3857', maxZoom: 17 }),
+      // Restore a shared view before loading tiles; otherwise await domain bounds.
+      view: new View({ projection: 'EPSG:3857', maxZoom: MAP_MAX_ZOOM,
+        ...(initialView ? { center: fromLonLat([initialView.lon, initialView.lat]), zoom: initialView.zoom } : {}),
+      }),
+    });
+    fitted = !!initialView;
+    map.on('moveend', () => {
+      queueSatelliteStatus();
+      const view = viewState();
+      if (view) onviewchange(view);
     });
     map.on('change:size', () => map.setPixelRatio(displayPixelRatio(window.devicePixelRatio, map.getSize() || [1, 1], lowDetail)));
     map.on('singleclick', e => {
@@ -202,8 +234,40 @@
     });
     map.on('pointermove', e => { if (!e.dragging) target.style.cursor = map.hasFeatureAtPixel(e.pixel, { layerFilter: layer => layer === stationLayer, hitTolerance: 6 }) ? 'pointer' : ''; });
     mounted = true;
-    return () => { mounted = false; cancel?.(); for (const [id, layer] of layers) disposeLayer(id, layer); map.setTarget(undefined); map.dispose(); };
+    return () => { mounted = false; cancelAnimationFrame(satelliteStatusFrame); satelliteLayer.getSource()?.dispose(); cancel?.(); for (const [id, layer] of layers) disposeLayer(id, layer); map.setTarget(undefined); map.dispose(); };
   });
+
+  function queueSatelliteStatus() {
+    if (!mounted || satelliteStatusFrame) return;
+    satelliteStatusFrame = requestAnimationFrame(() => { satelliteStatusFrame = 0; updateSatelliteStatus(); });
+  }
+  function updateSatelliteStatus() {
+    if (!mounted) return;
+    const view = map.getView(), source = satelliteLayer.getSource();
+    const zoomedOut = (view.getZoom() ?? 0) < HLS_MIN_ZOOM;
+    const resolution = view.getResolution();
+    if (satellite.enabled && source && resolution && !zoomedOut) {
+      onsatellitestatus(source.status(view.calculateExtent(map.getSize()), resolution), false);
+      onsatellitepick(point ? source.sample(fromLonLat(point), resolution) : null);
+    } else {
+      onsatellitestatus({ pending: 0, loaded: 0, empty: 0, failed: 0 }, zoomedOut);
+      onsatellitepick(satellite.enabled && point && zoomedOut ? { state: 'zoom' } : null);
+    }
+  }
+  function setSatellite(settings: HlsSettings, revision: number) {
+    // Opacity updates reuse cached tiles. Disabling/date/view changes abort old work.
+    const window = hlsWindow(settings);
+    const key = settings.enabled ? JSON.stringify([window, settings.view, revision]) : '';
+    if (key !== satelliteKey) {
+      satelliteKey = key;
+      const old = satelliteLayer.getSource();
+      satelliteLayer.setSource(null); old?.dispose();
+      if (settings.enabled) satelliteLayer.setSource(new HlsSource(window, settings.view, queueSatelliteStatus));
+    }
+    satelliteLayer.setVisible(settings.enabled);
+    satelliteLayer.setOpacity(settings.opacity);
+    queueSatelliteStatus();
+  }
 
   function rememberRenderer(preference: RendererPreference) {
     try { localStorage.setItem(RENDERER_STORAGE_KEY, preference); } catch { /* Session-only mode. */ }
@@ -214,7 +278,7 @@
     map.removeLayer(layer);
     layer.getSource()?.dispose();
     sources.get(id)?.dispose(); sources.delete(id);
-    layer.dispose(); layers.delete(id);
+    layer.dispose(); layers.delete(id); restyleLayers.delete(id);
   }
 
   function updateMarker() {
@@ -257,13 +321,19 @@
           if (error !== disposedError) errors.error(e.tile, error);
         });
         sources.set(next.id, cog);
-        if (useWebGL) layer = new WebGLTile({ source: cog, style: { color: rasterColor(next, v) }, cacheSize: 64, opacity: 0.01, zIndex: 10 });
+        if (useWebGL) {
+          const webgl = new WebGLTile({ source: cog, style: { color: rasterColor(next, v, hideZeroSnow) }, cacheSize: 64, opacity: 0.01, zIndex: 10 });
+          restyleLayers.set(next.id, hide => webgl.setStyle({ color: rasterColor(next, v, hide) }));
+          layer = webgl;
+        }
         else {
           const raster = new RasterSource({ sources: [cog], interpolate: false, operation: colorPixel });
           raster.on('beforeoperations', e => Object.assign(e.data, {
             colors: colors.map(c => [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)]),
             min: v.range[0], max: v.range[1], scale: next.scale, offset: next.offset, nodata: next.nodata,
+            hideZero: hideZeroSnow && v.palette === 'snow',
           }));
+          restyleLayers.set(next.id, () => raster.changed());
           layer = new ImageLayer({ source: new ProjectedRaster(raster, next.projection, () => errors.clear), opacity: 0.01, zIndex: 10 });
         }
         layers.set(next.id, layer);
@@ -349,8 +419,10 @@
 
   $: if (mounted && asset && variable && asset.id !== requested) show(asset, variable);
   $: if (active) active.setOpacity(opacity);
+  // Restyle every cached date without reopening COGs or repeating range reads.
+  $: if (mounted) { for (const restyle of restyleLayers.values()) restyle(hideZeroSnow); }
   $: if (mounted) {
-    point; updateMarker();
+    point; updateMarker(); queueSatelliteStatus();
   }
   $: if (mounted) {
     setBasemap(basemap);
@@ -360,5 +432,6 @@
     stationSource.addFeatures(stations.map(station => new Feature({ geometry: new Point(fromLonLat([station.lon,station.lat])), station })));
   }
   $: if (mounted) stationLayer.setVisible(stationsVisible);
+  $: if (mounted) setSatellite(satellite, satelliteRevision);
 </script>
 <div bind:this={target} class="map-canvas" aria-label="Interactive snowpack map"></div>
