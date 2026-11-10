@@ -38,6 +38,7 @@
   export let asset: MapAsset | undefined;
   export let variable: Variable | undefined;
   export let opacity = 0.7;
+  export let hideZeroSnow = false;
   export let point: number[] | null = null;
   export let bounds = [-132, 46.4, -109.8, 56];
   export let basemap: BasemapId = DEFAULT_BASEMAP;
@@ -79,6 +80,7 @@
   const lowDetail = options.get('detail') === 'low';
   const layers = new globalThis.Map<string, RasterLayer>();
   const sources = new globalThis.Map<string, DataTileSource>();
+  const restyleLayers = new globalThis.Map<string, (hideZero: boolean) => void>();
   const requests = new globalThis.Map<string, AbortController>();
   const progress = new globalThis.Map<string, TileProgress>();
   const http = new globalThis.Map<string, RasterRequests>();
@@ -123,7 +125,7 @@
     // Deliberately omit URLs, signed query strings, coordinates and GPU identifiers.
     return {
       renderer: useWebGL ? 'WebGL' : 'Canvas', detail: lowDetail ? 'low' : 'automatic',
-      variable: variable?.id, frameTime: asset?.datetime,
+      variable: variable?.id, frameTime: asset?.datetime, hideZeroSnow,
       differenceFrom: asset?.difference?.from.datetime,
       rendererPreference: rendering?.preference, fallbackReason: rendering?.fallbackReason,
       viewport: map?.getSize(), devicePixelRatio: window.devicePixelRatio, mapPixelRatio: map?.getPixelRatio(),
@@ -259,7 +261,7 @@
     map.removeLayer(layer);
     layer.getSource()?.dispose();
     sources.get(id)?.dispose(); sources.delete(id);
-    layer.dispose(); layers.delete(id);
+    layer.dispose(); layers.delete(id); restyleLayers.delete(id);
   }
 
   function updateMarker() {
@@ -302,13 +304,19 @@
           if (error !== disposedError) errors.error(e.tile, error);
         });
         sources.set(next.id, cog);
-        if (useWebGL) layer = new WebGLTile({ source: cog, style: { color: rasterColor(next, v) }, cacheSize: 64, opacity: 0.01, zIndex: 10 });
+        if (useWebGL) {
+          const webgl = new WebGLTile({ source: cog, style: { color: rasterColor(next, v, hideZeroSnow) }, cacheSize: 64, opacity: 0.01, zIndex: 10 });
+          restyleLayers.set(next.id, hide => webgl.setStyle({ color: rasterColor(next, v, hide) }));
+          layer = webgl;
+        }
         else {
           const raster = new RasterSource({ sources: [cog], interpolate: false, operation: colorPixel });
           raster.on('beforeoperations', e => Object.assign(e.data, {
             colors: colors.map(c => [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)]),
             min: v.range[0], max: v.range[1], scale: next.scale, offset: next.offset, nodata: next.nodata,
+            hideZero: hideZeroSnow && v.palette === 'snow',
           }));
+          restyleLayers.set(next.id, () => raster.changed());
           layer = new ImageLayer({ source: new ProjectedRaster(raster, next.projection, () => errors.clear), opacity: 0.01, zIndex: 10 });
         }
         layers.set(next.id, layer);
@@ -394,6 +402,8 @@
 
   $: if (mounted && asset && variable && asset.id !== requested) show(asset, variable);
   $: if (active) active.setOpacity(opacity);
+  // Restyle every cached date without reopening COGs or repeating range reads.
+  $: if (mounted) { for (const restyle of restyleLayers.values()) restyle(hideZeroSnow); }
   $: if (mounted) {
     point; updateMarker(); queueSatelliteStatus();
   }

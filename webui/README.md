@@ -505,7 +505,14 @@ cover site navigation, full-domain reset, date/point preservation, and dismissal
 - SWE, snow depth, and temperature use transparent missing-data pixels in both
   renderers. The WebGL colour expression explicitly checks the validity band
   and the raw nodata sentinel before scaling/colour mapping. Valid zero snow
-  and valid temperatures below the legend minimum remain visible.
+  and valid temperatures below the legend minimum remain visible by default.
+- **Hide zero snow** under Layer settings optionally masks exactly zero SWE
+  and snow depth in Value mode, after scale/offset conversion. It works with
+  Canvas and WebGL, updates cached dates without reopening COGs, and leaves
+  nonzero snow, temperature, Difference mode, point values, charts and downloads
+  unchanged. The choice is saved locally; `?hideZeroSnow=1` enables it and
+  `?hideZeroSnow=0` disables it, overriding the saved choice. Shared point links
+  include the current setting. It is off by default.
 - Missing dates and failed point reads produce gaps in charts and CSV. The
   reported change requires a valid first frame and a valid selected frame.
 - Playback waits for the selected raster's viewport to render before changing

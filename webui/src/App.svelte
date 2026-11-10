@@ -39,6 +39,16 @@
   let frameLoading = false;
   let slowFrameId = '';
   let opacity = 0.7;
+  let hideZeroSnow = false;
+  try { hideZeroSnow = localStorage.getItem('snowcast-hide-zero-snow') === 'true'; } catch { /* Session choice. */ }
+  if (params.has('hideZeroSnow')) hideZeroSnow = params.get('hideZeroSnow') === '1';
+  function changeZeroSnow(hide: boolean) {
+    hideZeroSnow = hide;
+    try { localStorage.setItem('snowcast-hide-zero-snow', String(hide)); } catch { /* Keep the session choice. */ }
+    const url = new URL(window.location.href);
+    url.searchParams.set('hideZeroSnow', hide ? '1' : '0');
+    window.history.replaceState(null, '', url);
+  }
   let savedBasemap: string | null = null;
   try { savedBasemap = localStorage.getItem(BASEMAP_STORAGE_KEY); } catch { /* Storage may be unavailable. */ }
   let basemap = initialBasemap(params.get('basemap'), savedBasemap);
@@ -320,6 +330,8 @@
   }
   async function share() {
     if (!point || !displayed) return;
+    // Include both states so the link overrides the recipient's saved choice.
+    changeZeroSnow(hideZeroSnow);
     const hash = new URLSearchParams({ variable: variableId, time: displayed.datetime, lon: point[0].toFixed(6), lat: point[1].toFixed(6) });
     if (selectedStation) hash.set('station', selectedStation.id);
     if (showArchive) hash.set('history', 'all');
@@ -339,7 +351,7 @@
 
 <main class="workspace">
   <section class="map-workspace" class:comparison={mode === 'difference'} aria-label="Map and playback">
-    <Map bind:this={map} asset={selected} variable={mapVariable} {satellite} {satelliteRevision} onsatellitestatus={satelliteProgress} onsatellitepick={value => satellitePick = value} {opacity} {point} {basemap} bounds={domainBounds || [-132, 46.4, -109.8, 56]} stations={domainStations} {stationsVisible} onstation={station => selectStation(station)} onstationcluster={showCluster} onpick={pick} onready={ready} onerror={failed} onslow={id => slowFrameId = id}/>
+    <Map bind:this={map} asset={selected} variable={mapVariable} {satellite} {satelliteRevision} onsatellitestatus={satelliteProgress} onsatellitepick={value => satellitePick = value} {opacity} {hideZeroSnow} {point} {basemap} bounds={domainBounds || [-132, 46.4, -109.8, 56]} stations={domainStations} {stationsVisible} onstation={station => selectStation(station)} onstationcluster={showCluster} onpick={pick} onready={ready} onerror={failed} onslow={id => slowFrameId = id}/>
     <div class="map-toolbar">
       <AreaPicker bounds={domainBounds} onchoose={chooseArea}/>
       <div class="variable-tabs surface" role="group" aria-label="Map variable">{#each variables as v}<button class:active={variableId === v.id} onclick={() => chooseVariable(v.id)}>{v.label}</button>{/each}</div>
@@ -407,7 +419,13 @@
         {:else}<p>Loading imagery at this location…</p>{/if}
       </section>
     {/if}
-    <section class="settings-section"><h2>Layer settings</h2><label class="setting-row"><span>Opacity</span><input type="range" min="0" max="1" step="0.05" bind:value={opacity}/><span class="percentage">{Math.round(opacity * 100)}%</span></label><div class="setting-row"><span>Colour range</span><span class="fixed-range">Fixed across dates <Icon name="info" size={14}/></span></div></section>
+    <section class="settings-section">
+      <h2>Layer settings</h2>
+      <label class="setting-row"><span>Opacity</span><input type="range" min="0" max="1" step="0.05" bind:value={opacity}/><span class="percentage">{Math.round(opacity * 100)}%</span></label>
+      <label class="setting-row zero-snow"><span>Hide zero snow</span><input type="checkbox" checked={hideZeroSnow} onchange={event => changeZeroSnow(event.currentTarget.checked)} aria-describedby="zero-snow-help"/></label>
+      <p id="zero-snow-help" class="small subtle">Zero SWE and snow depth are transparent in Value mode. Point values and downloads keep their zeros.</p>
+      <div class="setting-row"><span>Colour range</span><span class="fixed-range">Fixed across dates <Icon name="info" size={14}/></span></div>
+    </section>
     <div class="inspector-actions"><button class="outlined" disabled={!point || querying || !series.length || !displayed || frameLoading} onclick={download}><Icon name="download" size={17}/>{displayed?.difference ? 'Difference CSV' : selectedStation ? 'Model CSV' : 'Download CSV'}</button><button class="outlined" disabled={!point || !displayed || frameLoading} onclick={share}><Icon name="share" size={17}/>Share location</button></div>
     {#if notice}<p class="notice" role="status">{notice}</p>{/if}
     <div class="inspector-footer"><Icon name="info" size={16}/><div>CHM simulation · Daily output<br/><span>Experimental model output</span>{#if catalogue}<small>Published {timeLabel(catalogue.generated_at)}</small>{/if}</div></div>
