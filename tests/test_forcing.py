@@ -257,3 +257,147 @@ def test_legacy_updater_uses_the_same_incremental_metadata(project_file, monkeyp
     daily_file(archive, '2026-11-10')
     assert update_metdata_json({})['added'] == 1
     assert len(json.loads(index.read_text())) == 2
+
+
+def test_absolute_archive_only_defaults_and_domain_overrides_use_local_metadata(project_file, monkeypatch):
+    archive = project_file.parent / 'external-archive'
+    arctic = project_file.parent / 'arctic-forcing'
+    daily_file(archive, '2026-09-01')
+    daily_file(arctic, '2026-10-01')
+    for folder in (archive, arctic):
+        (folder / '20250831.nc').write_text('old unreadable NetCDF must not be opened')
+        (folder / '20260831.nc').write_text('outside the requested period')
+        (folder / '20260830.nc').symlink_to('20260830.nc')  # Must skip before resolving old paths.
+    (arctic / '20260930.nc').write_text('before the domain-specific start date')
+    change(project_file, lambda r: r['defaults'].update(forcing={'archive': str(archive)}))
+    change(project_file, lambda r: r['defaults']['model'].update(start_date='2026-09-01'))
+    change(project_file, lambda r: r['domains'][1].update(
+        forcing={'archive': str(arctic)}, model={'start_date': '2026-10-01'}))
+    monkeypatch.chdir(project_file.parent.parent)
+    assert main(['validate', str(project_file)]) == 0
+    project = load_project(project_file)
+    assert not project.work_root.exists()
+    opened = []
+    real_open = xr.open_dataset
+
+    def tracked_open(filename, *args, **kwargs):
+        opened.append(Path(filename))
+        return real_open(filename, *args, **kwargs)
+
+    monkeypatch.setattr(xr, 'open_dataset', tracked_open)
+    for name in ('west', 'arctic'):
+        assert main(['prepare', str(project_file), '--domain', name]) == 0
+    assert opened == [archive / '20260901.nc', archive / '20261109.nc', arctic / '20261001.nc']
+    for domain in project.domains:
+        index = domain.forcing['index']
+        assert index == domain.work / 'met' / 'metadata.json'
+        assert index.is_file()
+        config = json.loads((domain.work / 'chm' / 'config.json').read_text())
+        assert config['option']['startdate'] == domain.model['start_date'].replace('-', '') + 'T000000'
+        assert config['forcing']['file'] == str(domain.work / 'met' / 'index.json')
+    assert not (project_file.parent / 'metadata').exists()  # No shared index path is needed.
+    before = list(opened)
+    daily_file(archive, '2026-11-10')
+    assert main(['met-update', str(project_file), '--domain', 'west']) == 0
+    assert opened == before + [archive / '20261110.nc']
+
+
+def test_existing_index_is_filtered_before_checking_old_missing_files(project_file):
+    domain = load_project(project_file).domain('west')
+    index = domain.forcing['index']
+    index.parent.mkdir()
+    current = str(domain.forcing['archive'] / '20261109.nc')
+    old = project_file.parent / 'missing-old-file.nc'
+    old.symlink_to(old.name)  # Even resolving this old path would fail.
+    rows = [
+        {'start_time': '20260831T000000', 'end_time': '20260831T230000', 'file_name': str(old)},
+        {'start_time': '20260831T230000', 'end_time': '20260901T010000', 'file_name': current},
+        {'start_time': '20261109T000000', 'end_time': '20261109T230000', 'file_name': current},
+    ]
+    index.write_text(json.dumps(rows))
+    original = index.read_bytes()
+    change(project_file, lambda r: r['defaults']['forcing'].update(archive=None))
+    change(project_file, lambda r: r['defaults']['model'].update(start_date='2026-09-01'))
+    assert main(['prepare', str(project_file), '--domain', 'west']) == 0
+    snapshot = json.loads((domain.work / 'met' / 'index.json').read_text())
+    assert snapshot == rows[1:]  # Include files whose actual interval crosses the cutoff.
+    assert index.read_bytes() == original
+
+
+def test_shared_index_keeps_history_for_domains_with_different_start_dates(project_file):
+    domain = load_project(project_file).domain('west')
+    archive, index = domain.forcing['archive'], domain.forcing['index']
+    daily_file(archive, '2026-09-01')
+    daily_file(archive, '2026-10-01')
+    change(project_file, lambda r: r['defaults']['model'].update(start_date='2026-09-01'))
+    change(project_file, lambda r: r['domains'][1].update(model={'start_date': '2026-11-01'}))
+    assert main(['prepare', str(project_file), '--domain', 'west']) == 0
+    before = index.read_bytes()
+    assert main(['prepare', str(project_file), '--domain', 'arctic']) == 0
+    project = load_project(project_file)
+    assert index.read_bytes() == before
+    assert [len(json.loads((d.work / 'met' / 'index.json').read_text())) for d in project.domains] == [3, 1]
+
+
+def test_moving_start_date_earlier_backfills_previously_skipped_files(project_file):
+    archive = project_file.parent / 'external-archive'
+    daily_file(archive, '2026-08-31')
+    change(project_file, lambda r: r['defaults'].update(forcing={'archive': str(archive)}))
+    change(project_file, lambda r: r['defaults']['model'].update(start_date='2026-09-01'))
+    assert main(['met-update', str(project_file), '--domain', 'west']) == 0
+    index = load_project(project_file).domain('west').forcing['index']
+    assert len(json.loads(index.read_text())) == 1
+    change(project_file, lambda r: r['defaults']['model'].update(start_date='2026-08-01'))
+    assert main(['met-update', str(project_file), '--domain', 'west']) == 0
+    assert len(json.loads(index.read_text())) == 2
+
+
+def test_no_files_in_requested_period_fails_without_reading_old_netcdfs(project_file, monkeypatch, capsys):
+    archive = project_file.parent / 'external-archive'
+    change(project_file, lambda r: r['defaults'].update(forcing={'archive': str(archive)}))
+    change(project_file, lambda r: r['defaults']['model'].update(start_date='2026-12-01'))
+
+    def unexpected_open(*args, **kwargs):
+        pytest.fail('Out-of-period daily files must not be opened')
+
+    monkeypatch.setattr(xr, 'open_dataset', unexpected_open)
+    assert main(['met-update', str(project_file), '--domain', 'west']) == 1
+    assert 'No forcing available on or after 2026-12-01' in capsys.readouterr().err
+    assert not load_project(project_file).domain('west').forcing['index'].exists()
+
+
+def test_undated_files_use_actual_intervals_for_start_date_filter(project_file):
+    archive = project_file.parent / 'external-archive'
+    old = daily_file(archive, '2026-08-31')
+    old.rename(archive / 'old-data.nc')
+    span = archive / 'spanning-data.nc'
+    xr.Dataset(coords={'time': np.array(['2026-08-31T23:00', '2026-09-01T00:00'], dtype='datetime64[ns]')}).to_netcdf(span)
+    change(project_file, lambda r: r['defaults'].update(forcing={'archive': str(archive)}))
+    change(project_file, lambda r: r['defaults']['model'].update(start_date='2026-09-01'))
+    assert main(['prepare', str(project_file), '--domain', 'west']) == 0
+    domain = load_project(project_file).domain('west')
+    records = json.loads((domain.work / 'met' / 'index.json').read_text())
+    assert {Path(row['file_name']).name for row in records} == {'spanning-data.nc', '20261109.nc'}
+
+
+def test_legacy_updater_also_honours_start_date(project_file, monkeypatch):
+    met = project_file.parent / 'met'
+    met.mkdir()
+    archive = project_file.parent / 'external-archive'
+    (archive / '20260831.nc').write_text('old invalid NetCDF')
+    (met / 'hrdps').symlink_to(archive, target_is_directory=True)
+    monkeypatch.chdir(project_file.parent)
+    result = update_metdata_json({'start_date': '2026-09-01'})
+    assert result['added'] == 1 and result['skipped_before_start'] == 1
+
+
+def test_managed_metadata_cannot_redirect_writes_outside_domain(project_file):
+    archive = project_file.parent / 'external-archive'
+    change(project_file, lambda r: r['defaults'].update(forcing={'archive': str(archive)}))
+    index = load_project(project_file).domain('west').forcing['index']
+    index.parent.mkdir(parents=True)
+    elsewhere = project_file.parent / 'user-file.json'
+    elsewhere.write_text('[]')
+    index.symlink_to(elsewhere)
+    assert main(['met-update', str(project_file), '--domain', 'west']) == 1
+    assert elsewhere.read_text() == '[]' and index.is_symlink()

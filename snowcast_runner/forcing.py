@@ -26,16 +26,21 @@ def update_forcing(domain):
         raise ValueError(f'Forcing archive link already exists with a different target: {link}')
     else:
         link.symlink_to(archive, target_is_directory=True)
-    return update_index(link, domain.forcing['index'])
+    index = domain.forcing['index']
+    if domain.forcing['managed_index'] and index.is_symlink():
+        raise ValueError(f'Managed forcing metadata cannot be a symlink: {index}')
+    return update_index(archive, index, start_date=domain.model.get('start_date'))
 
 
 def forcing_index(domain):
     if domain.forcing.get('archive') is not None:
         update_forcing(domain)
     source = domain.forcing['index']
-    records = read_index(source)
+    start_date = domain.model.get('start_date')
+    records = read_index(source, start_date=start_date)
     if not records:
-        raise ValueError(f'No forcing available for {domain.id}')
+        period = f' on or after {start_date}' if start_date else ''
+        raise ValueError(f'No forcing available{period} for {domain.id}')
     for row in records:
         if not Path(row['file_name']).is_file():
             raise FileNotFoundError(f'Forcing input missing: {row["file_name"]}')

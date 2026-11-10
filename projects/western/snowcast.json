@@ -5,7 +5,7 @@
   "defaults": {
     "model": {
       "config": "../../run_chm/config.json",
-      "start_date": "2025-09-01",
+      "start_date": "2026-09-01",
       "output_file": "output.nc",
       "max_runs": 10,
       "checkpoint_keep_days": 3,
@@ -24,7 +24,7 @@
         "qstat": "/opt/pbs/bin/qstat"
       }
     },
-    "forcing": {"archive": "../../met/hrdps", "index": "../../met/metdata-hrdps.json"},
+    "forcing": {"archive": "../../met/hrdps"},
     "postprocess": {
       "variables": ["swe", "snowdepthavg", "t"],
       "source_resolution": 0.001,

@@ -3,9 +3,10 @@
 SnowCast is an installable runner. A project defines independent CHM domains;
 the shared code checkout does not hold their generated configuration or state.
 The first project example is [western/snowcast.json](western/snowcast.json).
-It preserves the current western model's inputs, start date, output variables,
-800-rank allocations and AEP exports, but uses a new `runs/western-cordillera/`
-workspace. It does not automatically copy or adopt the production checkpoints.
+It preserves the current western model's inputs, output variables, 800-rank
+allocations and AEP exports, uses a new `runs/western-cordillera/` workspace,
+and starts on September 1, 2026. It does not automatically copy or adopt the
+production checkpoints.
 
 ## Install and validate
 
@@ -48,7 +49,7 @@ and be unique among projects publishing to the same site.
 | Section | Settings |
 | --- | --- |
 | `model` | `config` (JSON/JSON5 CHM template), optional `start_date`, `command` (default `["CHM", "-f", "{config}"]`), `output_file` (default `output.nc`), `max_runs` (10), `checkpoint_keep_days` (3), `no_data_codes` (empty), `assets`, `job` |
-| `forcing` | `index`: path to the CHM forcing metadata JSON; optional `archive`: directory of NetCDF forcing files to index |
+| `forcing` | `archive`: path to the NetCDF directory; optional `index` to reuse an existing/shared CHM metadata JSON instead of the automatically managed domain index |
 | `postprocess` | `variables`, `source_resolution` (degrees), `method`, `recent_steps`, `exporter`, optional UGRID topology `mesh`, `grid`, `ascii`, `job` |
 | `grid` | `crs`, `[dx, dy]` `resolution` in target CRS units, optional `[west, south, east, north]` `bounds`, `resampling` (`nearest`, `bilinear`, `average`) |
 | `ascii` | `enabled` (false), `variables` (`swe`, `t`), `resolution` (0.036 degrees); exports latest selected timestamp in EPSG:4326 |
@@ -61,56 +62,82 @@ relative to that template. Use absolute references for additional CHM input
 paths or map workspace filenames/directories to input paths with `model.assets`.
 Assets are symlinked as inputs; output, config and log names are reserved.
 
-Forcing uses the existing CHM metadata JSON, which lists the files and their
-time ranges. Supply `archive` to have SnowCast maintain it incrementally using
-the shared updater in `met/main.py`. The western example accepts your existing
-`met/hrdps` directory or symlink:
+Under `defaults` or an individual domain, set `forcing.archive` to the full path
+of the directory containing the met NetCDFs. Set `model.start_date` to the first
+day of the simulation. For example, these settings can sit alongside the other
+model/PBS settings in `defaults`:
 
 ```json
-"forcing": {
-  "archive": "../../met/hrdps",
-  "index": "../../met/metdata-hrdps.json"
+{
+  "model": {
+    "config": "../../run_chm/config.json",
+    "start_date": "2026-09-01"
+  },
+  "forcing": {"archive": "/absolute/path/to/hrdps"}
 }
 ```
 
-You can instead set `archive` directly to an external location such as
-`/path/to/hrdps`; there is no need to create a repository symlink yourself.
-`prepare` creates `work_root/<domain>/met/archive` as a symlink to the resolved
-archive, creates or updates the shared metadata JSON, and writes a separate
-`met/index.json` snapshot for CHM. Repeated preparation reuses the correct link;
-an existing directory or link to another archive is rejected rather than
-overwritten. The NetCDF files remain in their original archive.
+Each domain inherits these values and can override the archive, start date and
+model/PBS settings independently. No `index` path or repository symlink is
+required. Relative archive paths also work, resolved against `snowcast.json`.
+The checked-in western example uses `../../met/hrdps` to accept an existing
+installation's directory/symlink; replace it with your archive's full path if
+needed. The updater reads the configured directory directly.
 
-The updater lists `*.nc` in the archive and opens only files absent from the
-existing index. It reads their actual time coordinates, including late-arriving
-files with dates before the current latest entry, then orders records by start
-time. Existing metadata is retained; an unchanged index is not rewritten and
-previously indexed NetCDF files are not reopened. Files already indexed are
-assumed complete; changes to those files' time ranges require correcting their
-metadata explicitly. Downloads and production of the NetCDF files remain the
-responsibility of the upstream meteorology workflow.
+`prepare` manages these files separately for each domain:
 
-Updates lock the canonical index path and replace the JSON atomically. Domains
-sharing an archive should use the same `index`, so concurrent invocations and the
-legacy runner serialize updates even through symlink aliases. The lock lives
-beside the index, so the archive itself can be read-only. Index storage must be
-writable. A missing archive, empty initial archive or unreadable new NetCDF
-fails the stage without replacing the previous index. No archive files or old
-metadata entries are deleted. Separate forcing archives must have separate
-indexes; a project assigning different archives to the same index is rejected.
+| Path under `work_root/<domain>/` | Purpose |
+| --- | --- |
+| `met/archive` | Convenience symlink to the external archive |
+| `met/metadata.json` | Incrementally maintained CHM metadata, created automatically |
+| `met/index.json` | Fixed, date-filtered snapshot used by the generated CHM configuration |
 
-The JSON remains the standard CHM list of `start_time`, `end_time`
-(`YYYYMMDDTHHMMSS`, UTC) and `file_name`. Relative filenames resolve against the
-source index. Each preparation takes a workspace snapshot with absolute paths,
-preserving timestamps and additional metadata. A later shared index update
-does not change a submitted job's snapshot. The metadata's latest end time
-determines whether CHM is up to date.
+Repeated preparation reuses the correct archive link. An existing directory or
+link to a different archive is rejected rather than overwritten. The source
+archive can be read-only; all automatically generated metadata stays in the
+domain workspace.
 
-Omit `archive` (or override an inherited archive with `null`) to consume an
-externally maintained index without scanning directories or reading NetCDFs.
-In that mode the index must already exist. With `archive` configured, validation
-allows a missing index so the first preparation can create it. `validate` itself
-does not create links, update metadata or submit jobs.
+`model.start_date` applies to `prepare`, `met-update` and `run`, as well as to
+CHM itself. For daily `YYYYMMDD.nc` or `YYYY-MM-DD.nc` files, the updater checks
+the filename first: a start date of `2026-09-01` skips August 31 and earlier
+before resolving, inspecting or opening those files. September 1 is included.
+Directory entries must still be listed to discover new files. Files with other
+names use their actual NetCDF time coordinates to determine coverage.
+
+Only previously unindexed files are opened, including late arrivals within the
+requested period. Existing metadata remains authoritative. Snapshot records
+whose end time is before the start date are excluded before checking file
+availability, so missing old-year inputs do not block preparation. A file
+whose interval crosses the start date remains available to CHM. Changing the
+start date to an earlier date lets the next update backfill newly relevant
+files. If no forcing overlaps the requested period, the command reports that
+date and stops before submitting CHM. Without `start_date`, the archive is
+unrestricted.
+
+Metadata writes are locked and atomic. An unchanged cache is not rewritten;
+an unreadable new file in the requested period leaves the previous metadata
+intact. Existing entries may retain older cached metadata, but the CHM snapshot
+is always filtered to the requested period. No original NetCDF files are
+modified or deleted. Already indexed files are assumed complete; changes to
+their time ranges require correcting their metadata explicitly. Downloading
+or producing the NetCDFs remains the upstream meteorology workflow's job.
+
+To reuse an existing metadata file or share indexing across domains, you can
+optionally specify `"index": "/absolute/path/to/metdata-hrdps.json"` alongside
+`archive`. Writers lock that canonical index path, including symlink aliases
+and the legacy runner. Different domain start dates filter their own snapshots
+without deleting older records from the shared index. Different archives must
+use different indexes. Set an inherited `index` to `null` to return to the
+automatic per-domain location.
+
+To read an externally maintained index only, provide `index` and omit `archive`
+(or override an inherited archive with `null`). This mode never scans the
+archive or opens NetCDFs and requires an existing JSON file. The JSON remains
+the standard CHM list of `start_time`, `end_time` (`YYYYMMDDTHHMMSS`, UTC) and
+`file_name`. Relative filenames resolve against that JSON; snapshots use
+absolute filenames and preserve additional metadata. Updating metadata never
+changes an already prepared snapshot until the next preparation. `validate`
+checks paths without creating links, updating metadata or submitting jobs.
 
 `job` applies independently to CHM and regridding. Defaults run locally with one
 rank. PBS projects specify `mode: "pbs"`, `nodes`, `cpus_per_node`,
@@ -145,8 +172,8 @@ snowcast postprocess projects/western --domain western-cordillera
 ```
 
 `prepare` creates the workspace, archive link, resolved CHM configuration and
-forcing snapshot without submitting a job. It refreshes metadata when an archive
-is configured. `met-update` performs just the link setup and shared metadata
+forcing snapshot without submitting a job. It refreshes metadata for the
+configured start date. `met-update` performs just the link setup and metadata
 update; it leaves any existing CHM configuration and forcing snapshot untouched,
 and does not require model input files. It requires `forcing.archive`.
 
@@ -159,7 +186,7 @@ for each domain. One domain's missing inputs or job failure does not block
 another domain's invocation.
 
 The workspace contains `chm/config.json`, `chm/output/` (including checkpoints),
-`met/archive` (when configured), `met/index.json`, `jobs/`, `postprocess/`, and
+`met/archive` and `met/metadata.json` (when managed), `met/index.json`, `jobs/`, `postprocess/`, and
 `status.json`. There is no shared
 process-wide `chdir`. A process lock excludes duplicate domain runs and remains
 held by a local job if its parent runner is killed. PBS submissions are recorded
@@ -236,10 +263,11 @@ work. This branch supplies their metadata contract and the runner foundation.
 
 1. Keep the existing cron unchanged while validating the new project. Check the
    template, mesh/parameter references, forcing archive/index and `environment.sh`
-   on the actual cluster. The sample's 2025-09-01 start date mirrors the existing config.
-2. Run `validate`, then `prepare`; inspect the archive symlink, shared metadata,
-   generated configuration and snapshot paths. With an existing metadata index,
-   preparation reads time coordinates only for previously unindexed files.
+   on the actual cluster. The sample's start date is 2026-09-01; adjust it for
+   the period you intend to simulate.
+2. Run `validate`, then `prepare`; inspect the archive symlink, managed metadata,
+   generated configuration and snapshot paths. Daily files before the start
+   date are skipped; previously indexed files are not reopened.
 3. With the old model writer stopped, **copy** compatible checkpoints into the
    new domain's `chm/output/checkpoint/`. Do not point both runners at one writable
    checkpoint directory. Verify rank count and CHM version compatibility.

@@ -162,8 +162,10 @@ def load_project(filename):
         model = merge({'command': ['CHM', '-f', '{config}'], 'output_file': 'output.nc', 'max_runs': 10,
                        'checkpoint_keep_days': 3, 'no_data_codes': [], 'assets': {}, 'job': {}}, model)
         model['config'] = path(base, model.get('config'))
-        if model.get('start_date'):
-            datetime.strptime(model['start_date'], '%Y-%m-%d')
+        if model.get('start_date') is not None:
+            if not isinstance(model['start_date'], str):
+                raise ValueError('model.start_date must be YYYY-MM-DD')
+            model['start_date'] = datetime.strptime(model['start_date'], '%Y-%m-%d').strftime('%Y-%m-%d')
         if not isinstance(model['output_file'], str) or not model['output_file'] or Path(model['output_file']).name != model['output_file']:
             raise ValueError('model.output_file must be a filename within the domain output directory')
         for field in ('max_runs', 'checkpoint_keep_days'):
@@ -184,10 +186,12 @@ def load_project(filename):
             model['assets'][name] = path(base, source)
         forcing = d.get('forcing', {})
         keys(forcing, 'index archive', f'{did}.forcing')
-        if 'index' not in forcing:
-            raise ValueError('Provide forcing.index pointing to the CHM metadata JSON')
-        forcing = {'index': path(base, forcing['index']),
-                   'archive': path(base, forcing['archive']) if forcing.get('archive') is not None else None}
+        archive = path(base, forcing['archive']) if forcing.get('archive') is not None else None
+        managed_index = forcing.get('index') is None
+        if archive is None and managed_index:
+            raise ValueError('Provide forcing.archive (NetCDF directory) or forcing.index (existing CHM metadata JSON)')
+        forcing = {'archive': archive, 'managed_index': managed_index,
+                   'index': root / did / 'met' / 'metadata.json' if managed_index else path(base, forcing['index'])}
         if forcing['archive'] is not None:
             for prior in domains:
                 if (prior.forcing['index'] == forcing['index'] and
@@ -245,11 +249,16 @@ def load_project(filename):
 
 def validate_forcing(project, domain):
     index, archive = domain.forcing['index'], domain.forcing.get('archive')
-    for source in (index, archive):
+    inputs = [archive] if domain.forcing['managed_index'] else [index, archive]
+    for source in inputs:
         if source is not None and source.is_relative_to(project.work_root):
             raise ValueError(f'{domain.id}: forcing inputs must be outside work_root: {source}')
     if archive is not None and not archive.is_dir():
         raise FileNotFoundError(f'{domain.id}: forcing archive directory missing: {archive}')
+    if domain.forcing['managed_index'] and index.is_symlink():
+        raise ValueError(f'{domain.id}: managed forcing metadata cannot be a symlink: {index}')
+    if index.is_dir():
+        raise ValueError(f'{domain.id}: forcing.index is a directory; set forcing.archive to the NetCDF directory instead: {index}')
     if (index.exists() or archive is None) and not index.is_file():
         raise FileNotFoundError(f'{domain.id}: forcing metadata file missing or invalid: {index}')
 
