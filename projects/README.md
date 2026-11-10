@@ -145,9 +145,11 @@ entry. An override can therefore replace an absent base mesh before validation.
 Errors identify the project, key, source configuration, resolved path and rank
 mismatch where relevant.
 
-`prepare` symlinks these inputs into `work/chm/`, where CHM runs. For a
-`.partition`, it also links the mesh and parameter files named inside it,
-preserving their relative layout. The usual `<name>.partition.meshes/` directory
+`prepare` symlinks these inputs into `work/chm/`, where CHM runs. The generated
+configuration's `meshes` entries use just the staged filenames, relative to
+that directory. For a `.partition`, it also links the mesh and parameter files
+named inside it, preserving their relative layout. The usual
+`<name>.partition.meshes/` directory
 is linked as a whole; large mesh files are neither copied nor rewritten.
 Relative entries are resolved from beside the source partition and must stay
 below that directory (no `..`); absolute entries are validated and left as-is.

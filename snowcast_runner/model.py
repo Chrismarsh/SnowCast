@@ -23,7 +23,7 @@ def prepare(project):
         if target.is_symlink():  # model_inputs already checked its destination.
             continue
         target.symlink_to(source, target_is_directory=source.is_dir())
-    config['meshes'] = {key: str(cwd / Path(value).name) for key, value in config['meshes'].items()}
+    config['meshes'] = {key: Path(value).name for key, value in config['meshes'].items()}
     index, end = forcing_index(project)
     config.setdefault('forcing', {})['file'] = str(index)
     config.setdefault('output', {})['output_dir'] = str(output)

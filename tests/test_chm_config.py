@@ -71,8 +71,8 @@ def test_merge_before_mesh_validation_and_preserve_declaring_paths(project_file,
     assert config['config'] == {'FSM': {'keep': 1, 'replace': 3}}
     assert config['remove_depency'] == {}
     assert config['meshes'] == {
-        'mesh': str(project.work / 'chm/mesh.np1.partition'),
-        'parameters': str(project.work / 'chm/parameters.json'),
+        'mesh': 'mesh.np1.partition',
+        'parameters': 'parameters.json',
     }
     assert config['forcing']['file'] == str(project.work / 'met/index.json')
     assert config['option']['startdate'] == '20260901T000000'
@@ -147,7 +147,7 @@ def test_three_projects_share_base_but_choose_their_own_mesh_modules_and_jobs(pr
         p = load_project(manifest)
         config = json.loads((p.work / 'chm/config.json').read_text())
         assert config['modules'] == modules
-        assert Path(config['meshes']['mesh']).name == f'{name}.np{ranks}.partition'
+        assert config['meshes']['mesh'] == f'{name}.np{ranks}.partition'
         assert config['output']['output_dir'] == str(p.work / 'chm/output')
         assert p.postprocess['job']['ranks'] == 1
         assert not (p.work / 'jobs').exists()
@@ -175,7 +175,7 @@ import sys
 cwd = Path.cwd()
 config = json.loads(Path(sys.argv[1]).read_text())
 partition = Path(config['meshes']['mesh'])
-assert partition.parent == cwd and partition.is_symlink()
+assert partition.parent == Path('.') and partition.is_symlink()
 metadata = json.loads(partition.read_text())
 for field in ('meshes', 'parameters'):
     for entry in metadata[field]:
