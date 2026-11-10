@@ -183,10 +183,16 @@ def load_project(filename):
                 raise ValueError(f'Reserved model asset name: {name}')
             model['assets'][name] = path(base, source)
         forcing = d.get('forcing', {})
-        keys(forcing, 'index', f'{did}.forcing')
+        keys(forcing, 'index archive', f'{did}.forcing')
         if 'index' not in forcing:
-            raise ValueError('Provide forcing.index pointing to the existing CHM metadata JSON')
-        forcing = {'index': path(base, forcing['index'])}
+            raise ValueError('Provide forcing.index pointing to the CHM metadata JSON')
+        forcing = {'index': path(base, forcing['index']),
+                   'archive': path(base, forcing['archive']) if forcing.get('archive') is not None else None}
+        if forcing['archive'] is not None:
+            for prior in domains:
+                if (prior.forcing['index'] == forcing['index'] and
+                        prior.forcing.get('archive') not in (None, forcing['archive'])):
+                    raise ValueError('Domains with different forcing archives must use different indexes')
         pp = d.get('postprocess', {})
         keys(pp, 'variables source_resolution method recent_steps exporter mesh grid ascii job', f'{did}.postprocess')
         pp = merge({'variables': ['swe', 'snowdepthavg', 't'], 'source_resolution': 0.001,
@@ -237,12 +243,23 @@ def load_project(filename):
     return Project(filename, identifier, root, tuple(domains), notifications)
 
 
+def validate_forcing(project, domain):
+    index, archive = domain.forcing['index'], domain.forcing.get('archive')
+    for source in (index, archive):
+        if source is not None and source.is_relative_to(project.work_root):
+            raise ValueError(f'{domain.id}: forcing inputs must be outside work_root: {source}')
+    if archive is not None and not archive.is_dir():
+        raise FileNotFoundError(f'{domain.id}: forcing archive directory missing: {archive}')
+    if (index.exists() or archive is None) and not index.is_file():
+        raise FileNotFoundError(f'{domain.id}: forcing metadata file missing or invalid: {index}')
+
+
 def validate_inputs(project, domains=None):
     from rasterio.crs import CRS
     for d in project.domains if domains is None else domains:
+        validate_forcing(project, d)
         inputs = [d.model['config'], *d.model['assets'].values()]
         inputs += [job['setup'] for job in (d.model['job'], d.postprocess['job']) if job['setup']]
-        inputs.append(d.forcing['index'])
         if d.postprocess.get('mesh'):
             inputs.append(d.postprocess['mesh'])
         for source in inputs:

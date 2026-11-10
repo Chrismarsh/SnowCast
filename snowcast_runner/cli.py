@@ -5,14 +5,14 @@ from pathlib import Path
 import sys
 import subprocess
 
-from .project import load_project, validate_inputs
+from .project import load_project, validate_inputs, validate_forcing
 from .state import workspace, status
 
 
 def parser():
     root = argparse.ArgumentParser(description='Run SnowCast projects independently of the tool checkout.')
     commands = root.add_subparsers(dest='action', required=True)
-    for action in ('validate', 'prepare', 'run', 'postprocess', 'publish', 'status'):
+    for action in ('validate', 'prepare', 'met-update', 'run', 'postprocess', 'publish', 'status'):
         command = commands.add_parser(action)
         command.add_argument('project', type=Path, help='Project directory or snowcast.json file')
         command.add_argument('--domain')
@@ -53,7 +53,9 @@ def main(argv=None):
                 print(json.dumps(value))
             return 0
         domain = project.domain(args.domain)
-        if args.action != 'publish':
+        if args.action == 'met-update':
+            validate_forcing(project, domain)
+        elif args.action != 'publish':
             validate_inputs(project, domains=[domain])
         from .jobs import resume_pending
         from .model import run_model
@@ -63,6 +65,12 @@ def main(argv=None):
                 # Do not alter configuration or staging files used by a live PBS job.
                 resume_pending(domain.work)
                 status(domain, 'running', stage=args.action)
+                if args.action == 'met-update':
+                    from .forcing import update_forcing
+                    detail = update_forcing(domain)
+                    status(domain, 'met_updated', output=detail)
+                    print(json.dumps(detail))
+                    return 0
                 if args.action == 'prepare':
                     from .model import prepare
                     config, _, _ = prepare(domain)

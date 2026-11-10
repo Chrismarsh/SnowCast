@@ -24,7 +24,7 @@
         "qstat": "/opt/pbs/bin/qstat"
       }
     },
-    "forcing": {"index": "../../met/metdata-hrdps.json"},
+    "forcing": {"archive": "../../met/hrdps", "index": "../../met/metdata-hrdps.json"},
     "postprocess": {
       "variables": ["swe", "snowdepthavg", "t"],
       "source_resolution": 0.001,

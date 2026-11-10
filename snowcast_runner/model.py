@@ -1,13 +1,11 @@
 """CHM adapter: resolve inputs, stage forcing metadata, and continue checkpointed runs."""
-from datetime import datetime
-import json
-from pathlib import Path
 import re
 import shutil
 import uuid
 
 from postprocess.cog_store import atomic_json
 from .jobs import execute, JobFailed
+from .forcing import forcing_index
 
 
 def read_model(domain):
@@ -30,26 +28,6 @@ def model_inputs(domain, config):
             if int(count) != domain.model['job']['ranks']:
                 raise ValueError(f'Mesh partition ranks do not match configured ranks: {source}')
         config['meshes'][key] = str(source)
-
-
-def forcing_index(domain):
-    # The upstream CHM metadata is authoritative; never rediscover NetCDF files
-    # or recompute their time ranges. Snapshot it so a later upstream update
-    # cannot change the forcing list of an already submitted job.
-    source = domain.forcing['index']
-    records = json.loads(source.read_text())
-    if not isinstance(records, list):
-        raise ValueError('Forcing index must be a list')
-    if not records:
-        raise ValueError(f'No forcing available for {domain.id}')
-    for row in records:
-        row['file_name'] = str((source.parent / row['file_name']).resolve())
-        start, end = [datetime.strptime(row[k], '%Y%m%dT%H%M%S') for k in ('start_time', 'end_time')]
-        if start > end or not Path(row['file_name']).is_file():
-            raise ValueError(f'Invalid forcing interval/file: {row}')
-    target = domain.work / 'met' / 'index.json'
-    atomic_json(target, records)
-    return target, max(row['end_time'] for row in records)
 
 
 def prepare(domain):
