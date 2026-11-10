@@ -20,7 +20,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -m pip install . pytest
+      - run: python -m pip install . pytest 'setuptools>=68' wheel
       - run: python -m pytest -q tests
       - run: npm ci && npm run check && npm test && npm run build
         working-directory: webui

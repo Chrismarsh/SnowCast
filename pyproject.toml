@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "snowcast-runner"
-version = "0.2.0"
+version = "0.3.0"
 description = "Run and postprocess independent CHM projects"
 requires-python = ">=3.10"
 dependencies = ["json5>=0.9", "numpy", "rasterio>=1.4,<2", "xarray", "netCDF4"]
@@ -13,5 +13,5 @@ dependencies = ["json5>=0.9", "numpy", "rasterio>=1.4,<2", "xarray", "netCDF4"]
 snowcast = "snowcast_runner.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["snowcast_runner*", "met", "postprocess*", "webupload*"]
+include = ["snowcast_runner*"]
 namespaces = true

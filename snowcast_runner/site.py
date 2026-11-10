@@ -5,12 +5,12 @@ from pathlib import Path
 import shutil
 import tempfile
 
-from postprocess.cog_store import atomic_json, store_lock
-from postprocess.publish_cogs import publish
+from .cog_store import atomic_json, store_lock
+from .publish_cogs import publish
 
 
-def register(site, project, domain, catalogue_path):
-    identity = f'{project.id}/{domain.id}'
+def register(site, project, catalogue_path):
+    identity = project.id
     # Every publisher merges the latest registry under the same host-side lock.
     with store_lock(site):
         index = site / 'domains.json'
@@ -29,25 +29,25 @@ def register(site, project, domain, catalogue_path):
         atomic_json(index, registry)
 
 
-def publish_domain(project, domain, site):
+def publish_project(project, site):
     site = Path(site).resolve()
-    if site == project.work_root or site.is_relative_to(project.work_root):
-        raise ValueError('The site must be outside the project work_root')
+    if site == project.work or site.is_relative_to(project.work):
+        raise ValueError('The site must be outside the project work directory')
     # Separate physical roots also bound cleanup and allow identical timestamps.
-    relative = Path('data') / project.id / domain.id
+    relative = Path('data') / project.id
     destination = site / relative
-    for part in (site / 'data', site / 'data' / project.id, destination):
+    for part in (site / 'data', destination):
         if part.is_symlink():
             raise ValueError('Domain publication directories cannot be symlinks')
-    dx, dy = domain.postprocess['grid']['resolution']
-    metadata = {'id': f'{project.id}/{domain.id}', 'project': project.id, 'name': domain.name}
-    folder = domain.work / 'postprocess'
+    dx, dy = project.postprocess['grid']['resolution']
+    metadata = {'id': project.id, 'project': project.id, 'name': project.name}
+    folder = project.work / 'postprocess'
     catalogue = publish([folder / 'archive_tiff', folder / 'tiff'], destination,
-                        grid=f'{dx:g}x{dy:g}', domain=metadata, ranges=domain.display.get('ranges'))
+                        grid=f'{dx:g}x{dy:g}', domain=metadata, ranges=project.display.get('ranges'))
     for directory in (site, site / 'data', site / 'data' / project.id):
         directory.chmod(0o755)
     # The domain becomes discoverable only after its complete catalogue exists.
-    register(site, project, domain, (relative / 'catalog.json').as_posix())
+    register(site, project, (relative / 'catalog.json').as_posix())
     return catalogue
 
 

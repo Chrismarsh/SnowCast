@@ -9,9 +9,7 @@ import pytest
 import rasterio
 from rasterio.transform import from_origin
 
-spec = importlib.util.spec_from_file_location("publisher", Path(__file__).parents[1] / "postprocess/publish_cogs.py")
-publisher = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(publisher)
+from snowcast_runner import publish_cogs as publisher
 
 
 def write(folder, date="20261105T230000", value=125, variable="swe", crs="EPSG:4326", dtype="float32", nodata=-9999,

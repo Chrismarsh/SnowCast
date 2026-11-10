@@ -1,51 +1,51 @@
-"""Domain archive links, incremental metadata updates and fixed run snapshots."""
+"""Project archive links, incremental metadata updates and fixed run snapshots."""
 from pathlib import Path
 
-from met.main import read_index, update_index
-from postprocess.cog_store import atomic_json
+from .met import read_index, update_index
+from .cog_store import atomic_json
 
 
-def met_directory(domain):
-    folder = domain.work / 'met'
+def met_directory(project):
+    folder = project.work / 'met'
     if folder.is_symlink():
-        raise ValueError(f'Domain met directory cannot be a symlink: {folder}')
+        raise ValueError(f'Project met directory cannot be a symlink: {folder}')
     folder.mkdir(exist_ok=True)
     return folder
 
 
-def update_forcing(domain):
-    archive = domain.forcing.get('archive')
+def update_forcing(project):
+    archive = project.forcing.get('archive')
     if archive is None:
         raise ValueError('met-update requires forcing.archive; index-only forcing is externally maintained')
     if not archive.is_dir():
         raise FileNotFoundError(f'Forcing archive directory missing: {archive}')
-    link = met_directory(domain) / 'archive'
+    link = met_directory(project) / 'archive'
     if link.is_symlink() and link.resolve() == archive:
         pass
     elif link.exists() or link.is_symlink():
         raise ValueError(f'Forcing archive link already exists with a different target: {link}')
     else:
         link.symlink_to(archive, target_is_directory=True)
-    index = domain.forcing['index']
-    if domain.forcing['managed_index'] and index.is_symlink():
+    index = project.forcing['index']
+    if project.forcing['managed_index'] and index.is_symlink():
         raise ValueError(f'Managed forcing metadata cannot be a symlink: {index}')
-    return update_index(archive, index, start_date=domain.model.get('start_date'))
+    return update_index(archive, index, start_date=project.model.get('start_date'))
 
 
-def forcing_index(domain):
-    if domain.forcing.get('archive') is not None:
-        update_forcing(domain)
-    source = domain.forcing['index']
-    start_date = domain.model.get('start_date')
+def forcing_index(project):
+    if project.forcing.get('archive') is not None:
+        update_forcing(project)
+    source = project.forcing['index']
+    start_date = project.model.get('start_date')
     records = read_index(source, start_date=start_date)
     if not records:
         period = f' on or after {start_date}' if start_date else ''
-        raise ValueError(f'No forcing available{period} for {domain.id}')
+        raise ValueError(f'No forcing available{period} for {project.id}')
     for row in records:
         if not Path(row['file_name']).is_file():
             raise FileNotFoundError(f'Forcing input missing: {row["file_name"]}')
     # A later archive/index update cannot change an already submitted job's list.
-    target = met_directory(domain) / 'index.json'
+    target = met_directory(project) / 'index.json'
     if target.is_symlink():
         raise ValueError(f'Forcing snapshot cannot be a symlink: {target}')
     atomic_json(target, records)

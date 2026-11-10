@@ -14,16 +14,19 @@ from rasterio.transform import from_origin
 import xarray as xr
 
 from snowcast_runner.cli import main
+from project_helpers import clone_project
 from snowcast_runner.jobs import execute, resume_pending, wait_pbs
 from snowcast_runner.model import prepare, prune_checkpoints
 from snowcast_runner.project import load_project, job_config, validate_inputs
 from snowcast_runner.rasters import accept_exports
-from snowcast_runner.site import publish_domain, deploy_ui
+from snowcast_runner.site import publish_project, deploy_ui
 from snowcast_runner.state import workspace
 
 
 @pytest.fixture
 def project_file(tmp_path):
+    tmp_path = tmp_path / 'west'
+    tmp_path.mkdir()
     (tmp_path / 'mesh').write_text('fixture mesh')
     forcing = tmp_path / 'forcing.nc'
     xr.Dataset({'t': ('time', [1.0, 2.0])}, coords={'time': np.array(['2026-11-08T23:00', '2026-11-09T23:00'], dtype='datetime64[ns]')}).to_netcdf(forcing)
@@ -31,9 +34,8 @@ def project_file(tmp_path):
     (tmp_path / 'model.json').write_text(json.dumps({'meshes': {'mesh': 'mesh'}, 'option': {},
                                                   'output': {'ugrid': {'specific_time': '23:00'}}, 'checkpoint': {'auto_resume': True}}))
     path = tmp_path / 'snowcast.json'
-    path.write_text(json.dumps({'version': 1, 'id': 'test-project', 'work_root': 'work',
-                               'defaults': {'model': {'config': 'model.json'}, 'forcing': {'index': 'forcing.json'}},
-                               'domains': [{'id': name, 'name': name.title()} for name in ('west', 'arctic', 'third')]}))
+    path.write_text(json.dumps({'version': 2, 'id': 'west', 'name': 'Western test',
+                               'model': {'config': 'model.json'}, 'forcing': {'index': 'forcing.json'}}))
     return path
 
 
@@ -63,36 +65,36 @@ def exports(path):
     return path
 
 
-def test_project_paths_and_defaults_do_not_depend_on_cwd(project_file, tmp_path, monkeypatch):
+def test_project_paths_do_not_depend_on_cwd(project_file, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path.parent)
     project = load_project(project_file)
     validate_inputs(project)
-    assert len(project.domains) == 3
-    assert project.domain('arctic').work == tmp_path / 'work' / 'arctic'
-    assert project.domain('west').model['config'] == tmp_path / 'model.json'
+    assert project.work == project_file.parent / 'work'
+    assert load_project(clone_project(project_file, 'arctic')).work == tmp_path / 'arctic' / 'work'
+    assert project.model['config'] == project_file.parent / 'model.json'
     assert main(['validate', str(project_file)]) == 0
-    assert not project.work_root.exists()  # Validation is read-only.
-    assert main(['run', str(project_file)]) == 1  # Domain choice is explicit.
+    assert not project.work.exists()  # Validation is read-only.
+    assert main(['prepare', str(project_file.parent)]) == 0  # No domain selector.
 
 
 @pytest.mark.parametrize('mutate', [
-    lambda r: r.update(version=2),
+    lambda r: r.update(version=1),
     lambda r: r.update(work_root='.'),
-    lambda r: r['domains'].append({'id': 'west'}),
-    lambda r: r['domains'][0].update(id='../escape'),
-    lambda r: r['defaults']['model'].update(output_file='../other.nc'),
-    lambda r: r['defaults']['model'].update(checkpoint_keep_days=0),
-    lambda r: r['defaults']['model'].update(start_date=20260901),
-    lambda r: r['defaults']['model'].update(start_date='2026-02-30'),
-    lambda r: r['defaults'].update(forcing={}),
-    lambda r: r['defaults'].update(forcing={'glob': 'forcing*.nc'}),
-    lambda r: r['defaults'].update(postprocess={'variables': ['unknown']}),
-    lambda r: r['defaults'].update(postprocess={'grid': {'resoluton': [.001, .001]}}),
-    lambda r: r['defaults'].update(postprocess={'grid': {'resolution': [0, 1]}}),
-    lambda r: r['defaults'].update(postprocess={'grid': {'bounds': [1, 2, 0, 3]}}),
-    lambda r: r['defaults']['model'].update(job={'ranks': 2}),
-    lambda r: r['defaults']['model'].update(job={'mode': 'pbs', 'ranks': 2, 'launcher': ['mpirun'], 'nodes': 1}),
-    lambda r: r['defaults']['model'].update(assets={'output': 'mesh'}),
+    lambda r: r.update(domains=[{'id': 'west'}]),
+    lambda r: r.update(id='../escape'),
+    lambda r: r['model'].update(output_file='../other.nc'),
+    lambda r: r['model'].update(checkpoint_keep_days=0),
+    lambda r: r['model'].update(start_date=20260901),
+    lambda r: r['model'].update(start_date='2026-02-30'),
+    lambda r: r.update(forcing={}),
+    lambda r: r.update(forcing={'glob': 'forcing*.nc'}),
+    lambda r: r.update(postprocess={'variables': ['unknown']}),
+    lambda r: r.update(postprocess={'grid': {'resoluton': [.001, .001]}}),
+    lambda r: r.update(postprocess={'grid': {'resolution': [0, 1]}}),
+    lambda r: r.update(postprocess={'grid': {'bounds': [1, 2, 0, 3]}}),
+    lambda r: r['model'].update(job={'ranks': 2}),
+    lambda r: r['model'].update(job={'mode': 'pbs', 'ranks': 2, 'launcher': ['mpirun'], 'nodes': 1}),
+    lambda r: r['model'].update(assets={'output': 'mesh'}),
 ])
 def test_invalid_configuration_is_rejected_before_running(project_file, mutate):
     change(project_file, mutate)
@@ -103,23 +105,23 @@ def test_invalid_configuration_is_rejected_before_running(project_file, mutate):
 
 def test_workspace_locks_and_ownership_are_independent(project_file):
     project = load_project(project_file)
-    with workspace(project, project.domain('west')):
+    with workspace(project):
         with pytest.raises(RuntimeError, match='already running'):
-            with workspace(project, project.domain('west')):
+            with workspace(project):
                 pass
-        with workspace(project, project.domain('arctic')):
+        with workspace(load_project(clone_project(project_file, 'arctic'))):
             pass
     change(project_file, lambda r: r.update(id='another-project'))
     other = load_project(project_file)
     with pytest.raises(ValueError, match='different project'):
-        with workspace(other, other.domain('west')):
+        with workspace(other):
             pass
 
 
 def test_generated_model_and_forcing_leave_inputs_unchanged(project_file):
-    project = load_project(project_file); domain = project.domain('west')
+    project = load_project(project_file); domain = project
     original = domain.model['config'].read_bytes()
-    with workspace(project, domain):
+    with workspace(domain):
         target, latest, _ = prepare(domain)
         config = json.loads(target.read_text())
     assert domain.model['config'].read_bytes() == original
@@ -143,7 +145,7 @@ def test_forcing_metadata_is_authoritative_and_snapshotted(project_file, monkeyp
     ]
     source.write_text(json.dumps(rows))
     original = source.read_bytes()
-    change(project_file, lambda r: r['defaults'].update(forcing={'index': 'met/metdata-hrdps.json'}))
+    change(project_file, lambda r: r.update(forcing={'index': 'met/metdata-hrdps.json'}))
 
     def unexpected_scan(*args, **kwargs):
         pytest.fail('Preparing must use CHM metadata without scanning or opening NetCDF files')
@@ -151,8 +153,8 @@ def test_forcing_metadata_is_authoritative_and_snapshotted(project_file, monkeyp
     monkeypatch.setattr(glob, 'glob', unexpected_scan)
     monkeypatch.setattr(xr, 'open_dataset', unexpected_scan)
     monkeypatch.setattr(xr, 'open_mfdataset', unexpected_scan)
-    project = load_project(project_file); domain = project.domain('west')
-    with workspace(project, domain):
+    project = load_project(project_file); domain = project
+    with workspace(domain):
         target, latest, _ = prepare(domain)
         staged = Path(json.loads(target.read_text())['forcing']['file'])
         expected = [dict(row, file_name=str(project_file.parent / 'forcing.nc')) for row in rows]
@@ -170,8 +172,8 @@ def test_forcing_metadata_is_authoritative_and_snapshotted(project_file, monkeyp
 
 
 def test_mesh_rank_validation(project_file):
-    project = load_project(project_file); domain = project.domain('west')
-    with workspace(project, domain):
+    project = load_project(project_file); domain = project
+    with workspace(domain):
         prepare(domain)
         model = json.loads(domain.model['config'].read_text())
         (project_file.parent / 'mesh.np800.partition').write_text('partition fixture')
@@ -181,35 +183,37 @@ def test_mesh_rank_validation(project_file):
             prepare(domain)
 
 
-def test_three_domains_execute_and_one_failure_does_not_stop_others(project_file):
-    # Exercise real separate CLI processes, with CHM stand-ins writing domain outputs.
+def test_three_projects_execute_and_one_failure_does_not_stop_others(project_file):
+    # Exercise real separate CLI processes, with CHM stand-ins writing project outputs.
     fake = project_file.parent / 'model.py'
     fake.write_text('import json, pathlib, sys\nc=json.load(open(sys.argv[1]))\np=pathlib.Path(c["output"]["output_dir"])\n'
                     'if "arctic" in str(p): sys.exit(8)\n(p/"clean_exit").write_text("done")\n')
-    change(project_file, lambda r: r['defaults']['model'].update(command=[sys.executable, str(fake), '{config}']))
-    def run(domain):
-        return subprocess.run([sys.executable, '-m', 'snowcast_runner', 'run', str(project_file), '--domain', domain,
+    change(project_file, lambda r: r['model'].update(command=[sys.executable, str(fake), '{config}']))
+    files = [project_file, clone_project(project_file, 'arctic'), clone_project(project_file, 'third')]
+    def run(filename):
+        return subprocess.run([sys.executable, '-m', 'snowcast_runner', 'run', str(filename),
                                '--no-postprocess'], capture_output=True, text=True)
     with ThreadPoolExecutor(max_workers=3) as pool:
-        results = list(pool.map(run, ['west', 'arctic', 'third']))
+        results = list(pool.map(run, files))
     assert [p.returncode for p in results] == [0, 1, 0], [p.stderr for p in results]
-    project = load_project(project_file)
-    assert [json.loads((d.work / 'status.json').read_text())['state'] for d in project.domains] == ['completed', 'failed', 'completed']
+    projects = [load_project(filename) for filename in files]
+    assert [json.loads((p.work / 'status.json').read_text())['state'] for p in projects] == ['completed', 'failed', 'completed']
 
 
-def test_a_missing_other_domain_does_not_prevent_selected_run(project_file):
-    change(project_file, lambda r: r['domains'][1].update(model={'config': 'missing.json'}))
-    change(project_file, lambda r: r['defaults']['model'].update(command=[sys.executable, '-c', 'import sys; sys.exit(30)'], no_data_codes=[30]))
-    assert main(['run', str(project_file), '--domain', 'west']) == 0
+def test_a_missing_other_project_does_not_prevent_selected_run(project_file):
+    other = clone_project(project_file, 'arctic')
+    change(other, lambda r: r['model'].update(config='missing.json'))
+    change(project_file, lambda r: r['model'].update(command=[sys.executable, '-c', 'import sys; sys.exit(30)'], no_data_codes=[30]))
+    assert main(['run', str(project_file)]) == 0
     project = load_project(project_file)
-    assert json.loads((project.domain('west').work / 'status.json').read_text())['state'] == 'up_to_date'
-    assert not project.domain('arctic').work.exists()
+    assert json.loads((project.work / 'status.json').read_text())['state'] == 'up_to_date'
+    assert not load_project(other).work.exists()
 
 
 def test_zero_exit_without_completion_or_checkpoint_progress_fails_immediately(project_file):
-    change(project_file, lambda r: r['defaults']['model'].update(command=[sys.executable, '-c', 'pass']))
-    assert main(['run', str(project_file), '--domain', 'west', '--no-postprocess']) == 1
-    domain = load_project(project_file).domain('west')
+    change(project_file, lambda r: r['model'].update(command=[sys.executable, '-c', 'pass']))
+    assert main(['run', str(project_file), '--no-postprocess']) == 1
+    domain = load_project(project_file)
     assert len(list((domain.work / 'jobs').glob('*.sh'))) == 1
 
 
@@ -223,17 +227,17 @@ if checkpoint.exists():
 else:
     checkpoint.write_text('{}')
 ''')
-    change(project_file, lambda r: r['defaults']['model'].update(command=[sys.executable, str(fake)]))
-    assert main(['prepare', str(project_file), '--domain', 'west']) == 0
-    domain = load_project(project_file).domain('west')
+    change(project_file, lambda r: r['model'].update(command=[sys.executable, str(fake)]))
+    assert main(['prepare', str(project_file)]) == 0
+    domain = load_project(project_file)
     assert not (domain.work / 'jobs').exists()
-    assert main(['run', str(project_file), '--domain', 'west', '--no-postprocess']) == 0
+    assert main(['run', str(project_file), '--no-postprocess']) == 0
     assert len(list((domain.work / 'jobs').glob('*.sh'))) == 2
 
 
 def test_local_timeout_and_retry_are_explicit(project_file):
-    project = load_project(project_file); domain = project.domain('west')
-    with workspace(project, domain):
+    project = load_project(project_file); domain = project
+    with workspace(domain):
         retry = job_config({'attempts': 2, 'retry_codes': [7], 'retry_delay_seconds': .01}, project.file.parent)
         command = [sys.executable, '-c', 'from pathlib import Path; import sys; p=Path("attempt"); old=p.exists(); p.touch(); sys.exit(0 if old else 7)']
         code, _ = execute(command, work=domain.work, cwd=domain.work, job=retry, label='retry')
@@ -253,21 +257,21 @@ def test_failure_notification_is_opt_in_and_does_not_mask_errors(project_file, m
         calls.append(json.loads(request.data))
         raise OSError('https://example.invalid/secret')
     monkeypatch.setattr(notifications, 'urlopen', fail)
-    notifications.notify_failure(project, project.domain('west'), 'run', RuntimeError('job failed'))
-    assert calls == [{'text': 'SnowCast test-project/west failed during run: job failed'}]
+    notifications.notify_failure(project, 'run', RuntimeError('job failed'))
+    assert calls == [{'text': 'SnowCast west failed during run: job failed'}]
     output = capsys.readouterr().err
     assert 'could not be delivered' in output and 'secret' not in output
 
 
 def test_executable_paths_preserve_virtual_environment_symlinks(project_file, tmp_path):
-    link = tmp_path / 'venv-python'; link.symlink_to(sys.executable)
-    change(project_file, lambda r: r['defaults']['model'].update(command=['./venv-python', '-V']))
-    assert load_project(project_file).domain('west').model['command'][0] == str(link)
+    link = project_file.parent / 'venv-python'; link.symlink_to(sys.executable)
+    change(project_file, lambda r: r['model'].update(command=['./venv-python', '-V']))
+    assert load_project(project_file).model['command'][0] == str(link)
 
 
 def test_pbs_pending_state_is_not_silently_resubmitted(project_file, monkeypatch):
-    project = load_project(project_file); domain = project.domain('west')
-    with workspace(project, domain):
+    project = load_project(project_file); domain = project
+    with workspace(domain):
         job = job_config({'mode': 'pbs'}, project.file.parent)
         calls = []
         def run(command, **kw):
@@ -294,13 +298,13 @@ def test_pbs_pending_state_is_not_silently_resubmitted(project_file, monkeypatch
 
 
 def test_checkpoint_pruning_keeps_daily_groups_and_other_domains(project_file):
-    project = load_project(project_file); domain = project.domain('west')
-    with workspace(project, domain):
+    project = load_project(project_file); domain = project
+    with workspace(domain):
         folder = domain.work / 'chm' / 'output' / 'checkpoint'; folder.mkdir(parents=True)
         for stamp in ['20261105T120000', '20261105T230000', '20261106T230000', '20261107T230000', '20261108T230000']:
             (folder / f'checkpoint_{stamp}.np1.json').write_text('{}')
             (folder / stamp).mkdir()
-        other = project.domain('arctic').work / 'chm' / 'output' / 'checkpoint'; other.mkdir(parents=True)
+        other = load_project(clone_project(project_file, 'arctic')).work / 'chm' / 'output' / 'checkpoint'; other.mkdir(parents=True)
         sentinel = other / 'checkpoint_20261101T230000.np1.json'; sentinel.write_text('{}')
         prune_checkpoints(domain)
         assert len(list(folder.glob('*.json'))) == 3
@@ -308,8 +312,8 @@ def test_checkpoint_pruning_keeps_daily_groups_and_other_domains(project_file):
 
 
 def test_exports_preserve_values_masks_and_fixed_grid(project_file, tmp_path):
-    project = load_project(project_file); domain = project.domain('west')
-    with workspace(project, domain):
+    project = load_project(project_file); domain = project
+    with workspace(domain):
         source = exports(tmp_path / 'exports')
         accept_exports(domain, source)
         current = domain.work / 'postprocess' / 'tiff'
@@ -326,8 +330,8 @@ def test_exports_preserve_values_masks_and_fixed_grid(project_file, tmp_path):
 
 
 def test_missing_exports_do_not_rotate_current_data(project_file, tmp_path):
-    project = load_project(project_file); domain = project.domain('west')
-    with workspace(project, domain):
+    project = load_project(project_file); domain = project
+    with workspace(domain):
         source = exports(tmp_path / 'exports')
         accept_exports(domain, source)
         (source / 't-0.001x0.001_20261109T230000.tiff').unlink()
@@ -337,31 +341,31 @@ def test_missing_exports_do_not_rotate_current_data(project_file, tmp_path):
 
 
 def test_original_tiff_keeps_float64_precision_while_cog_is_float32(project_file, tmp_path):
-    change(project_file, lambda r: r['defaults'].update(postprocess={'variables': ['swe']}))
-    project = load_project(project_file); domain = project.domain('west')
+    change(project_file, lambda r: r.update(postprocess={'variables': ['swe']}))
+    project = load_project(project_file); domain = project
     source = tmp_path / 'exports'; source.mkdir()
     values = np.linspace(1.123456789, 400.987654321, 32 * 32).reshape(32, 32)
     with rasterio.open(source / 'swe-0.001x0.001_20261109T230000.tiff', 'w', driver='GTiff',
                        count=1, width=32, height=32, crs='EPSG:4326', dtype='float64', nodata=-9999,
                        transform=from_origin(-116, 52, .001, .001)) as dst:
         dst.write(values, 1)
-    with workspace(project, domain):
+    with workspace(domain):
         accept_exports(domain, source)
         with rasterio.open(next((domain.work / 'postprocess' / 'tiff').glob('*.tiff'))) as data:
             assert data.dtypes == ('float64',)
             np.testing.assert_array_equal(data.read(1), values)
-        catalogue = publish_domain(project, domain, tmp_path / 'site')
+        catalogue = publish_project(domain, tmp_path / 'site')
         asset = catalogue['variables'][0]['assets'][0]
-        with rasterio.open(tmp_path / 'site' / 'data' / project.id / domain.id / asset['path']) as data:
+        with rasterio.open(tmp_path / 'site' / 'data' / project.id / asset['path']) as data:
             assert data.dtypes == ('float32',)
             np.testing.assert_array_equal(data.read(1), values.astype('float32'))
 
 
 def test_projected_grid_and_optional_ascii_with_physical_values(project_file, tmp_path):
-    change(project_file, lambda r: r['defaults'].update(postprocess={'grid': {'crs': 'EPSG:32611', 'resolution': [100, 100]},
+    change(project_file, lambda r: r.update(postprocess={'grid': {'crs': 'EPSG:32611', 'resolution': [100, 100]},
                                                                    'ascii': {'enabled': True, 'resolution': .001}}))
-    project = load_project(project_file); domain = project.domain('arctic')
-    with workspace(project, domain):
+    project = load_project(project_file); domain = load_project(clone_project(project_file, 'arctic'))
+    with workspace(domain):
         source = exports(tmp_path / 'exports'); accept_exports(domain, source)
         with rasterio.open(next((domain.work / 'postprocess' / 'tiff').glob('swe*.tiff'))) as data:
             assert data.crs.to_epsg() == 32611
@@ -374,18 +378,19 @@ def test_projected_grid_and_optional_ascii_with_physical_values(project_file, tm
 
 
 def test_concurrent_publications_merge_registry_and_cleanup_isolated(project_file, tmp_path):
-    project = load_project(project_file); source = exports(tmp_path / 'exports'); site = tmp_path / 'site'
-    for domain in project.domains:
-        with workspace(project, domain):
+    projects = [load_project(p) for p in (project_file, clone_project(project_file, 'arctic'), clone_project(project_file, 'third'))]
+    source = exports(tmp_path / 'exports'); site = tmp_path / 'site'
+    for domain in projects:
+        with workspace(domain):
             accept_exports(domain, source)
     with ThreadPoolExecutor(max_workers=3) as pool:
-        catalogues = list(pool.map(lambda d: publish_domain(project, d, site), project.domains))
+        catalogues = list(pool.map(lambda p: publish_project(p, site), projects))
     registry = json.loads((site / 'domains.json').read_text())
-    assert {entry['id'] for entry in registry['domains']} == {'test-project/west', 'test-project/arctic', 'test-project/third'}
+    assert {entry['id'] for entry in registry['domains']} == {'west', 'arctic', 'third'}
     assert len({c['variables'][0]['assets'][0]['id'] for c in catalogues}) == 3
-    arctic = site / 'data' / 'test-project' / 'arctic' / 'catalog.json'
+    arctic = site / 'data' / 'arctic' / 'catalog.json'
     before = arctic.read_bytes()
-    publish_domain(project, project.domain('west'), site)
+    publish_project(projects[0], site)
     assert arctic.read_bytes() == before
     assert len(json.loads((site / 'domains.json').read_text())['domains']) == 3
 
@@ -406,7 +411,7 @@ def test_ui_deployment_preserves_data_registry_and_live_download_index(tmp_path)
     assert (site / 'domains.json').read_text() == (site / 'download-index.json').read_text() == 'live'
 
 
-def test_runner_to_postprocessing_uses_configured_commands_and_actual_output(project_file, tmp_path):
+def configure_fake_pipeline(project_file, tmp_path):
     fake_model = tmp_path / 'fake_model.py'
     fake_model.write_text('''import json, pathlib, sys
 import numpy as np
@@ -439,21 +444,25 @@ with xr.open_dataset(a.input) as ds:
                 dst.write(np.full((32, 32), ds[var][offset].item(), dtype='float32'), 1)
 ''')
     exporter.chmod(0o755)
-    change(project_file, lambda r: r['defaults']['model'].update(command=[sys.executable, str(fake_model), '{config}'], output_file='custom.nc'))
-    change(project_file, lambda r: r['defaults'].update(postprocess={'exporter': str(exporter), 'variables': ['swe', 'snowdepthavg']}))
-    assert main(['run', str(project_file), '--domain', 'west']) == 0
-    domain = load_project(project_file).domain('west')
+    change(project_file, lambda r: r['model'].update(command=[sys.executable, str(fake_model), '{config}'], output_file='custom.nc'))
+    change(project_file, lambda r: r.update(postprocess={'exporter': str(exporter), 'variables': ['swe', 'snowdepthavg']}))
+
+
+def test_runner_to_postprocessing_uses_configured_commands_and_actual_output(project_file, tmp_path):
+    configure_fake_pipeline(project_file, tmp_path)
+    assert main(['run', str(project_file)]) == 0
+    domain = load_project(project_file)
     tiffs = domain.work / 'postprocess' / 'tiff'
     assert len(list(tiffs.glob('*.tiff'))) == 4
     state = json.loads((domain.work / 'status.json').read_text())
     assert state['output']['times'] == ['20261108T230000', '20261109T230000']
     assert not list((domain.work / 'postprocess' / 'ascii').iterdir())
-    assert main(['publish', str(project_file), '--domain', 'west', '--site-dir', str(tmp_path / 'site')]) == 0
+    assert main(['publish', str(project_file), '--site-dir', str(tmp_path / 'site')]) == 0
     assert (tmp_path / 'site' / 'domains.json').exists()
 
 
 def test_pbs_script_executes_setup_and_persists_exit_status(project_file, monkeypatch):
-    project = load_project(project_file); domain = project.domain('west')
+    project = load_project(project_file); domain = project
     setup = project_file.parent / 'setup.sh'; setup.write_text('export TEST_SETTING=ready\n')
     job = job_config({'mode': 'pbs', 'setup': str(setup), 'nodes': 2, 'cpus_per_node': 4, 'ranks_per_node': 2,
                       'ranks': 4, 'launcher': ['env', 'TEST_RANKS={ranks}']}, project_file.parent)
@@ -468,7 +477,7 @@ def test_pbs_script_executes_setup_and_persists_exit_status(project_file, monkey
         assert result.returncode == 0, result.stderr
         return subprocess.CompletedProcess(command, 0, '123.server\n', '')
     monkeypatch.setattr(subprocess, 'run', qsub)
-    with workspace(project, domain):
+    with workspace(domain):
         code, _ = execute([sys.executable, '-c', 'import os; assert os.environ["TEST_SETTING"] == "ready"; assert os.environ["TEST_RANKS"] == "4"; assert os.environ["CHM_WALLCLOCK_LIMIT"] == "01:00:00"'],
                           work=domain.work, cwd=domain.work, job=job, label='pbs')
         assert code == 0 and len(calls) == 1
@@ -478,9 +487,9 @@ def test_pbs_script_executes_setup_and_persists_exit_status(project_file, monkey
 def test_local_job_retains_domain_lock_after_runner_is_killed(project_file):
     fake = project_file.parent / 'long_model.py'
     fake.write_text('import os, pathlib, time\npathlib.Path("running").write_text(str(os.getpid()))\ntime.sleep(20)\n')
-    change(project_file, lambda r: r['defaults']['model'].update(command=[sys.executable, str(fake)]))
-    project = load_project(project_file); domain = project.domain('west')
-    runner = subprocess.Popen([sys.executable, '-m', 'snowcast_runner', 'run', str(project_file), '--domain', 'west', '--no-postprocess'],
+    change(project_file, lambda r: r['model'].update(command=[sys.executable, str(fake)]))
+    project = load_project(project_file); domain = project
+    runner = subprocess.Popen([sys.executable, '-m', 'snowcast_runner', 'run', str(project_file), '--no-postprocess'],
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     child_pid = None
     try:
@@ -492,7 +501,7 @@ def test_local_job_retains_domain_lock_after_runner_is_killed(project_file):
         child_pid = int(marker.read_text())
         runner.kill(); runner.wait()
         with pytest.raises(RuntimeError, match='already running'):
-            with workspace(project, domain):
+            with workspace(domain):
                 pass
     finally:
         import signal
@@ -506,16 +515,39 @@ def test_local_job_retains_domain_lock_after_runner_is_killed(project_file):
 
 
 def test_site_parent_permissions_and_catalogue_ranges(project_file, tmp_path):
-    change(project_file, lambda r: r['domains'][0].update(display={'ranges': {'swe': [0, 200]}}))
-    project = load_project(project_file); domain = project.domain('west')
+    change(project_file, lambda r: r.update(display={'ranges': {'swe': [0, 200]}}))
+    project = load_project(project_file); domain = project
     site = tmp_path / 'site'
-    with workspace(project, domain):
+    with workspace(domain):
         accept_exports(domain, exports(tmp_path / 'exports'))
         old = os.umask(0o077)
         try:
-            catalogue = publish_domain(project, domain, site)
+            catalogue = publish_project(domain, site)
         finally:
             os.umask(old)
     for folder in (site, site / 'data', site / 'data' / project.id):
         assert folder.stat().st_mode & 0o777 == 0o755
     assert catalogue['variables'][0]['range'] == [0, 200]
+
+
+@pytest.mark.parametrize('relative', ['chm', 'chm/output', 'jobs', 'postprocess', 'postprocess/archive_tiff'])
+def test_managed_directories_cannot_write_into_another_project(project_file, relative):
+    project = load_project(project_file)
+    other = load_project(clone_project(project_file, 'arctic'))
+    other.work.mkdir(parents=True)
+    sentinel = other.work / 'sentinel'
+    sentinel.write_text('keep')
+    target = project.work / relative
+    target.parent.mkdir(parents=True)
+    target.symlink_to(other.work, target_is_directory=True)
+    assert main(['prepare', str(project_file)]) == 1
+    assert list(other.work.iterdir()) == [sentinel]
+    assert sentinel.read_text() == 'keep'
+
+
+def test_legacy_manifest_has_an_actionable_migration_error(project_file, capsys):
+    change(project_file, lambda r: r.update(version=1, defaults={}, domains=[{'id': 'west'}]))
+    assert main(['validate', str(project_file)]) == 1
+    error = capsys.readouterr().err
+    assert 'version 2 project folder per domain' in error and 'projects/README.md' in error
+    assert not (project_file.parent / 'work').exists()

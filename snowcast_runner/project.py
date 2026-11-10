@@ -100,7 +100,8 @@ def job_config(raw, base):
 
 
 @dataclass(frozen=True)
-class Domain:
+class Project:
+    file: Path
     id: str
     name: str
     work: Path
@@ -108,23 +109,7 @@ class Domain:
     forcing: dict
     postprocess: dict
     display: dict
-
-
-@dataclass(frozen=True)
-class Project:
-    file: Path
-    id: str
-    work_root: Path
-    domains: tuple[Domain, ...]
     notifications: dict
-
-    def domain(self, identifier=None):
-        if identifier is None and len(self.domains) == 1:
-            return self.domains[0]
-        for domain in self.domains:
-            if domain.id == identifier:
-                return domain
-        raise ValueError(f'Select --domain from: {", ".join(d.id for d in self.domains)}')
 
 
 def load_project(filename):
@@ -132,149 +117,143 @@ def load_project(filename):
     if filename.is_dir():
         filename /= 'snowcast.json'
     raw = json.loads(filename.read_text())
-    keys(raw, 'version id work_root defaults domains notifications', 'project')
-    if type(raw.get('version')) is not int or raw['version'] != 1:
-        raise ValueError('Unsupported project version; expected 1')
+    if isinstance(raw, dict) and (raw.get('version') == 1 or 'domains' in raw or 'defaults' in raw):
+        raise ValueError('Project version 1 used nested domains. Create a version 2 project folder per domain; '
+                         'see projects/README.md for migration. Existing work is not moved automatically.')
+    keys(raw, 'version id name model forcing postprocess display notifications', 'project')
+    if type(raw.get('version')) is not int or raw['version'] != 2:
+        raise ValueError('Unsupported project version; expected 2')
     identifier = slug(raw.get('id'), 'project.id')
+    display_name = raw.get('name', identifier)
+    if not isinstance(display_name, str) or not display_name.strip():
+        raise ValueError('project.name must be a nonempty string')
     base = filename.parent
-    root = path(base, raw.get('work_root', 'work'))
-    if base == root or base.is_relative_to(root):
-        raise ValueError('work_root must not contain the project definition')
-    defaults = raw.get('defaults', {})
+    work = base / 'work'
+    if work.is_symlink():
+        raise ValueError('Project work directory cannot be a symlink; place the project folder on the desired filesystem')
     notifications = raw.get('notifications', {})
     keys(notifications, 'webhook_env', 'notifications')
     if notifications and not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', str(notifications.get('webhook_env', ''))):
         raise ValueError('notifications.webhook_env must name an environment variable')
-    keys(defaults, 'model forcing postprocess display', 'defaults')
-    if not isinstance(raw.get('domains'), list) or not raw['domains']:
-        raise ValueError('A project requires at least one domain')
-    domains = []
-    for entry in raw['domains']:
-        keys(entry, 'id name model forcing postprocess display', 'domain')
-        d = merge(defaults, entry)
-        did = slug(d.get('id'), 'domain.id')
-        if 'name' in d and (not isinstance(d['name'], str) or not d['name'].strip()):
-            raise ValueError('domain.name must be a nonempty string')
-        if any(prior.id == did for prior in domains):
-            raise ValueError(f'Duplicate domain ID: {did}')
-        model = d.get('model', {})
-        keys(model, 'config start_date command output_file max_runs checkpoint_keep_days no_data_codes assets job', f'{did}.model')
-        model = merge({'command': ['CHM', '-f', '{config}'], 'output_file': 'output.nc', 'max_runs': 10,
-                       'checkpoint_keep_days': 3, 'no_data_codes': [], 'assets': {}, 'job': {}}, model)
-        model['config'] = path(base, model.get('config'))
-        if model.get('start_date') is not None:
-            if not isinstance(model['start_date'], str):
-                raise ValueError('model.start_date must be YYYY-MM-DD')
-            model['start_date'] = datetime.strptime(model['start_date'], '%Y-%m-%d').strftime('%Y-%m-%d')
-        if not isinstance(model['output_file'], str) or not model['output_file'] or Path(model['output_file']).name != model['output_file']:
-            raise ValueError('model.output_file must be a filename within the domain output directory')
-        for field in ('max_runs', 'checkpoint_keep_days'):
-            positive(model[field], f'model.{field}', integer=True)
-        if not isinstance(model['no_data_codes'], list) or any(type(c) is not int or c <= 0 for c in model['no_data_codes']):
-            raise ValueError('model.no_data_codes must list nonzero integer exit codes')
-        if not isinstance(model['command'], list) or not model['command'] or any(not isinstance(s, str) or not s for s in model['command']):
-            raise ValueError('model.command must be an argument list')
-        model['command'][0] = executable(base, model['command'][0])
-        model['job'] = job_config(model['job'], base)
-        if not isinstance(model['assets'], dict):
-            raise ValueError('model.assets must map workspace filenames to input paths')
-        for name, source in model['assets'].items():
-            if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', name):
-                raise ValueError('model.assets aliases must be simple filenames')
-            if name in {'output', 'log', 'config', 'config.json', 'met'}:
-                raise ValueError(f'Reserved model asset name: {name}')
-            model['assets'][name] = path(base, source)
-        forcing = d.get('forcing', {})
-        keys(forcing, 'index archive', f'{did}.forcing')
-        archive = path(base, forcing['archive']) if forcing.get('archive') is not None else None
-        managed_index = forcing.get('index') is None
-        if archive is None and managed_index:
-            raise ValueError('Provide forcing.archive (NetCDF directory) or forcing.index (existing CHM metadata JSON)')
-        forcing = {'archive': archive, 'managed_index': managed_index,
-                   'index': root / did / 'met' / 'metadata.json' if managed_index else path(base, forcing['index'])}
-        if forcing['archive'] is not None:
-            for prior in domains:
-                if (prior.forcing['index'] == forcing['index'] and
-                        prior.forcing.get('archive') not in (None, forcing['archive'])):
-                    raise ValueError('Domains with different forcing archives must use different indexes')
-        pp = d.get('postprocess', {})
-        keys(pp, 'variables source_resolution method recent_steps exporter mesh grid ascii job', f'{did}.postprocess')
-        pp = merge({'variables': ['swe', 'snowdepthavg', 't'], 'source_resolution': 0.001,
-                    'method': 'conservative', 'recent_steps': 2, 'exporter': 'chm_ugrid2grid',
-                    'grid': {}, 'ascii': {'enabled': False}, 'job': {}}, pp)
-        variables(pp['variables'], 'postprocess.variables')
-        positive(pp['source_resolution'], 'postprocess.source_resolution')
-        positive(pp['recent_steps'], 'postprocess.recent_steps', integer=True)
-        if pp['method'] not in ('conservative', 'bilinear'):
-            raise ValueError('postprocess.method must be conservative or bilinear')
-        if not isinstance(pp['exporter'], str) or not pp['exporter']:
-            raise ValueError('postprocess.exporter must name an executable')
-        pp['exporter'] = executable(base, pp['exporter'])
-        if pp.get('mesh'):
-            pp['mesh'] = path(base, pp['mesh'])
-        pp['job'] = job_config(pp['job'], base)
-        keys(pp['grid'], 'crs resolution bounds resampling', 'postprocess.grid')
-        grid = merge({'crs': 'EPSG:4326', 'resolution': [pp['source_resolution']] * 2,
-                      'bounds': None, 'resampling': 'nearest'}, pp['grid'])
-        if not isinstance(grid['resolution'], list) or len(grid['resolution']) != 2:
-            raise ValueError('grid.resolution must be [x_spacing, y_spacing] in target CRS units')
-        for v in grid['resolution']:
-            positive(v, 'grid.resolution')
-        bounds = grid['bounds']
-        if bounds is not None and (not isinstance(bounds, list) or len(bounds) != 4 or
-                                  any(type(v) not in (int, float) or not math.isfinite(v) for v in bounds) or
-                                  bounds[0] >= bounds[2] or bounds[1] >= bounds[3]):
-            raise ValueError('grid.bounds must be [west, south, east, north] in target CRS units')
-        if grid['resampling'] not in ('nearest', 'bilinear', 'average'):
-            raise ValueError('grid.resampling must be nearest, bilinear or average')
-        pp['grid'] = grid
-        keys(pp['ascii'], 'enabled variables resolution', 'postprocess.ascii')
-        pp['ascii'] = merge({'enabled': False, 'variables': ['swe', 't'], 'resolution': 0.036}, pp['ascii'])
-        if type(pp['ascii']['enabled']) is not bool:
-            raise ValueError('ascii.enabled must be true or false')
-        variables(pp['ascii']['variables'], 'ascii.variables')
-        positive(pp['ascii']['resolution'], 'ascii.resolution')
-        if pp['ascii']['enabled'] and not set(pp['ascii']['variables']) <= set(pp['variables']):
-            raise ValueError('ASCII variables must be included in postprocess.variables')
-        display = d.get('display', {})
-        keys(display, 'ranges', 'display')
-        if not isinstance(display.get('ranges', {}), dict):
-            raise ValueError('display.ranges must be an object')
-        for var, span in display.get('ranges', {}).items():
-            if var not in VARIABLES or not isinstance(span, list) or len(span) != 2 or any(type(x) not in (int, float) or not math.isfinite(x) for x in span) or span[0] >= span[1]:
-                raise ValueError('display.ranges must map supported variables to increasing finite pairs')
-        domains.append(Domain(did, d.get('name', did), root / did, model, forcing, pp, display))
-    return Project(filename, identifier, root, tuple(domains), notifications)
+    model = raw.get('model', {})
+    keys(model, 'config overrides remove start_date command output_file max_runs checkpoint_keep_days no_data_codes assets job', f'{identifier}.model')
+    model = merge({'command': ['CHM', '-f', '{config}'], 'output_file': 'output.nc', 'max_runs': 10,
+                   'checkpoint_keep_days': 3, 'no_data_codes': [], 'assets': {}, 'job': {}}, model)
+    model['config'] = path(base, model.get('config'))
+    if model.get('overrides') is not None:
+        model['overrides'] = path(base, model['overrides'])
+    removals = model.setdefault('remove', [])
+    if not isinstance(removals, list) or any(not isinstance(item, str) or not item.startswith('/') or
+                                           re.search(r'~(?![01])', item) for item in removals):
+        raise ValueError('model.remove must list JSON pointers, e.g. /config/unused_module')
+    if model.get('start_date') is not None:
+        if not isinstance(model['start_date'], str):
+            raise ValueError('model.start_date must be YYYY-MM-DD')
+        model['start_date'] = datetime.strptime(model['start_date'], '%Y-%m-%d').strftime('%Y-%m-%d')
+    if not isinstance(model['output_file'], str) or not model['output_file'] or Path(model['output_file']).name != model['output_file']:
+        raise ValueError('model.output_file must be a filename within the project output directory')
+    for field in ('max_runs', 'checkpoint_keep_days'):
+        positive(model[field], f'model.{field}', integer=True)
+    if not isinstance(model['no_data_codes'], list) or any(type(c) is not int or c <= 0 for c in model['no_data_codes']):
+        raise ValueError('model.no_data_codes must list nonzero integer exit codes')
+    if not isinstance(model['command'], list) or not model['command'] or any(not isinstance(s, str) or not s for s in model['command']):
+        raise ValueError('model.command must be an argument list')
+    model['command'][0] = executable(base, model['command'][0])
+    model['job'] = job_config(model['job'], base)
+    if not isinstance(model['assets'], dict):
+        raise ValueError('model.assets must map workspace filenames to input paths')
+    for name, source in model['assets'].items():
+        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', name):
+            raise ValueError('model.assets aliases must be simple filenames')
+        if name in {'output', 'log', 'config', 'config.json', 'met'}:
+            raise ValueError(f'Reserved model asset name: {name}')
+        model['assets'][name] = path(base, source)
+    forcing = raw.get('forcing', {})
+    keys(forcing, 'index archive', f'{identifier}.forcing')
+    archive = path(base, forcing['archive']) if forcing.get('archive') is not None else None
+    managed_index = forcing.get('index') is None
+    if archive is None and managed_index:
+        raise ValueError('Provide forcing.archive (NetCDF directory) or forcing.index (existing CHM metadata JSON)')
+    forcing = {'archive': archive, 'managed_index': managed_index,
+               'index': work / 'met' / 'metadata.json' if managed_index else path(base, forcing['index'])}
+    pp = raw.get('postprocess', {})
+    keys(pp, 'variables source_resolution method recent_steps exporter mesh grid ascii job', f'{identifier}.postprocess')
+    pp = merge({'variables': ['swe', 'snowdepthavg', 't'], 'source_resolution': 0.001,
+                'method': 'conservative', 'recent_steps': 2, 'exporter': 'chm_ugrid2grid',
+                'grid': {}, 'ascii': {'enabled': False}, 'job': {}}, pp)
+    variables(pp['variables'], 'postprocess.variables')
+    positive(pp['source_resolution'], 'postprocess.source_resolution')
+    positive(pp['recent_steps'], 'postprocess.recent_steps', integer=True)
+    if pp['method'] not in ('conservative', 'bilinear'):
+        raise ValueError('postprocess.method must be conservative or bilinear')
+    if not isinstance(pp['exporter'], str) or not pp['exporter']:
+        raise ValueError('postprocess.exporter must name an executable')
+    pp['exporter'] = executable(base, pp['exporter'])
+    if pp.get('mesh'):
+        pp['mesh'] = path(base, pp['mesh'])
+    pp['job'] = job_config(pp['job'], base)
+    keys(pp['grid'], 'crs resolution bounds resampling', 'postprocess.grid')
+    grid = merge({'crs': 'EPSG:4326', 'resolution': [pp['source_resolution']] * 2,
+                  'bounds': None, 'resampling': 'nearest'}, pp['grid'])
+    if not isinstance(grid['resolution'], list) or len(grid['resolution']) != 2:
+        raise ValueError('grid.resolution must be [x_spacing, y_spacing] in target CRS units')
+    for v in grid['resolution']:
+        positive(v, 'grid.resolution')
+    bounds = grid['bounds']
+    if bounds is not None and (not isinstance(bounds, list) or len(bounds) != 4 or
+                              any(type(v) not in (int, float) or not math.isfinite(v) for v in bounds) or
+                              bounds[0] >= bounds[2] or bounds[1] >= bounds[3]):
+        raise ValueError('grid.bounds must be [west, south, east, north] in target CRS units')
+    if grid['resampling'] not in ('nearest', 'bilinear', 'average'):
+        raise ValueError('grid.resampling must be nearest, bilinear or average')
+    pp['grid'] = grid
+    keys(pp['ascii'], 'enabled variables resolution', 'postprocess.ascii')
+    pp['ascii'] = merge({'enabled': False, 'variables': ['swe', 't'], 'resolution': 0.036}, pp['ascii'])
+    if type(pp['ascii']['enabled']) is not bool:
+        raise ValueError('ascii.enabled must be true or false')
+    variables(pp['ascii']['variables'], 'ascii.variables')
+    positive(pp['ascii']['resolution'], 'ascii.resolution')
+    if pp['ascii']['enabled'] and not set(pp['ascii']['variables']) <= set(pp['variables']):
+        raise ValueError('ASCII variables must be included in postprocess.variables')
+    display = raw.get('display', {})
+    keys(display, 'ranges', 'display')
+    if not isinstance(display.get('ranges', {}), dict):
+        raise ValueError('display.ranges must be an object')
+    for var, span in display.get('ranges', {}).items():
+        if var not in VARIABLES or not isinstance(span, list) or len(span) != 2 or any(type(x) not in (int, float) or not math.isfinite(x) for x in span) or span[0] >= span[1]:
+            raise ValueError('display.ranges must map supported variables to increasing finite pairs')
+    return Project(filename, identifier, display_name, work, model, forcing, pp, display, notifications)
 
 
-def validate_forcing(project, domain):
-    index, archive = domain.forcing['index'], domain.forcing.get('archive')
-    inputs = [archive] if domain.forcing['managed_index'] else [index, archive]
+def validate_forcing(project):
+    index, archive = project.forcing['index'], project.forcing.get('archive')
+    inputs = [archive] if project.forcing['managed_index'] else [index, archive]
     for source in inputs:
-        if source is not None and source.is_relative_to(project.work_root):
-            raise ValueError(f'{domain.id}: forcing inputs must be outside work_root: {source}')
+        if source is not None and source.is_relative_to(project.work):
+            raise ValueError(f'{project.id}: forcing inputs must be outside work/: {source}')
     if archive is not None and not archive.is_dir():
-        raise FileNotFoundError(f'{domain.id}: forcing archive directory missing: {archive}')
-    if domain.forcing['managed_index'] and index.is_symlink():
-        raise ValueError(f'{domain.id}: managed forcing metadata cannot be a symlink: {index}')
+        raise FileNotFoundError(f'{project.id}: forcing archive directory missing: {archive}')
+    if project.forcing['managed_index'] and index.is_symlink():
+        raise ValueError(f'{project.id}: managed forcing metadata cannot be a symlink: {index}')
     if index.is_dir():
-        raise ValueError(f'{domain.id}: forcing.index is a directory; set forcing.archive to the NetCDF directory instead: {index}')
+        raise ValueError(f'{project.id}: forcing.index is a directory; set forcing.archive to the NetCDF directory instead: {index}')
     if (index.exists() or archive is None) and not index.is_file():
-        raise FileNotFoundError(f'{domain.id}: forcing metadata file missing or invalid: {index}')
+        raise FileNotFoundError(f'{project.id}: forcing metadata file missing or invalid: {index}')
 
 
-def validate_inputs(project, domains=None):
+def validate_inputs(project):
     from rasterio.crs import CRS
-    for d in project.domains if domains is None else domains:
-        validate_forcing(project, d)
-        inputs = [d.model['config'], *d.model['assets'].values()]
-        inputs += [job['setup'] for job in (d.model['job'], d.postprocess['job']) if job['setup']]
-        if d.postprocess.get('mesh'):
-            inputs.append(d.postprocess['mesh'])
-        for source in inputs:
-            if not source.exists():
-                raise FileNotFoundError(f'{d.id}: input missing: {source}')
-            if source.is_relative_to(project.work_root):
-                raise ValueError(f'{d.id}: project inputs must be outside work_root: {source}')
-        if not CRS.from_user_input(d.postprocess['grid']['crs']).to_epsg():
-            raise ValueError(f'{d.id}: grid CRS must have an EPSG identifier')
+    validate_forcing(project)
+    inputs = [project.model['config'], *project.model['assets'].values()]
+    if project.model.get('overrides'):
+        inputs.append(project.model['overrides'])
+    inputs += [job['setup'] for job in (project.model['job'], project.postprocess['job']) if job['setup']]
+    if project.postprocess.get('mesh'):
+        inputs.append(project.postprocess['mesh'])
+    for source in inputs:
+        if not source.exists():
+            raise FileNotFoundError(f'{project.id}: input missing: {source}')
+        if source.is_relative_to(project.work):
+            raise ValueError(f'{project.id}: project inputs must be outside work/: {source}')
+    if not CRS.from_user_input(project.postprocess['grid']['crs']).to_epsg():
+        raise ValueError(f'{project.id}: grid CRS must have an EPSG identifier')

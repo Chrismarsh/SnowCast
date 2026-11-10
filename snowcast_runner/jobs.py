@@ -8,7 +8,7 @@ import subprocess
 import time
 import uuid
 
-from postprocess.cog_store import atomic_json
+from .cog_store import atomic_json
 from .state import RUN_LOCK_FD
 
 

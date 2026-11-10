@@ -1,4 +1,4 @@
-"""Validate exports and normalize them to a persistent, per-domain raster grid."""
+"""Validate exports and normalize them to a persistent, per-project raster grid."""
 from datetime import datetime
 from contextlib import ExitStack
 import json
@@ -16,7 +16,7 @@ from rasterio.transform import Affine, from_origin
 from rasterio.vrt import WarpedVRT
 from rasterio.warp import calculate_default_transform
 
-from postprocess.cog_store import atomic_json
+from .cog_store import atomic_json
 from .jobs import execute, JobFailed
 
 TIFF = re.compile(r'(?P<variable>swe|snowdepthavg|t)-[^_]+_(?P<time>\d{8}T\d{6})\.tiff?$')
@@ -104,8 +104,8 @@ def dataset_files(path):
             {path.name + suffix for suffix in ('.msk', '.aux.xml', '.ovr', '.msk.aux.xml', '.ovr.aux.xml')}]
 
 
-def accept_exports(domain, source, expected_times=None):
-    pp = domain.postprocess
+def accept_exports(project, source, expected_times=None):
+    pp = project.postprocess
     found = {}
     for file in sorted(Path(source).glob('*.tif*')):
         match = TIFF.fullmatch(file.name)
@@ -121,7 +121,7 @@ def accept_exports(domain, source, expected_times=None):
         raise ValueError('Exporter did not produce the requested timestamps')
     if set(found) != {(v, t) for v in pp['variables'] for t in times}:
         raise ValueError('Exporter did not produce every requested variable for each timestamp')
-    folder = domain.work / 'postprocess'
+    folder = project.work / 'postprocess'
     folder.mkdir(exist_ok=True)
     state_path = folder / 'grid.json'
     saved = json.loads(state_path.read_text()) if state_path.exists() else None
@@ -167,10 +167,10 @@ def accept_exports(domain, source, expected_times=None):
     return {'times': times, 'variables': pp['variables'], 'grid': grid['target']}
 
 
-def postprocess(domain):
+def postprocess(project):
     import xarray as xr
-    pp = domain.postprocess
-    source = domain.work / 'chm' / 'output' / domain.model['output_file']
+    pp = project.postprocess
+    source = project.work / 'chm' / 'output' / project.model['output_file']
     with xr.open_dataset(source) as data:
         if 'time' not in data or not data.time.size:
             raise ValueError(f'Model output has no time coordinate: {source}')
@@ -179,7 +179,7 @@ def postprocess(domain):
             raise ValueError(f'Model output missing variables: {sorted(missing)}')
         offsets = list(range(max(0, data.time.size - pp['recent_steps']), data.time.size))
         stamps = [str(data.time[i].dt.strftime('%Y%m%dT%H%M%S').item()) for i in offsets]
-    folder = domain.work / 'postprocess'
+    folder = project.work / 'postprocess'
     folder.mkdir(exist_ok=True)
     # A stable staging path lets a scheduler job finish after its launcher exits.
     # Pending PBS jobs are recovered before this directory can be reset.
@@ -191,7 +191,7 @@ def postprocess(domain):
                '--tiff-output', str(raw), '--overwrite', '--variables', *pp['variables']]
     if pp.get('mesh'):
         command.extend(['--mesh', str(pp['mesh'])])
-    code, log = execute(command, work=domain.work, cwd=folder, job=pp['job'], label=f'{domain.id}-grid')
+    code, log = execute(command, work=project.work, cwd=folder, job=pp['job'], label=f'{project.id}-grid')
     if code:
-        raise JobFailed(f'{domain.id}: regridding exit {code}; see {log}')
-    return accept_exports(domain, raw, stamps)
+        raise JobFailed(f'{project.id}: regridding exit {code}; see {log}')
+    return accept_exports(project, raw, stamps)

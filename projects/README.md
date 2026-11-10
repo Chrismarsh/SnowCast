@@ -1,280 +1,334 @@
-# SnowCast projects
+# Independent SnowCast projects
 
-SnowCast is an installable runner. A project defines independent CHM domains;
-the shared code checkout does not hold their generated configuration or state.
-The first project example is [western/snowcast.json](western/snowcast.json).
-It preserves the current western model's inputs, output variables, 800-rank
-allocations and AEP exports, uses a new `runs/western-cordillera/` workspace,
-and starts on September 1, 2026. It does not automatically copy or adopt the
-production checkpoints.
+One project is one independently configured CHM domain/run. Its folder owns its
+configuration, generated jobs, forcing metadata, checkpoints, outputs and
+processed products. The installed `snowcast_runner` package owns the reusable
+implementation. Projects do not depend on the SnowCast checkout or on one another.
 
-## Install and validate
+A separate site configuration will select projects for a shared website. That
+site configuration and the simultaneous multi-project map are the next stage;
+this stage implements independent projects through postprocessing.
 
-Install into your existing CHM/Spack Python environment:
+## Install and start a project
+
+Install into your existing CHM/Spack Python environment **from the repository root,
+where `pyproject.toml` is located**:
 
 ```bash
+cd /path/to/SnowCast
 python -m pip install -e .
-snowcast validate projects/western --config-only
-snowcast validate projects/western
+snowcast validate projects/western-cordillera --config-only
 ```
 
-`--config-only` checks configuration structure without requiring meshes or
-forcing. Full validation checks input paths, CRS, CHM mesh references and MPI
-partition counts. Neither command submits jobs or creates a workspace.
-CHM, `chm_ugrid2grid`, MPI and PBS remain externally installed executables.
-The project can live outside this repository; all paths are relative to its
-`snowcast.json`, never the caller's working directory. Executable names without
-a slash resolve through PATH inside the job environment. Commands are argument
-arrays, not shell strings; a job's explicit `setup` file supplies shell setup.
+For an installation that does not depend on keeping the checkout, use
+`python -m pip install /path/to/SnowCast` instead. CHM, `chm_ugrid2grid`, MPI and
+PBS remain externally installed executables.
 
-The old `python snowcast.py -c config_hrdps_west.py` workflow remains available.
-Both runners use the same incremental met updater and index lock. The legacy
-plot/upload stages are not invoked by the project runner. Do not schedule both
-workflows against the same mutable checkpoints or model outputs.
+Copy [western-cordillera](western-cordillera/) to your project location. The
+example retains the Western model's physics, 800-rank allocations, output
+variables, AEP exports and September 1, 2026 start date. Before using it, set:
 
-## Project definition
+- `forcing.archive` in `snowcast.json` to the full met archive path.
+- `meshes.mesh` in `chm/western.json` to the actual partition file.
+- `environment.sh` to load your installed CHM/pyCHM/MPI environment, or leave its
+  no-op setup if the invoking environment already supplies those executables.
+- The model and postprocessing PBS allocations for your cluster.
 
-The manifest has `version: 1`, an `id`, a `work_root`, optional `defaults`, and
-a list of `domains`. Each domain has an `id` and optional `name`, `model`,
-`forcing`, `postprocess`, and `display`. Nested objects inherit defaults;
-lists replace defaults. Unknown keys are rejected so spelling mistakes cannot
-silently select a default path or grid. IDs are lowercase letters, digits,
-hyphens or underscores, starting with a letter. IDs must be unique in a project.
+The example contains explicit placeholder paths; it does not guess a production
+installation or adopt existing checkpoints. Its authored configuration is
+independent of `run_chm/`, `met/`, and other legacy checkout directories.
 
-Each domain gets `work_root/<domain-id>/`. A workspace ownership marker prevents
-different project IDs from claiming the same work root. Projects can share
-read-only meshes and forcing outside that root. A project ID must remain stable
-and be unique among projects publishing to the same site.
+```bash
+snowcast validate /projects/western-cordillera
+snowcast prepare /projects/western-cordillera
+snowcast run /projects/western-cordillera
+snowcast status /projects/western-cordillera
+```
 
-| Section | Settings |
-| --- | --- |
-| `model` | `config` (JSON/JSON5 CHM template), optional `start_date`, `command` (default `["CHM", "-f", "{config}"]`), `output_file` (default `output.nc`), `max_runs` (10), `checkpoint_keep_days` (3), `no_data_codes` (empty), `assets`, `job` |
-| `forcing` | `archive`: path to the NetCDF directory; optional `index` to reuse an existing/shared CHM metadata JSON instead of the automatically managed domain index |
-| `postprocess` | `variables`, `source_resolution` (degrees), `method`, `recent_steps`, `exporter`, optional UGRID topology `mesh`, `grid`, `ascii`, `job` |
-| `grid` | `crs`, `[dx, dy]` `resolution` in target CRS units, optional `[west, south, east, north]` `bounds`, `resampling` (`nearest`, `bilinear`, `average`) |
-| `ascii` | `enabled` (false), `variables` (`swe`, `t`), `resolution` (0.036 degrees); exports latest selected timestamp in EPSG:4326 |
-| `display` | `ranges`, mapping `swe`, `snowdepthavg`, or `t` to `[minimum, maximum]`; published in the domain catalogue |
+`validate --config-only` checks the manifest without requiring model inputs.
+Full validation also resolves CHM overrides and checks input paths, grid CRS
+and mesh partition ranks. Validation does not create state or submit jobs.
+`prepare` creates the resolved configuration and forcing snapshot without
+submitting a new job. All commands accept a directory or its `snowcast.json`.
+There is no `--domain` argument.
 
-The initial adapter supports SWE, snow depth and temperature. Domain names and
-locations are arbitrary; additional variables or model engines require an
-adapter change. CHM physics remain in the CHM template. Its mesh paths resolve
-relative to that template. Use absolute references for additional CHM input
-paths or map workspace filenames/directories to input paths with `model.assets`.
-Assets are symlinked as inputs; output, config and log names are reserved.
+## Manifest and file ownership
 
-Under `defaults` or an individual domain, set `forcing.archive` to the full path
-of the directory containing the met NetCDFs. Set `model.start_date` to the first
-day of the simulation. For example, these settings can sit alongside the other
-model/PBS settings in `defaults`:
+Version 2 is flat. A minimal project is:
 
 ```json
 {
+  "version": 2,
+  "id": "western-cordillera",
+  "name": "Western Cordillera",
   "model": {
-    "config": "../../run_chm/config.json",
+    "config": "chm/base.json",
+    "overrides": "chm/western.json",
     "start_date": "2026-09-01"
   },
   "forcing": {"archive": "/absolute/path/to/hrdps"}
 }
 ```
 
-Each domain inherits these values and can override the archive, start date and
-model/PBS settings independently. No `index` path or repository symlink is
-required. Relative archive paths also work, resolved against `snowcast.json`.
-The checked-in western example uses `../../met/hrdps` to accept an existing
-installation's directory/symlink; replace it with your archive's full path if
-needed. The updater reads the configured directory directly.
+`id` is stable, starts with a lowercase letter, and contains lowercase letters,
+digits, hyphens or underscores. Use distinct IDs for projects you intend to
+publish together. `name` is an optional display label. Unknown settings are
+rejected. `defaults`, `domains`, and `work_root` no longer exist.
 
-`prepare` manages these files separately for each domain:
-
-| Path under `work_root/<domain>/` | Purpose |
+| Path within the project | Owner and purpose |
 | --- | --- |
-| `met/archive` | Convenience symlink to the external archive |
-| `met/metadata.json` | Incrementally maintained CHM metadata, created automatically |
-| `met/index.json` | Fixed, date-filtered snapshot used by the generated CHM configuration |
+| `snowcast.json`, `chm/`, `environment.sh` | Authored project settings; never rewritten by preparation |
+| `work/met/metadata.json` | Incremental metadata when an archive is configured without an explicit index |
+| `work/met/index.json` | Fixed metadata snapshot supplied to CHM |
+| `work/met/archive` | Convenience link to the configured archive |
+| `work/chm/config.json` | Resolved CHM configuration |
+| `work/chm/output/` | Model output, `clean_exit`, and `checkpoint/` |
+| `work/jobs/` | Generated scripts, execution logs, exit results and pending PBS submissions |
+| `work/postprocess/` | Grid definition, current and archived TIFF/ASCII products, export staging |
+| `work/status.json` | Last recorded stage/state and failure details |
 
-Repeated preparation reuses the correct archive link. An existing directory or
-link to a different archive is rejected rather than overwritten. The source
-archive can be read-only; all automatically generated metadata stays in the
-domain workspace.
+Place the project folder itself on the desired filesystem; `work/` cannot be
+redirected with a symlink. Read-only inputs can be shared through absolute paths.
+Paths in the manifest resolve relative to `snowcast.json`, independent of the
+caller's working directory. Executable names without a slash resolve through
+PATH inside the job environment. Commands use argument arrays, not shell strings.
 
-`model.start_date` applies to `prepare`, `met-update` and `run`, as well as to
-CHM itself. For daily `YYYYMMDD.nc` or `YYYY-MM-DD.nc` files, the updater checks
-the filename first: a start date of `2026-09-01` skips August 31 and earlier
-before resolving, inspecting or opening those files. September 1 is included.
-Directory entries must still be listed to discover new files. Files with other
-names use their actual NetCDF time coordinates to determine coverage.
+| Section | Settings |
+| --- | --- |
+| `model` | `config`, optional `overrides`, `remove`, `start_date`, `command`, `output_file`, `max_runs`, `checkpoint_keep_days`, `no_data_codes`, `assets`, `job` |
+| `forcing` | `archive` and/or `index` |
+| `postprocess` | `variables`, `source_resolution`, `method`, `recent_steps`, `exporter`, optional topology `mesh`, `grid`, `ascii`, `job` |
+| `grid` | `crs`, `[dx, dy]` `resolution`, optional `[west, south, east, north]` `bounds`, `resampling` |
+| `ascii` | `enabled` (false), `variables` (`swe`, `t`), `resolution` (0.036 degrees) |
+| `display` | Suggested `ranges` for `swe`, `snowdepthavg`, and `t` |
+| `notifications` | Optional `webhook_env` environment-variable name |
 
-Only previously unindexed files are opened, including late arrivals within the
-requested period. Existing metadata remains authoritative. Snapshot records
-whose end time is before the start date are excluded before checking file
-availability, so missing old-year inputs do not block preparation. A file
-whose interval crosses the start date remains available to CHM. Changing the
-start date to an earlier date lets the next update backfill newly relevant
-files. If no forcing overlaps the requested period, the command reports that
-date and stops before submitting CHM. Without `start_date`, the archive is
+## CHM base configuration and overrides
+
+`model.config` is a JSON/JSON5 CHM configuration. `model.overrides` optionally
+names a JSON/JSON5 fragment. A project may use its own complete configuration
+without overrides, or explicitly reference a shared base outside its folder.
+There is no implicit inheritance between projects.
+
+Objects merge recursively; scalars and entire lists replace their base values.
+For example, an override can select another mesh and replace the modules:
+
+```json
+{
+  "meshes": {"mesh": "/absolute/path/to/tvc.np40.partition"},
+  "modules": ["solar", "iswr_from_obs", "FSM"],
+  "config": {"FSM": {"example_option": "example_value"}}
+}
+```
+
+The module list and option above are illustrative, not a validated TVC physics
+configuration. Replacing `modules` does not implicitly delete module settings or
+CHM's `remove_depency` entries. To remove inherited object keys, put explicit
+JSON pointers in the project's model settings, for example:
+
+```json
+{"remove": ["/config/snow_slide", "/remove_depency/snow_slide"]}
+```
+
+Removal happens after merging; a missing key is an error. Escape `/` as `~1`
+and `~` as `~0` in a pointer. Remove object keys this way; replace whole lists
+rather than editing list elements by index. `null` is a value, not a deletion.
+
+Mesh paths resolve relative to the configuration file that declares each mesh
+entry. An override can therefore replace an absent base mesh before validation.
+Errors identify the project, key, source configuration, resolved path and rank
+mismatch where relevant. Other module-specific file inputs should use absolute
+paths or explicit `model.assets` aliases, which create read-only input references
+in the execution directory. Arbitrary CHM strings are not guessed to be paths.
+
+After resolution, SnowCast supplies `forcing.file`, `output.output_dir`, the
+requested output variables, and `option.startdate` when `model.start_date` is
+set. Authored files remain unchanged. CHM settings not managed by the runner,
+including physics and checkpoint options, remain under project control.
+
+## Forcing and simulation period
+
+With `forcing.archive`, `prepare` and `run` incrementally index that directory.
+Only unindexed NetCDF files are opened, including late arrivals. The configured
+archive is read directly; an existing directory symlink is supported. The
+archive may be read-only. Downloading or producing NetCDFs stays with the
+upstream meteorology workflow.
+
+`model.start_date` is inclusive. Daily files named `YYYYMMDD.nc` or
+`YYYY-MM-DD.nc` before that date are skipped before path resolution, stat or
+NetCDF reads. Other names require reading their time coordinates. Directory
+entries must still be listed to discover files.
+
+Existing metadata remains authoritative. The CHM snapshot excludes intervals
+ending before the start date before checking file availability. Intervals that
+cross the cutoff remain available. Older cached metadata is retained for other
+consumers; source files are never removed. Moving the start date earlier allows
+the next update to index newly relevant days. Without a start date, indexing is
 unrestricted.
 
-Metadata writes are locked and atomic. An unchanged cache is not rewritten;
-an unreadable new file in the requested period leaves the previous metadata
-intact. Existing entries may retain older cached metadata, but the CHM snapshot
-is always filtered to the requested period. No original NetCDF files are
-modified or deleted. Already indexed files are assumed complete; changes to
-their time ranges require correcting their metadata explicitly. Downloading
-or producing the NetCDFs remains the upstream meteorology workflow's job.
-
-To reuse an existing metadata file or share indexing across domains, you can
-optionally specify `"index": "/absolute/path/to/metdata-hrdps.json"` alongside
-`archive`. Writers lock that canonical index path, including symlink aliases
-and the legacy runner. Different domain start dates filter their own snapshots
-without deleting older records from the shared index. Different archives must
-use different indexes. Set an inherited `index` to `null` to return to the
-automatic per-domain location.
-
-To read an externally maintained index only, provide `index` and omit `archive`
-(or override an inherited archive with `null`). This mode never scans the
-archive or opens NetCDFs and requires an existing JSON file. The JSON remains
-the standard CHM list of `start_time`, `end_time` (`YYYYMMDDTHHMMSS`, UTC) and
-`file_name`. Relative filenames resolve against that JSON; snapshots use
-absolute filenames and preserve additional metadata. Updating metadata never
-changes an already prepared snapshot until the next preparation. `validate`
-checks paths without creating links, updating metadata or submitting jobs.
-
-`job` applies independently to CHM and regridding. Defaults run locally with one
-rank. PBS projects specify `mode: "pbs"`, `nodes`, `cpus_per_node`,
-`ranks_per_node`, `ranks`, `memory`, `walltime`, `queue`, `launcher`, and optionally
-`setup`, `qsub`, `qstat`, and `poll_seconds`. The launcher may use `{ranks}`.
-Ranks must agree with the allocation and partitioned mesh/checkpoints.
-Local jobs can use `timeout_seconds`; PBS jobs use their walltime and export it
-as `CHM_WALLCLOCK_LIMIT` for checkpointing.
-
-Failures stop subsequent stages and are recorded in `status.json`. Retries are
-opt-in through `attempts`, `retry_codes`, and `retry_delay_seconds`; the default
-is one attempt. `model.no_data_codes` maps explicit nonzero model/wrapper exits
-to `up_to_date`, skipping postprocessing. A latest checkpoint at or beyond the
-forcing end also produces `up_to_date`. Successful CHM completion requires its
-`clean_exit` marker. Exit zero without that marker continues only when a
-checkpoint was created or updated, up to `max_runs`; no checkpoint progress is
-an immediate failure. Optional project-level
-`"notifications": {"webhook_env": "SNOWCAST_WEBHOOK_URL"}` sends failure messages
-to an HTTPS JSON webhook (Slack-compatible `text` payload). Its URL is read from
-the runner environment; notification errors never replace the original failure.
-Notifications are disabled by default. Downloading meteorology remains outside
-this adapter; incremental metadata updates are included when an archive is configured.
-
-## Prepare, run, and inspect
+To update metadata alone:
 
 ```bash
-snowcast prepare projects/western --domain western-cordillera
-snowcast met-update projects/western --domain western-cordillera
-snowcast run projects/western --domain western-cordillera
-snowcast status projects/western
-snowcast postprocess projects/western --domain western-cordillera
+snowcast met-update /projects/western-cordillera
 ```
 
-`prepare` creates the workspace, archive link, resolved CHM configuration and
-forcing snapshot without submitting a job. It refreshes metadata for the
-configured start date. `met-update` performs just the link setup and metadata
-update; it leaves any existing CHM configuration and forcing snapshot untouched,
-and does not require model input files. It requires `forcing.archive`.
+This does not require model input files and leaves an existing CHM snapshot
+unchanged. A separate met-update cron is optional because `run` also updates
+metadata. No eligible forcing is an error before model submission.
 
-`run` prepares the domain, including the same incremental metadata refresh,
-then executes CHM followed by postprocessing. A separate met-update cron is
-optional; `--no-postprocess` runs the preparation and CHM stages only. The CHM
-template is never modified. A domain must
-be selected when a project has more than one. Use independent cron invocations
-for each domain. One domain's missing inputs or job failure does not block
-another domain's invocation.
+To consume an externally maintained CHM JSON file, configure only `index`:
 
-The workspace contains `chm/config.json`, `chm/output/` (including checkpoints),
-`met/archive` and `met/metadata.json` (when managed), `met/index.json`, `jobs/`, `postprocess/`, and
-`status.json`. There is no shared
-process-wide `chdir`. A process lock excludes duplicate domain runs and remains
-held by a local job if its parent runner is killed. PBS submissions are recorded
-before submission and recovered before changing any inputs or staging files.
+```json
+{"forcing": {"index": "/absolute/path/to/metdata-hrdps.json"}}
+```
 
-If acknowledgement is lost during `qsub`, the runner deliberately refuses to
-submit another job. Inspect the scheduler and the `jobs/*.pending.json` command
-and result path. Once the actual job ID is known, set `state` to `submitted` and
-`job_id` to that ID in the pending file, then retry. Clear a pending file only
-after confirming its job is no longer running. A failed `qstat` without a job
-result retains the pending file; a scheduler outage never counts as success.
+That mode neither scans archives nor opens NetCDFs. Standard CHM records contain
+`start_time`, `end_time` (`YYYYMMDDTHHMMSS`, UTC), and `file_name`. Relative file
+names resolve against the metadata JSON; additional fields and record order
+are preserved in the snapshot.
 
-## Postprocessing and grid stability
+To share incremental indexing between projects, configure both `archive` and
+an explicit `index`. Writers lock the canonical index path, including symlink
+aliases and the legacy runner. A small archive-binding file next to the index
+prevents two independent projects from updating one index from different
+archives. Different start dates filter independent snapshots without removing
+shared history. Use separate indexes for separate archives. If an archive is
+relocated, create a new index for its new location instead of mixing paths.
 
-The adapter invokes the documented `chm_ugrid2grid` flags: `--dxdy`, `--method`,
-`--timeoffset`, `--tiff-output`, `--overwrite`, `--variables`, and optional
-`--mesh`. That executable currently exports geographic rasters; it has no
-target-CRS flag. SnowCast performs an explicit blockwise raster conversion when
-the project's output grid differs. Reprojecting a geographic intermediate adds
-a resampling step; it is not direct conservative mesh-to-projected-grid export.
+Index writes are atomic. An unchanged index is not rewritten, and an unreadable
+new file leaves the previous index intact. Already indexed files are assumed
+complete; changed time ranges require explicitly correcting their metadata.
 
-With no explicit bounds, the first complete export establishes the target grid
-in `postprocess/grid.json`. A source already matching the requested CRS and
-nominal spacing retains its exact transform (including the small live western
-spacing deviation). Later dates must have the same source grid. Configured
-bounds must span whole cells. A changed grid requires a new workspace and a
-rebuilt history; it cannot silently shift existing dates.
+## Execution, checkpoints and errors
 
-All requested variable/timestamp combinations are validated before current
-outputs are rotated. TIFFs preserve source Float32/Float64 precision, masks,
-nodata and scale/offset; Float32 conversion is confined to COG publication.
-Integer rasters are promoted to Float64 to represent NaN nodata. Reprojection
-merges explicit masks and nodata before
-interpolation. ASCII contains physical values with `-9999` nodata. Current and
-archived TIFFs, ASCII grids and companion files remain within the domain.
-Checkpoint retention is independent of the September-based published history;
-the runner does not reset the physical model on September 1.
+Model and postprocessing `job` settings are independent. Defaults run locally
+with one rank. PBS settings include `mode`, `nodes`, `cpus_per_node`,
+`ranks_per_node`, `ranks`, `memory`, `walltime`, `queue`, `launcher`, and optional
+`setup`, `qsub`, `qstat`, `poll_seconds`. The launcher may use `{ranks}`. Ranks
+must agree with the allocation and partitioned mesh/checkpoint filenames.
+Local jobs can set `timeout_seconds`; PBS uses walltime and exports it as
+`CHM_WALLCLOCK_LIMIT` for checkpointing.
 
-## Publishing and the website boundary
+`run` prepares, executes CHM and postprocesses. `run --no-postprocess` stops after
+CHM. `postprocess` processes existing model output without rerunning CHM.
+`model.output_file` (default `output.nc`) must match the actual CHM output
+filename; it tells the postprocessor which file to read.
 
-Data publication and application deployment are explicit commands:
+A project lock excludes duplicate writers, including a local job whose runner
+was killed. PBS pending submissions are recovered before changing staged
+configuration or forcing. This means `prepare` may wait for an already-running
+PBS job to finish, although it never submits a new one.
+
+If `qsub` acknowledgement is lost, inspect the scheduler and the project's
+`work/jobs/*.pending.json`. Once the actual job ID is known, set `state` to
+`submitted` and `job_id` to that ID, then retry. Clear pending state only after
+confirming that its job is no longer running. A failed `qstat` without a result
+retains pending state and does not trigger another submission.
+
+Failures stop subsequent stages and record details in `work/status.json`.
+Retries are opt-in via `attempts`, `retry_codes`, `retry_delay_seconds`.
+`model.no_data_codes` can map explicit nonzero exits to `up_to_date`. A checkpoint
+at or beyond the forcing end also produces `up_to_date`; both cases skip
+postprocessing. To retry a failed postprocess independently, use `postprocess`.
+
+Successful CHM completion requires `clean_exit`. Exit zero without it continues
+only when a checkpoint was created or updated, up to `max_runs` (10). No progress
+fails immediately. Checkpoint retention defaults to the newest three date groups;
+it is independent of web history and does not reset the model on September 1.
+
+Notifications are disabled by default. Optional
+`"notifications": {"webhook_env": "SNOWCAST_WEBHOOK_URL"}` sends an HTTPS JSON
+failure message using the URL from that environment variable. Credentials stay
+out of the manifest; notification failure does not mask the original error.
+
+## Postprocessing
+
+The current adapter supports `swe`, `snowdepthavg`, and `t`. Domain locations
+and project counts are arbitrary; additional model variables or engines need
+an adapter change. The default exporter is `chm_ugrid2grid`, using the latest
+two output timesteps, a 0.001-degree source grid and conservative remapping.
+It exports a geographic intermediate. SnowCast reprojects when the configured
+target grid differs; this adds resampling rather than performing direct
+conservative mesh-to-projected-grid export.
+
+The first complete export establishes `work/postprocess/grid.json`. A matching
+source retains its exact transform, including small nominal-resolution
+rounding differences. Later dates must match that source grid. Changed grid
+settings require a separate project/workspace and rebuilt history.
+
+All requested variables and timestamps are checked before rotating current
+products into the project's archive. TIFFs retain Float32/Float64 precision,
+masks, nodata and scale/offset. Reprojection combines masks and nodata before
+interpolation. Optional ASCII exports contain physical values, use EPSG:4326
+and `-9999` nodata, and select the latest exported timestamp. COG publication
+continues to use Float32; source TIFFs are not converted to that precision.
+
+## Migration from the nested version 1 manifest
+
+1. Create a separate folder and version 2 manifest for each old domain. Merge
+   that domain's settings over the old defaults, then place `model`, `forcing`,
+   `postprocess` and `display` at the top level. Give it its own stable ID.
+2. Copy authored CHM/environment files into the project, or reference shared
+   inputs explicitly. Rebase relative paths for their new locations. Remove
+   `work_root`, `defaults`, `domains`, and `--domain` from commands.
+3. Run `validate`, then `prepare`; inspect the resolved configuration, forcing
+   snapshot, start date and actual PBS settings.
+4. With the old writer stopped and no pending PBS jobs, copy compatible
+   checkpoints into the new project's `work/chm/output/checkpoint/`. Check CHM
+   version, mesh and rank compatibility first. Do not share mutable state.
+   For the prior runner, the source was `<old-work-root>/<domain>/chm/output/`;
+   the legacy workflow used `run_chm/output/`.
+5. Do not copy old ownership markers, pending job records or generated scripts:
+   they contain old identities/absolute paths. Retain original logs for reference.
+   Historical postprocessed products can be copied with their matching
+   `grid.json` only if the project/grid is unchanged.
+6. Manually verify one model run and postprocess on the cluster before replacing
+   its cron invocation. Automated fixtures do not replace a real CHM/MPI/PBS check.
+
+The old `python snowcast.py -c config_hrdps_west.py` workflow remains available.
+Its reusable met and COG entry points delegate to the installed package. Legacy
+plotting and v2 upload orchestration remain checkout-only compatibility code.
+The new runner does not invoke them. Version 1 manifests produce an explicit
+migration error; existing run directories are never moved automatically.
+
+## Existing publication helpers and the next stage
+
+The existing local/mounted publication helper remains available with a flat
+project identity:
 
 ```bash
-snowcast publish projects/western --domain western-cordillera --site-dir /path/to/site
-npm --prefix webui ci
-npm --prefix webui run build
-snowcast deploy-ui --dist webui/dist --site-dir /path/to/site
+snowcast publish /projects/western-cordillera --site-dir /path/to/staging-site
+snowcast deploy-ui --dist /path/to/webui/dist --site-dir /path/to/staging-site
 ```
 
-These site commands operate on a **local or mounted POSIX filesystem**. They do
-not transfer project data to a remote web server over SSH. The existing legacy
-uploader is unchanged; remote multi-project site publishing is a follow-up.
+It writes `data/<project-id>/catalog.json`, preserving safe COG conversion,
+concurrent registry updates, hydrological-year selection and 48-hour orphan
+cleanup. SWE/SD retain ten daily dates plus older weekly snapshots from September
+1 of the latest model date's hydrological year; temperature retains ten daily
+dates. Daily source archives remain daily. This refactor does not change COG
+encoding or digest algorithms.
 
-Publication writes `data/<project-id>/<domain-id>/catalog.json` and COGs. It
-applies ten recent daily dates plus older weekly snow snapshots within the
-current September–August hydrological year and the existing 48-hour cleanup
-grace period. A short site lock merges a successful domain into `domains.json`,
-preserving concurrent publications. The registry lists only successfully
-published catalogues. Asset IDs include project/domain identity. No UI files
-are written by `publish`.
+These helper commands do not implement the planned authoritative site config or
+remote multi-project deployment. The existing legacy SSH uploader remains a
+separate compatibility entry point. UI deployment preserves published data.
 
-`deploy-ui` installs built assets before HTML entrypoints, preserves old assets
-for open pages, and leaves `data/`, the domain registry and an existing download
-index intact. The UI stays in this repository and has an independent build.
+The viewer still loads one catalogue, for example
+`?catalog=./data/western-cordillera/catalog.json`. The new flat URL differs from
+the earlier `data/<project>/<domain>/` location. No live catalogues or URLs are
+migrated automatically. Production namespace migration, total storage planning,
+site selection and the multi-project map belong to the next stage.
 
-**The current viewer still opens one catalogue at a time.** A published domain
-can already be inspected with, for example,
-`?catalog=./data/snowcast/western-cordillera/catalog.json`. Reading `domains.json`
-to show domains simultaneously, automatic colour-range switching, domain-aware
-downloads/observations, and remote site registration remain later UI/publishing
-work. This branch supplies their metadata contract and the runner foundation.
+## Development checks
 
-## Manual western migration check
+From the repository root, install test/build dependencies and run:
 
-1. Keep the existing cron unchanged while validating the new project. Check the
-   template, mesh/parameter references, forcing archive/index and `environment.sh`
-   on the actual cluster. The sample's start date is 2026-09-01; adjust it for
-   the period you intend to simulate.
-2. Run `validate`, then `prepare`; inspect the archive symlink, managed metadata,
-   generated configuration and snapshot paths. Daily files before the start
-   date are skipped; previously indexed files are not reopened.
-3. With the old model writer stopped, **copy** compatible checkpoints into the
-   new domain's `chm/output/checkpoint/`. Do not point both runners at one writable
-   checkpoint directory. Verify rank count and CHM version compatibility.
-4. Manually run one domain invocation. Check PBS resources, continuation,
-   `clean_exit`, output timestamps, masks, scale/offset and AEP grids. Small fake
-   executables test the workflow in CI; real CHM/MPI/PBS runs still need this check.
-5. Publish to a separate staging site and inspect it through `?catalog=...`.
-   The new storage namespace can duplicate existing live COGs, so check disk
-   usage before a full backfill. Changing the production cron or deployment
-   target is a separate operator action.
+```bash
+python -m pip install -e . pytest 'setuptools>=68' wheel
+python -m pytest -q tests
+```
+
+The suite builds and installs a wheel from only `snowcast_runner` and
+`pyproject.toml`, then runs a fixture project through postprocessing outside the
+checkout with legacy imports blocked. CHM and exporter stand-ins write small
+NetCDF/GeoTIFF fixtures. Scheduler tests simulate PBS acknowledgements and
+failures; they do not submit real cluster jobs.

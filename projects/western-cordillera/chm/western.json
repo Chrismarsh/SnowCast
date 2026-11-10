@@ -1,0 +1,5 @@
+{
+  "meshes": {
+    "mesh": "/absolute/path/to/snowcastv5.FABDEM.metis.np800_mesh.np800.partition"
+  }
+}
