@@ -7,13 +7,16 @@ export const temperatureColors = ['#284ba3', '#70b6d5', '#e7f1ef', '#f9ca99', '#
 export const paletteColors = (variable: Pick<Variable, 'palette'>) => variable.palette === 'temperature-difference' ? temperatureDifferenceColors : variable.palette === 'difference' ? differenceColors : variable.palette === 'temperature' ? temperatureColors : snowColors;
 
 /** Single-band numeric GeoTIFF sources also supply validity in band 2. */
-export function rasterColor(asset: Pick<Asset, 'nodata' | 'scale' | 'offset'>, variable: Pick<Variable, 'palette' | 'range'>): EncodedExpression {
+export function rasterColor(asset: Pick<Asset, 'nodata' | 'scale' | 'offset'>, variable: Pick<Variable, 'palette' | 'range'>, hideZeroSnow = false): EncodedExpression {
   const colors = paletteColors(variable);
   const raw: EncodedExpression = ['band', 1];
   const valid: EncodedExpression = ['all', ['>', ['band', 2], 0], ['==', raw, raw]];
   // Mask in raw units, before scaling or clamping to the display range.
   if (typeof asset.nodata === 'number' && Number.isFinite(asset.nodata)) valid.push(['!=', raw, asset.nodata]);
-  const ramp: EncodedExpression = ['interpolate', ['linear'], ['+', ['*', raw, asset.scale], asset.offset]];
+  const value: EncodedExpression = ['+', ['*', raw, asset.scale], asset.offset];
+  // This is a display mask in physical units, not a change to valid data.
+  if (hideZeroSnow && variable.palette === 'snow') valid.push(['!=', value, 0]);
+  const ramp: EncodedExpression = ['interpolate', ['linear'], value];
   colors.forEach((color, i) => ramp.push(variable.range[0] + (variable.range[1] - variable.range[0]) * i / (colors.length - 1), color));
   return ['case', valid, ramp, [0, 0, 0, 0]];
 }
@@ -24,7 +27,9 @@ export function colorPixel(inputs: number[][] | ImageData[], data: any): number[
   const pixel = (inputs as number[][])[0];
   const raw = pixel[0];
   if (!Number.isFinite(raw) || raw === data.nodata || (pixel.length > 1 && !pixel[1])) return [0, 0, 0, 0];
-  const f = Math.max(0, Math.min(1, (raw * data.scale + data.offset - data.min) / (data.max - data.min))) * (data.colors.length - 1);
+  const value = raw * data.scale + data.offset;
+  if (data.hideZero && value === 0) return [0, 0, 0, 0];
+  const f = Math.max(0, Math.min(1, (value - data.min) / (data.max - data.min))) * (data.colors.length - 1);
   const i = Math.min(data.colors.length - 2, Math.floor(f));
   const t = f - i;
   return [0, 1, 2].map(c => data.colors[i][c] * (1 - t) + data.colors[i + 1][c] * t).concat(255);
