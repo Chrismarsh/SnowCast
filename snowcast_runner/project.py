@@ -10,6 +10,7 @@ import re
 
 SLUG = re.compile(r'[a-z][a-z0-9_-]{0,63}\Z')
 VARIABLES = {'swe', 'snowdepthavg', 't'}
+MODEL_RESERVED_NAMES = {'output', 'log', 'config', 'config.json', 'met'}
 
 
 def merge(base, overrides):
@@ -165,7 +166,7 @@ def load_project(filename):
     for name, source in model['assets'].items():
         if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', name):
             raise ValueError('model.assets aliases must be simple filenames')
-        if name in {'output', 'log', 'config', 'config.json', 'met'}:
+        if name in MODEL_RESERVED_NAMES:
             raise ValueError(f'Reserved model asset name: {name}')
         model['assets'][name] = path(base, source)
     forcing = raw.get('forcing', {})

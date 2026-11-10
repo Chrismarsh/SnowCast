@@ -82,6 +82,7 @@ rejected. `defaults`, `domains`, and `work_root` no longer exist.
 | `work/met/index.json` | Fixed metadata snapshot supplied to CHM |
 | `work/met/archive` | Convenience link to the configured archive |
 | `work/chm/config.json` | Resolved CHM configuration |
+| `work/chm/<mesh inputs>` | Symlinks to the configured mesh/partition and its referenced inputs |
 | `work/chm/output/` | Model output, `clean_exit`, and `checkpoint/` |
 | `work/jobs/` | Generated scripts, execution logs, exit results and pending PBS submissions |
 | `work/postprocess/` | Grid definition, current and archived TIFF/ASCII products, export staging |
@@ -137,7 +138,20 @@ rather than editing list elements by index. `null` is a value, not a deletion.
 Mesh paths resolve relative to the configuration file that declares each mesh
 entry. An override can therefore replace an absent base mesh before validation.
 Errors identify the project, key, source configuration, resolved path and rank
-mismatch where relevant. Other module-specific file inputs should use absolute
+mismatch where relevant.
+
+`prepare` symlinks these inputs into `work/chm/`, where CHM runs. For a
+`.partition`, it also links the mesh and parameter files named inside it,
+preserving their relative layout. The usual `<name>.partition.meshes/` directory
+is linked as a whole; large mesh files are neither copied nor rewritten.
+Relative entries are resolved from beside the source partition and must stay
+below that directory (no `..`); absolute entries are validated and left as-is.
+Partition metadata ranks and all referenced mesh/parameter files are checked
+by full validation and preparation. Repeating preparation reuses matching
+links; conflicting names or existing files produce an error before staging.
+No additional `model.assets` entries are needed for these partition inputs.
+
+Other module-specific file inputs should use absolute
 paths or explicit `model.assets` aliases, which create read-only input references
 in the execution directory. Arbitrary CHM strings are not guessed to be paths.
 

@@ -2,29 +2,28 @@
 import re
 import shutil
 import uuid
+from pathlib import Path
 
 from .cog_store import atomic_json
 from .jobs import execute, JobFailed
 from .forcing import forcing_index
 
-from .chm_config import read_model
+from .chm_config import read_model, model_inputs
 
 
 def prepare(project):
     config = read_model(project)
+    links = model_inputs(project, config)
     cwd = project.work / 'chm'
     cwd.mkdir(exist_ok=True)
     output = cwd / 'output'
     output.mkdir(exist_ok=True)
-    for name, source in project.model['assets'].items():
-        if name in {'output', 'log', 'config', 'config.json', 'met'}:
-            raise ValueError(f'Reserved model asset name: {name}')
+    for name, source in links.items():
         target = cwd / name
-        if target.is_symlink() and target.resolve() == source:
+        if target.is_symlink():  # model_inputs already checked its destination.
             continue
-        if target.exists() or target.is_symlink():
-            raise ValueError(f'Model asset destination already exists: {target}')
         target.symlink_to(source, target_is_directory=source.is_dir())
+    config['meshes'] = {key: str(cwd / Path(value).name) for key, value in config['meshes'].items()}
     index, end = forcing_index(project)
     config.setdefault('forcing', {})['file'] = str(index)
     config.setdefault('output', {})['output_dir'] = str(output)

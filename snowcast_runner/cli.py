@@ -39,8 +39,8 @@ def main(argv=None):
         if args.action == 'validate':
             if not args.config_only:
                 validate_inputs(project)
-                from .model import read_model
-                read_model(project)
+                from .chm_config import read_model, model_inputs
+                model_inputs(project, read_model(project))
             print(f'Valid project {project.id}')
             return 0
         if args.action == 'status':
