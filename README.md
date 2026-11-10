@@ -15,5 +15,9 @@ Figure 1. Current 1-day forecast change in SWE. Centered over Banff, Alberta, Ca
 
 http://www.snowcast.ca/
 
+The new [COG snowpack explorer](webui/README.md) provides ten-day playback,
+point histories, and numeric GeoTIFF import. Its publishing and hosting guide
+includes serving the data from an ordinary disk with Nginx or Apache.
+
 Experimental! Use at your own risk.
 
