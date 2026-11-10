@@ -292,6 +292,27 @@ def test_missing_exports_do_not_rotate_current_data(project_file, tmp_path):
         assert len(list((domain.work / 'postprocess' / 'tiff').glob('*.tiff'))) == 3
 
 
+def test_original_tiff_keeps_float64_precision_while_cog_is_float32(project_file, tmp_path):
+    change(project_file, lambda r: r['defaults'].update(postprocess={'variables': ['swe']}))
+    project = load_project(project_file); domain = project.domain('west')
+    source = tmp_path / 'exports'; source.mkdir()
+    values = np.linspace(1.123456789, 400.987654321, 32 * 32).reshape(32, 32)
+    with rasterio.open(source / 'swe-0.001x0.001_20261109T230000.tiff', 'w', driver='GTiff',
+                       count=1, width=32, height=32, crs='EPSG:4326', dtype='float64', nodata=-9999,
+                       transform=from_origin(-116, 52, .001, .001)) as dst:
+        dst.write(values, 1)
+    with workspace(project, domain):
+        accept_exports(domain, source)
+        with rasterio.open(next((domain.work / 'postprocess' / 'tiff').glob('*.tiff'))) as data:
+            assert data.dtypes == ('float64',)
+            np.testing.assert_array_equal(data.read(1), values)
+        catalogue = publish_domain(project, domain, tmp_path / 'site')
+        asset = catalogue['variables'][0]['assets'][0]
+        with rasterio.open(tmp_path / 'site' / 'data' / project.id / domain.id / asset['path']) as data:
+            assert data.dtypes == ('float32',)
+            np.testing.assert_array_equal(data.read(1), values.astype('float32'))
+
+
 def test_projected_grid_and_optional_ascii_with_physical_values(project_file, tmp_path):
     change(project_file, lambda r: r['defaults'].update(postprocess={'grid': {'crs': 'EPSG:32611', 'resolution': [100, 100]},
                                                                    'ascii': {'enabled': True, 'resolution': .001}}))

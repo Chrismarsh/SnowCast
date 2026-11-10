@@ -134,8 +134,10 @@ bounds must span whole cells. A changed grid requires a new workspace and a
 rebuilt history; it cannot silently shift existing dates.
 
 All requested variable/timestamp combinations are validated before current
-outputs are rotated. TIFFs preserve masks, nodata, scale/offset and values to
-Float32 precision. Reprojection merges explicit masks and nodata before
+outputs are rotated. TIFFs preserve source Float32/Float64 precision, masks,
+nodata and scale/offset; Float32 conversion is confined to COG publication.
+Integer rasters are promoted to Float64 to represent NaN nodata. Reprojection
+merges explicit masks and nodata before
 interpolation. ASCII contains physical values with `-9999` nodata. Current and
 archived TIFFs, ASCII grids and companion files remain within the domain.
 Checkpoint retention is independent of the September-based published history;

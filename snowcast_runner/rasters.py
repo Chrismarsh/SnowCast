@@ -51,7 +51,8 @@ def target_grid(src, settings):
 
 def write_raster(src, destination, grid, resampling, driver='GTiff'):
     height, width = grid['shape']
-    options = {'driver': driver, 'height': height, 'width': width, 'count': 1, 'dtype': 'float32',
+    dtype = src.dtypes[0] if src.dtypes[0] in ('float32', 'float64') else 'float64'
+    options = {'driver': driver, 'height': height, 'width': width, 'count': 1, 'dtype': dtype,
                'crs': grid['crs'], 'transform': Affine(*grid['transform']), 'nodata': -9999.0 if driver == 'AAIGrid' else float('nan')}
     if driver == 'GTiff':
         options.update(tiled=True, blockxsize=512, blockysize=512, compress='DEFLATE', BIGTIFF='IF_SAFER')
@@ -64,7 +65,7 @@ def write_raster(src, destination, grid, resampling, driver='GTiff'):
             temporary = stack.enter_context(tempfile.TemporaryDirectory(prefix='warp-', dir=destination.parent))
             cleaned = Path(temporary) / 'source.tif'
             profile = dict(driver='GTiff', count=1, width=src.width, height=src.height,
-                           crs=src.crs, transform=src.transform, dtype='float32', nodata=float('nan'),
+                           crs=src.crs, transform=src.transform, dtype=dtype, nodata=float('nan'),
                            tiled=True, blockxsize=512, blockysize=512, compress='DEFLATE', BIGTIFF='IF_SAFER')
             with rasterio.open(cleaned, 'w', **profile) as dst:
                 for _, window in dst.block_windows(1):
@@ -72,12 +73,12 @@ def write_raster(src, destination, grid, resampling, driver='GTiff'):
                     mask = np.ma.getmaskarray(values) | ~np.isfinite(values.data)
                     if src.nodata is not None:
                         mask |= values.data == src.nodata
-                    data = values.data.astype('float32')
+                    data = values.data.astype(dtype)
                     data[mask] = float('nan')
                     dst.write(data, 1, window=window)
             clean_src = stack.enter_context(rasterio.open(cleaned))
             virtual = stack.enter_context(WarpedVRT(clean_src, crs=grid['crs'], transform=options['transform'], width=width,
-                                                   height=height, dtype='float32', nodata=options['nodata'],
+                                                   height=height, dtype=dtype, nodata=options['nodata'],
                                                    resampling=Resampling[resampling]))
         with rasterio.open(destination, 'w', **options) as dst:
             # Keep physical-value metadata; ASCII has no portable scale/offset,
@@ -89,7 +90,7 @@ def write_raster(src, destination, grid, resampling, driver='GTiff'):
                 mask = np.ma.getmaskarray(values) | ~np.isfinite(values.data)
                 if virtual.nodata is not None:
                     mask |= values.data == virtual.nodata
-                data = values.data.astype('float32')
+                data = values.data.astype(dtype)
                 if driver == 'AAIGrid':
                     data = data * src.scales[0] + src.offsets[0]
                 data[mask] = options['nodata']
