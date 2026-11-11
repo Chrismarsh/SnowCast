@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 
@@ -264,3 +265,76 @@ Path('output/clean_exit').touch()
     assert main(['run', str(pbs_project), '--no-postprocess']) == 0
     assert scheduler.jobs['1.server']['code'] == 0
     assert 'code' not in scheduler.jobs['2.server']
+
+
+@pytest.mark.parametrize('wrapper', ['function', 'alias'])
+def test_mpi_uses_the_prepared_batch_shell(pbs_project, monkeypatch, wrapper):
+    """A PATH-only subprocess silently drops site-specific MPI wrapper options."""
+    scheduler = Scheduler(monkeypatch)
+    folder = pbs_project.parent / 'MPI tools with spaces'
+    folder.mkdir()
+    launcher = folder / 'mpirun'
+    launcher.write_text(f'#!{sys.executable}\n' + '''import os, subprocess, sys
+from pathlib import Path
+assert sys.argv[1:4] == ['--cluster-transport', '-n', '1'], sys.argv
+assert Path(os.readlink(f'/proc/{os.getppid()}/exe')).name == 'bash'
+assert sys.argv[-1] == 'literal argument; $(touch injected)'
+raise SystemExit(subprocess.call(sys.argv[4:]))
+''')
+    launcher.chmod(0o755)
+    setup = folder / 'setup.sh'
+    setup.write_text(f'export PATH={shlex.quote(str(folder))}:"$PATH"\n'
+                     'echo setup >> setup-count\n' +
+                     ('mpirun() { command mpirun --cluster-transport "$@"; }\n'
+                      if wrapper == 'function' else
+                      "shopt -s expand_aliases\nalias mpirun='command mpirun --cluster-transport'\n"))
+    change(pbs_project, lambda r: r['model']['job'].update(setup=str(setup), launcher=['mpirun', '-n', '{ranks}']))
+    change(pbs_project, lambda r: r['model']['command'].append('literal argument; $(touch injected)'))
+    assert main(['run', str(pbs_project), '--no-postprocess']) == 0
+    cwd = load_project(pbs_project).work / 'chm'
+    assert (cwd / 'runs').read_text() == '3'
+    assert (cwd / 'setup-count').read_text().splitlines() == ['setup'] * 3
+    assert not (cwd / 'injected').exists()
+    scheduler.start('5.server')
+    assert (cwd / 'setup-count').read_text().splitlines() == ['setup'] * 3
+
+
+def test_retry_reduces_remaining_walltime(pbs_project, monkeypatch):
+    Scheduler(monkeypatch)
+    model = pbs_project.parent / 'retry_budget.py'
+    model.write_text('''import json, os, sys, time
+from pathlib import Path
+p = Path('budgets.json')
+budgets = json.loads(p.read_text()) if p.exists() else []
+h, m, s = map(int, os.environ['CHM_WALLCLOCK_LIMIT'].split(':'))
+budgets.append(h * 3600 + m * 60 + s)
+p.write_text(json.dumps(budgets))
+if len(budgets) == 1:
+    time.sleep(1.1)
+    sys.exit(7)
+Path('output/clean_exit').touch()
+''')
+    change(pbs_project, lambda r: r['model'].update(command=[sys.executable, str(model)]))
+    change(pbs_project, lambda r: r['model']['job'].update(attempts=2, retry_codes=[7], retry_delay_seconds=.001))
+    assert main(['run', str(pbs_project), '--no-postprocess']) == 0
+    budgets = json.loads((load_project(pbs_project).work / 'chm/budgets.json').read_text())
+    assert len(budgets) == 2 and 0 < budgets[1] < budgets[0] <= 21600
+
+
+def test_previously_queued_worker_command_remains_supported(pbs_project, monkeypatch):
+    from snowcast_runner.jobs import script_text
+
+    scheduler = Scheduler(monkeypatch)
+    scheduler.disconnect = True
+    assert main(['run', str(pbs_project), '--no-postprocess']) == 1
+    directory = chain(pbs_project)
+    spec = json.loads((directory / 'request.json').read_text())
+    # Recreate the exact entry point used by scripts queued before this fix.
+    script = scheduler.jobs['1.server']['script']
+    script.write_text(script_text([spec['python'], '-m', 'snowcast_runner.backfill',
+                                 str(directory / 'request.json'), '0'],
+                                 Path(spec['cwd']), script.with_suffix('.exit'), spec['job']['setup'],
+                                 directory / 'finished.json'))
+    scheduler.disconnect = False
+    assert main(['run', str(pbs_project), '--no-postprocess']) == 0
+    assert (load_project(pbs_project).work / 'chm/runs').read_text() == '3'

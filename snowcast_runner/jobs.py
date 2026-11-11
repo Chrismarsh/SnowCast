@@ -17,8 +17,9 @@ class JobFailed(RuntimeError):
     pass
 
 
-def script_text(command, cwd, result, setup=None, stop_file=None):
-    # Commands are argv arrays; only a deliberately supplied setup file is shell code.
+def script_text(command, cwd, result, setup=None, stop_file=None, *, command_body=None):
+    # Commands are argv arrays. command_body is runner-generated shell control
+    # flow; it must quote all project-provided arguments just like shlex.join.
     temporary = str(result) + '.tmp'
     trap = f'rc=$?; trap - EXIT; printf "%s\\n" "$rc" > {shlex.quote(temporary)}; mv -- {shlex.quote(temporary)} {shlex.quote(str(result))}; exit "$rc"'
     lines = ['#!/bin/bash', 'set -e', f'trap {shlex.quote(trap)} EXIT']
@@ -31,7 +32,8 @@ def script_text(command, cwd, result, setup=None, stop_file=None):
         lines.append(f'source {shlex.quote(str(setup))}')
     # CHM can checkpoint before PBS terminates the allocation.
     lines += ['if [ -n "${PBS_JOBID:-}" ] && [ -n "${SNOWCAST_WALLTIME:-}" ]; then',
-              '  export CHM_WALLCLOCK_LIMIT="${SNOWCAST_WALLTIME}"', 'fi', shlex.join(command)]
+              '  export CHM_WALLCLOCK_LIMIT="${SNOWCAST_WALLTIME}"', 'fi',
+              command_body if command_body is not None else shlex.join(command)]
     return '\n'.join(lines) + '\n'
 
 
@@ -83,12 +85,13 @@ def resume_pending(work, *, submit_model_chain=False):
     return recovered
 
 
-def submit_pbs(command, *, cwd, job, directory, token, accepted_codes=(0,), dependency=None, stop_file=None):
+def submit_pbs(command, *, cwd, job, directory, token, accepted_codes=(0,), dependency=None, stop_file=None,
+               command_body=None):
     """Record submission intent before qsub; retain uncertain acknowledgements."""
     directory.mkdir(exist_ok=True)
     script, log, result, pending = (directory / f'{token}{suffix}'
                                     for suffix in ('.sh', '.log', '.exit', '.pending.json'))
-    script.write_text(script_text(command, cwd, result, job['setup'], stop_file))
+    script.write_text(script_text(command, cwd, result, job['setup'], stop_file, command_body=command_body))
     record = {'state': 'submitting', 'result': str(result), 'qstat': job['qstat'],
               'poll_seconds': job['poll_seconds'], 'command': command,
               'accepted_codes': list(accepted_codes)}

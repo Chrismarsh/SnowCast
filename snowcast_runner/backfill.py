@@ -2,9 +2,8 @@
 import json
 import os
 from pathlib import Path
-import subprocess
+import shlex
 import sys
-import time
 import uuid
 
 from .cog_store import atomic_json
@@ -22,10 +21,11 @@ def _submit_remaining(spec, directory):
             break
         pending = _step(directory, index, '.pending.json')
         if not pending.exists():
-            submit_pbs([spec['python'], '-m', 'snowcast_runner.backfill', str(directory / 'request.json'), str(index)],
+            submit_pbs(spec['command'],
                        cwd=Path(spec['cwd']), job=spec['job'], directory=directory,
                        token=f'segment-{index + 1:03d}', dependency=previous,
-                       stop_file=directory / 'finished.json')
+                       stop_file=directory / 'finished.json',
+                       command_body=segment_body(spec, directory / 'request.json', index))
         record = json.loads(pending.read_text())
         if record['state'] != 'submitted':
             raise RuntimeError(f'PBS submission acknowledgement missing: {pending}. '
@@ -89,8 +89,35 @@ def run_chain(project, config):
     return resume_chain(pending, submit_remaining=True)
 
 
-def run_segment(request, index):
-    """Runs on one PBS allocation, independently of the launching CLI process."""
+def segment_body(spec, request, index):
+    """Keep MPI in the Bash shell that sourced setup (including shell wrappers).
+
+    Python only checks state before/after CHM; it is never the MPI launcher.
+    """
+    helper = shlex.join([spec['python'], '-m', 'snowcast_runner.backfill', str(request), str(index)])
+    job = spec['job']
+    hours, minutes, seconds = map(int, job['walltime'].split(':'))
+    budget = hours * 3600 + minutes * 60 + seconds
+    lines = [f'{helper} before', 'sc_started=$SECONDS',
+             f'for ((sc_attempt=1; sc_attempt<={job["attempts"]}; sc_attempt++)); do',
+             f'  sc_remaining=$(({budget} - SECONDS + sc_started))',
+             '  if ((sc_remaining < 1)); then sc_remaining=1; fi',
+             '  printf -v CHM_WALLCLOCK_LIMIT "%02d:%02d:%02d" "$((sc_remaining / 3600))" '
+             '"$((sc_remaining / 60 % 60))" "$((sc_remaining % 60))"',
+             '  export CHM_WALLCLOCK_LIMIT', '  set +e',
+             '  ' + shlex.join(spec['command']), '  sc_model_rc=$?', '  set -e']
+    if job['retry_codes']:
+        codes = '|'.join(str(code) for code in job['retry_codes'])
+        lines += ['  case "$sc_model_rc" in', f'    {codes})',
+                  f'      if ((sc_attempt < {job["attempts"]})); then',
+                  f'        sleep {shlex.quote(str(job["retry_delay_seconds"]))}',
+                  '        continue', '      fi', '      ;;', '  esac']
+    lines += ['  break', 'done', f'{helper} "$sc_model_rc"']
+    return '\n'.join(lines)
+
+
+def check_segment(request, index, code=None):
+    """Check progress in short-lived processes on either side of the launch."""
     from .model import checkpoint_state, archive_model_log
 
     spec = json.loads(request.read_text())
@@ -106,27 +133,19 @@ def run_segment(request, index):
             previous = json.loads(_step(directory, index - 1, '.outcome.json').read_text())
             if previous['state'] != 'continue':
                 raise RuntimeError('Previous CHM segment did not authorize continuation')
-        before = checkpoint_state(cwd)
-        archive_model_log(Path(spec['work']), cwd)
-        job = spec['job']
-        started = time.monotonic()
-        hours, minutes, seconds = map(int, job['walltime'].split(':'))
-        budget = hours * 3600 + minutes * 60 + seconds
-        for attempt in range(job['attempts']):
-            remaining = max(1, budget - int(time.monotonic() - started))
-            environment = {**os.environ, 'CHM_WALLCLOCK_LIMIT':
-                           f'{remaining // 3600:02d}:{remaining // 60 % 60:02d}:{remaining % 60:02d}'}
-            code = subprocess.run(spec['command'], cwd=cwd, env=environment).returncode
-            if code not in job['retry_codes'] or attempt + 1 == job['attempts']:
-                break
-            time.sleep(job['retry_delay_seconds'])
+        snapshot = _step(directory, index, '.before.json')
+        current = {name: list(stat) for name, stat in checkpoint_state(cwd).items()}
+        if code is None:
+            atomic_json(snapshot, current)
+            archive_model_log(Path(spec['work']), cwd)
+            return 0
         if code in spec['no_data_codes']:
             outcome = {'state': 'up_to_date'}
         elif code:
             raise JobFailed(f'CHM exit {code}')
         elif (cwd / 'output/clean_exit').is_file():
             outcome = {'state': 'completed'}
-        elif checkpoint_state(cwd) == before:
+        elif current == json.loads(snapshot.read_text()):
             raise JobFailed('CHM exited without clean_exit or a new checkpoint')
         elif index + 1 == spec['max_runs']:
             raise JobFailed(f'CHM did not finish after {spec["max_runs"]} PBS jobs; checkpoints retained')
@@ -141,5 +160,24 @@ def run_segment(request, index):
     return 1 if outcome['state'] == 'failed' else 0
 
 
+def run_segment(request, index):
+    """Support batch scripts already queued with the original worker command.
+
+    Replace this process with Bash and initialize its shell functions there.
+    New submissions already contain segment_body directly in their PBS script.
+    """
+    from .jobs import script_text
+
+    spec = json.loads(request.read_text())
+    script = script_text(spec['command'], Path(spec['cwd']), _step(request.parent, index, '.exit'),
+                         spec['job']['setup'], request.parent / 'finished.json',
+                         command_body=segment_body(spec, request, index))
+    os.execv('/bin/bash', ['bash', '-c', script])
+
+
 if __name__ == '__main__':
-    raise SystemExit(run_segment(Path(sys.argv[1]), int(sys.argv[2])))
+    request, index = Path(sys.argv[1]), int(sys.argv[2])
+    if len(sys.argv) == 3:
+        run_segment(request, index)
+    else:
+        raise SystemExit(check_segment(request, index, None if sys.argv[3] == 'before' else int(sys.argv[3])))

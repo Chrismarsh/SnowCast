@@ -232,6 +232,12 @@ must agree with the allocation and partitioned mesh/checkpoint filenames.
 Local jobs can set `timeout_seconds`; PBS uses walltime and exports it as
 `CHM_WALLCLOCK_LIMIT` for checkpointing.
 
+PBS scripts source `setup` and invoke the configured launcher directly in that
+Bash shell. This preserves site-specific `mpirun` functions (and aliases when
+the setup enables alias expansion), as well as its exported environment.
+Short-lived Python helpers check checkpoint progress before and after CHM;
+they do not launch MPI as a Python subprocess.
+
 PBS model runs queue a dependency chain of up to `model.max_runs` jobs (default
 10), each with `model.job.walltime`. The Western example therefore allows up to
 ten six-hour allocations for a backfill. Jobs use `afterok` dependencies and
