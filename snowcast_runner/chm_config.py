@@ -19,10 +19,26 @@ def _read(source, project_id, kind='CHM configuration'):
 
 def _origins(value, source, prefix=()):
     result = {prefix: source}
-    if isinstance(value, dict):
-        for key, child in value.items():
+    if isinstance(value, (dict, list)):
+        entries = value.items() if isinstance(value, dict) else enumerate(value)
+        for key, child in entries:
             result.update(_origins(child, source, (*prefix, key)))
     return result
+
+
+def mesh_input_entries(meshes):
+    """Yield (container, key, config path) for CHM's mesh input filenames.
+
+    Parameters and initial conditions can be named objects or lists of files.
+    Keep their shape and names when resolving/staging each leaf path.
+    """
+    for key, value in meshes.items():
+        if key in ('parameters', 'initial_conditions') and isinstance(value, (dict, list)):
+            entries = value.items() if isinstance(value, dict) else enumerate(value)
+            for name, _ in entries:
+                yield value, name, ('meshes', key, name)
+        else:
+            yield meshes, key, ('meshes', key)
 
 
 def read_model(project):
@@ -52,9 +68,10 @@ def read_model(project):
     if not isinstance(meshes, dict) or not meshes:
         raise ValueError(f'{project.id}: resolved CHM configuration requires a nonempty meshes object '
                          f'(base: {base}, overrides: {override})')
-    for key, value in meshes.items():
-        declared_in = origins.get(('meshes', key), base)
-        field = f'meshes.{key}'
+    for container, key, location in mesh_input_entries(meshes):
+        value = container[key]
+        declared_in = origins.get(location, base)
+        field = '.'.join(map(str, location))
         if not isinstance(value, str) or not value or '\0' in value:
             raise ValueError(f'{project.id}: {field} in {declared_in} must be a nonempty path')
         source = (declared_in.parent / Path(value).expanduser()).resolve()
@@ -67,7 +84,7 @@ def read_model(project):
             if int(count) != project.model['job']['ranks']:
                 raise ValueError(f'{detail}: mesh partition ranks ({count}) do not match '
                                  f'model.job.ranks ({project.model["job"]["ranks"]})')
-        meshes[key] = str(source)
+        container[key] = str(source)
     for section in ('option', 'output', 'forcing', 'checkpoint'):
         if section in config and not isinstance(config[section], dict):
             raise ValueError(f'{project.id}: resolved CHM {section} must be an object')
@@ -94,8 +111,8 @@ def model_inputs(project, config):
 
     for name, source in project.model['assets'].items():
         add(name, source)
-    for value in config['meshes'].values():
-        source = Path(value)
+    for container, key, _ in mesh_input_entries(config['meshes']):
+        source = Path(container[key])
         add(source.name, source)
         if source.suffix != '.partition':
             continue

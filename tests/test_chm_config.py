@@ -82,6 +82,110 @@ def test_merge_before_mesh_validation_and_preserve_declaring_paths(project_file,
     assert all(p.read_bytes() == before for p, before in authored.items())
 
 
+@pytest.mark.parametrize('absolute', [False, True])
+@pytest.mark.parametrize('collection', ['object', 'list'])
+def test_serial_mesh_inputs_are_readable_from_model_cwd(project_file, monkeypatch, tmp_path, absolute, collection):
+    project = load_project(project_file)
+    override = project.model['overrides']
+    inputs = override.parent / 'serial inputs'
+    inputs.mkdir()
+    files = {'mesh': 'domain.mesh', 'parameters': 'domain.param', 'initial_conditions': 'domain.ic'}
+    meshes = {}
+    for field, name in files.items():
+        source = inputs / name
+        source.write_text(f'serial {field}')
+        filename = str(source) if absolute else f'serial inputs/{name}'
+        meshes[field] = filename if field == 'mesh' else ({'file': filename} if collection == 'object' else [filename])
+    write(override, {'meshes': meshes})
+    authored = {p: p.read_bytes() for p in [project.model['config'], override, *inputs.iterdir()]}
+    script = project_file.parent / 'read_serial_inputs.py'
+    script.write_text('''import json, sys
+from pathlib import Path
+config = json.loads(Path(sys.argv[1]).read_text())
+for field in ('mesh', 'parameters', 'initial_conditions'):
+    value = config['meshes'][field]
+    filename = value if field == 'mesh' else (value['file'] if isinstance(value, dict) else value[0])
+    source = Path(filename)
+    assert source.parent == Path('.') and source.is_symlink()
+    assert source.read_text() == f'serial {field}'
+Path('output/clean_exit').touch()
+''')
+    raw = json.loads(project_file.read_text())
+    raw['model']['command'] = [sys.executable, str(script), '{config}']
+    raw['model']['job'] = {'ranks': 1, 'launcher': []}
+    write(project_file, raw)
+    monkeypatch.chdir(tmp_path.parent)
+    assert main(['validate', str(project_file)]) == 0
+    assert not project.work.exists()
+    assert main(['prepare', str(project_file)]) == 0
+    cwd = project.work / 'chm'
+    config = json.loads((cwd / 'config.json').read_text())
+    assert config['meshes'] == {field: name if field == 'mesh' else
+                               ({'file': name} if collection == 'object' else [name])
+                               for field, name in files.items()}
+    links = [cwd / name for name in files.values()]
+    assert all(link.resolve() == inputs / link.name for link in links)
+    inodes = [link.lstat().st_ino for link in links]
+    assert main(['run', str(project_file), '--no-postprocess']) == 0
+    assert [link.lstat().st_ino for link in links] == inodes
+    assert (cwd / 'output/clean_exit').is_file()
+    assert all(p.read_bytes() == before for p, before in authored.items())
+
+
+def test_parameter_object_entries_keep_individual_declaring_paths(project_file):
+    project = load_project(project_file)
+    base, override = project.model['config'], project.model['overrides']
+    raw = json.loads(base.read_text())
+    raw['meshes']['parameters'] = {'file': 'absent.param', 'vegetation': 'vegetation.param'}
+    raw['meshes']['initial_conditions'] = {'snow': 'snow.ic'}
+    write(base, raw)
+    (base.parent / 'vegetation.param').write_text('base vegetation')
+    (base.parent / 'snow.ic').write_text('base snow')
+    (override.parent / 'local.mesh').write_text('mesh')
+    (override.parent / 'local.param').write_text('override parameters')
+    write(override, {'meshes': {'mesh': 'local.mesh', 'parameters': {'file': 'local.param'}}})
+    assert main(['prepare', str(project_file)]) == 0
+    cwd = project.work / 'chm'
+    config = json.loads((cwd / 'config.json').read_text())
+    assert config['meshes']['parameters'] == {'file': 'local.param', 'vegetation': 'vegetation.param'}
+    assert (cwd / 'local.param').resolve() == override.parent / 'local.param'
+    assert (cwd / 'vegetation.param').resolve() == base.parent / 'vegetation.param'
+    assert (cwd / config['meshes']['initial_conditions']['snow']).resolve() == base.parent / 'snow.ic'
+
+
+@pytest.mark.parametrize('field', ['parameters', 'initial_conditions'])
+def test_missing_nested_mesh_input_reports_leaf_origin_and_path(project_file, field, capsys):
+    project = load_project(project_file)
+    override = project.model['overrides']
+    write(override, {'meshes': {'mesh': 'mesh.np1.partition', field: {'file': 'missing.param'}}})
+    assert main(['validate', str(project_file)]) == 1
+    error = capsys.readouterr().err
+    for text in ('west', f'meshes.{field}.file', str(override), str(override.parent / 'missing.param')):
+        assert text in error
+    assert not project.work.exists()
+
+
+@pytest.mark.parametrize('value', [None, 5, {'nested': 'not-a-file-path'}])
+def test_invalid_parameter_file_entry_fails_before_staging(project_file, value, capsys):
+    project = load_project(project_file)
+    write(project.model['overrides'], {'meshes': {'mesh': 'mesh.np1.partition', 'parameters': {'file': value}}})
+    assert main(['prepare', str(project_file)]) == 1
+    assert 'meshes.parameters.file' in capsys.readouterr().err
+    assert not (project.work / 'chm').exists()
+
+
+def test_parameter_file_basename_collisions_fail_before_staging(project_file, capsys):
+    project = load_project(project_file)
+    override = project.model['overrides']
+    for directory in ('first', 'second'):
+        write(override.parent / directory / 'domain.param', {})
+    write(override, {'meshes': {'mesh': 'mesh.np1.partition', 'parameters': {
+        'file': 'first/domain.param', 'extra': 'second/domain.param'}}})
+    assert main(['prepare', str(project_file)]) == 1
+    assert 'model input name collision: domain.param' in capsys.readouterr().err
+    assert not (project.work / 'chm').exists()
+
+
 def test_missing_override_mesh_reports_project_key_origin_and_path(project_file, capsys):
     project = load_project(project_file)
     mesh = project.model['overrides'].with_name('mesh.np1.partition')

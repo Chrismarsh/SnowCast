@@ -8,7 +8,7 @@ from .cog_store import atomic_json
 from .jobs import execute, JobFailed
 from .forcing import forcing_index
 
-from .chm_config import read_model, model_inputs
+from .chm_config import read_model, model_inputs, mesh_input_entries
 
 
 def prepare(project):
@@ -23,7 +23,8 @@ def prepare(project):
         if target.is_symlink():  # model_inputs already checked its destination.
             continue
         target.symlink_to(source, target_is_directory=source.is_dir())
-    config['meshes'] = {key: Path(value).name for key, value in config['meshes'].items()}
+    for container, key, _ in mesh_input_entries(config['meshes']):
+        container[key] = Path(container[key]).name
     index, end = forcing_index(project)
     config.setdefault('forcing', {})['file'] = str(index)
     config.setdefault('output', {})['output_dir'] = output.name

@@ -141,8 +141,27 @@ Removal happens after merging; a missing key is an error. Escape `/` as `~1`
 and `~` as `~0` in a pointer. Remove object keys this way; replace whole lists
 rather than editing list elements by index. `null` is a value, not a deletion.
 
+For a serial CHM run, use the unpartitioned mesh and parameter files:
+
+```json
+{
+  "meshes": {
+    "mesh": "/absolute/path/to/FABDEM_tvc_50x50.mesh",
+    "parameters": {"file": "/absolute/path/to/FABDEM_tvc_50x50.param"}
+  }
+}
+```
+
+Set the project's `model.job.ranks` to `1` and `model.job.launcher` to `[]`
+to invoke CHM directly. PBS can still allocate this serial job. Parameter and
+initial-condition entries may be named objects or lists of filenames; preparation
+preserves that structure and writes staged basenames at each file entry (for
+example, `meshes.parameters.file` becomes `FABDEM_tvc_50x50.param`).
+
 Mesh paths resolve relative to the configuration file that declares each mesh
-entry. An override can therefore replace an absent base mesh before validation.
+or parameter/initial-condition file entry. An override can therefore replace an
+absent base input before validation. Inherited entries retain their base origin
+even when another entry in the same object is overridden.
 Errors identify the project, key, source configuration, resolved path and rank
 mismatch where relevant.
 
