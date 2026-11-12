@@ -11,7 +11,7 @@
 <dialog bind:this={dialog} class="dialog help-dialog" aria-labelledby="help-title">
   <div class="dialog-heading"><div><p class="eyebrow">Using SnowCast</p><h2 id="help-title">Variables &amp; map guide</h2></div><button class="icon-button" aria-label="Close Help" onclick={() => dialog.close()}><Icon name="close"/></button></div>
   <p class="help-intro">Understand the snowpack variables and explore how they change over time.</p>
-  <!-- SWE and snow-depth definitions reused from website/index.html (v2). -->
+  <!-- SWE and snow-depth definitions retain the original SnowCast explanations. -->
   <section class="variable-help" aria-label="Variable definitions">
     <article><div class="variable-heading"><h3>Snow water equivalent <span>SWE</span></h3><span class="unit">mm</span></div><p>Snow Water Equivalent is the amount of water stored in the snowpack, given as an equivalent depth of water (mm) which is the same as mass per unit area (kg/m<sup>2</sup>).</p></article>
     <article><div class="variable-heading"><h3>Snow depth</h3><span class="unit">m</span></div><p>Snow depth is the depth of snow in metres.</p></article>

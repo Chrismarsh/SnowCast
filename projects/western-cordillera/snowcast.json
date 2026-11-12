@@ -1,0 +1,93 @@
+{
+  "version": 2,
+  "id": "western-cordillera",
+  "name": "Western Cordillera",
+  "model": {
+    "config": "chm/base.json",
+    "start_date": "2026-09-01",
+    "output_file": "output.nc",
+    "max_runs": 10,
+    "checkpoint_keep_days": 3,
+    "job": {
+      "mode": "pbs",
+      "setup": "environment.sh",
+      "launcher": [
+        "mpirun",
+        "-n",
+        "{ranks}"
+      ],
+      "ranks": 800,
+      "nodes": 20,
+      "cpus_per_node": 40,
+      "ranks_per_node": 40,
+      "memory": "185gb",
+      "queue": "development",
+      "walltime": "06:00:00",
+      "qsub": "/opt/pbs/bin/qsub",
+      "qstat": "/opt/pbs/bin/qstat"
+    },
+    "overrides": "chm/western.json"
+  },
+  "forcing": {
+    "archive": "/absolute/path/to/hrdps"
+  },
+  "postprocess": {
+    "variables": [
+      "swe",
+      "snowdepthavg",
+      "t"
+    ],
+    "source_resolution": 0.001,
+    "method": "conservative",
+    "recent_steps": 2,
+    "grid": {
+      "crs": "EPSG:4326",
+      "resolution": [
+        0.001,
+        0.001
+      ]
+    },
+    "ascii": {
+      "enabled": true,
+      "variables": [
+        "swe",
+        "t"
+      ],
+      "resolution": 0.036
+    },
+    "job": {
+      "mode": "pbs",
+      "setup": "environment.sh",
+      "launcher": [
+        "mpirun",
+        "-n",
+        "{ranks}"
+      ],
+      "ranks": 800,
+      "nodes": 20,
+      "cpus_per_node": 80,
+      "ranks_per_node": 40,
+      "memory": "185gb",
+      "queue": "development",
+      "walltime": "00:30:00",
+      "qsub": "/opt/pbs/bin/qsub",
+      "qstat": "/opt/pbs/bin/qstat"
+    }
+  },
+  "display": {
+    "ranges": {
+      "swe": [
+        0,
+        400
+      ],
+      "snowdepthavg": [
+        0,
+        2
+      ],
+      "t": [
+        -25,
+        10
+      ]
+    }
+  }
+}

@@ -6,7 +6,7 @@ import sys
 
 import pytest
 
-from postprocess import cog_store as store
+from snowcast_runner import cog_store as store
 
 
 def asset(root, number, variable='swe'):

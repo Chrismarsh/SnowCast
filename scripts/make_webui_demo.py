@@ -10,7 +10,8 @@ from rasterio.transform import from_bounds
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from postprocess.publish_cogs import publish, atomic_json
+from snowcast_runner.publish_cogs import publish
+from snowcast_runner.cog_store import atomic_json
 
 
 def main():

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "refresh:downloads": "python ../scripts/index_tiff_downloads.py",
+    "refresh:downloads": "python -m snowcast_runner.downloads --output public/download-index.json",
     "prebuild": "python ../scripts/unpack_canswe.py && npm run refresh:downloads -- --allow-stale",
     "build": "vite build",
     "check": "svelte-check --tsconfig ./tsconfig.json",

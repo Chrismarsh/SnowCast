@@ -50,11 +50,11 @@ shared pair that has expired is reported instead of silently substituted.
 
 ## How the COGs are generated
 
-The existing model pipeline remains:
+The project model pipeline is:
 
 1. CHM writes UGRID output.
 2. `chm_ugrid2grid` conservatively regrids SWE, snow depth, and temperature.
-3. `postprocess/publish_cogs.py` copies those numeric TIFFs using GDAL's COG
+3. `snowcast_runner.publish_cogs` copies those numeric TIFFs using GDAL's COG
    driver (via Rasterio), adding internal 512-pixel tiles, DEFLATE compression,
    and average overviews. Numeric COGs use **Float32**, retaining the source
    grid, masks and scale/offset; values and nodata are rounded to Float32.
@@ -66,7 +66,7 @@ The existing model pipeline remains:
    not converted. Previously published weekly COGs survive source-TIFF rotation.
 
 The map publisher selects **0.001x0.001** source TIFFs by default. Coarse 0.01°
-files remain available in the original-TIFF downloads but cannot overwrite
+files can remain in the external data archive but cannot overwrite
 fine-grid map dates. `--grid DXxDY` explicitly selects another filename grid;
 the actual pixel spacing must be within 0.1% of that nominal spacing, in the
 raster's CRS units. This accommodates fitting domain bounds to integer raster
@@ -174,9 +174,12 @@ Headers visible to Python alone are insufficient for the viewer.
 ## Build and deploy
 
 Use Node 22.12+ (Node 24 recommended) to build; Node is not needed on the server.
+Run npm from the Python environment containing the installed SnowCast package;
+the download-index preparation step uses `snowcast_runner.downloads`.
 
 ```bash
 cd webui
+python -m pip install -e ..
 npm ci
 npm run check
 npm test
@@ -190,8 +193,9 @@ For example, from `webui/`:
 rsync -rt --exclude=data/ --exclude=demo/ dist/ USER@HOST:/var/www/html/v3/
 ```
 
-Do not point the legacy `/v2/` rsync mirror at `/v3/`, and do not blindly use
-`--delete` over a directory containing data. The existing v2 viewer is untouched.
+Keep application deployment scoped to its assets; avoid `--delete` over a
+directory containing model data. The old v2 source/assets have been removed
+from this repository; deployed files are not changed by that source cleanup.
 The application uses relative asset URLs and works in a `/v3/` subdirectory.
 By default it requests `./data/catalog.json`. For an external data server, use:
 
@@ -223,12 +227,12 @@ path, but is not a measured guarantee of faster loading on every device.
 [Help preview](docs/help-preview.png) · [About preview](docs/about-preview.png)
 
 The **Help** button opens a popup on the map, Data and About pages. Its SWE and
-snow-depth definitions come from the v2 website (`website/index.html`); air
+snow-depth definitions retain the original SnowCast explanations; air
 temperature and v3-specific date, colour and point-value instructions complete
 the guide. Opening Help on the map pauses playback without changing the view,
 selected variable, date or point. Loading diagnostics remain accessible there.
 
-**About** is a separate `about.html` build entry. It reuses the v2 CHM description,
+**About** is a separate `about.html` build entry. It includes the CHM description,
 ECCC–University of Saskatchewan collaboration credits, research caveat, mesh
 figure and publication list. The Windmapper DOI is corrected to
 `10.1029/2022WR032683`; old v2 domain extents and forecast-only UI instructions
@@ -302,19 +306,20 @@ filenames, and writes the index atomically. An offline build retains the checked
 snapshot with a warning. The page displays the snapshot's indexing time, actual
 simulation timestamps, and an explicit stale-index notice after 48 hours.
 
-**Keep the archive current between UI deployments:** the normal v3 uploader now
+**Keep download links current between UI deployments:** the COG uploader
 refreshes and atomically publishes this index after uploading the COG catalogue.
-It reads the public TIFF and ASCII listings after the normal pipeline's upload;
+It reads the public TIFF and ASCII listings after originals have been uploaded separately;
 it does not depend on a frontend rebuild. The index goes in the parent of the
 remote data directory (`/var/www/html/v3/` for `/var/www/html/v3/data`). For a
-different layout, set `webui_download_index_dir` or pass
-`--download-index-directory` to `webupload/v3.py`.
+different layout, pass `--download-index-directory` to
+`python -m snowcast_runner.upload`. For a project catalogue under
+`data/<project-id>/`, explicitly set this to the UI root.
 
 To update the download links immediately from the simulation/upload host, without
 retransferring COGs or rebuilding the UI:
 
 ```bash
-python webupload/v3.py --downloads-only \
+python -m snowcast_runner.upload --downloads-only \
   --host root@snowcast.ca --directory /var/www/html/v3/data
 ```
 
@@ -326,7 +331,7 @@ For directly served local data, or as an independent scheduled refresh on the
 web host (for example hourly, or after upstream TIFF publication):
 
 ```bash
-python /path/to/SnowCast/scripts/index_tiff_downloads.py \
+python -m snowcast_runner.downloads \
   --output /var/www/html/v3/download-index.json
 ```
 
@@ -345,15 +350,19 @@ does not thin or delete these original downloads. Missing published files remain
 gaps. For offline indexing, pass both `--listing tiff.html` and
 `--ascii-listing ascii.html`.
 
-## Publish the initial ten-day window
+## Publish project map history
 
-From the repository root, with Rasterio/GDAL available (already in `spack.yaml`):
+With SnowCast installed and the project postprocessed:
 
 ```bash
-python postprocess/publish_cogs.py \
-  --input postprocess/archive_tiff --input postprocess/tiff \
-  --output postprocess/webdata --days 10
+snowcast publish /projects/western-cordillera --site-dir /srv/snowcast
 ```
+
+The catalogue is `/srv/snowcast/data/western-cordillera/catalog.json`. Open it
+using `?catalog=./data/western-cordillera/catalog.json` when serving that site.
+The current viewer does not yet select a project automatically from the registry.
+For standalone TIFF inputs without a project manifest, use the lower-level
+`python -m snowcast_runner.publish_cogs --help` command.
 
 The last input directory wins if archive and current directories contain the
 same variable/time. The publisher merges prior published assets, so incremental
@@ -367,8 +376,9 @@ If the data directory is directly served by your web server, publication is
 complete. To copy it to another host:
 
 ```bash
-python webupload/v3.py --data postprocess/webdata \
-  --host USER@HOST --directory /var/www/html/v3/data
+python -m snowcast_runner.upload --data /srv/snowcast/data/western-cordillera \
+  --host USER@HOST --directory /var/www/html/v3/data/western-cordillera \
+  --download-index-directory /var/www/html/v3
 ```
 
 This copies referenced COGs first, then transfers a catalogue snapshot and
@@ -389,7 +399,7 @@ catalogue; republish locally to create a new version. Keep one production source
 directory per destination.
 
 SSH/rsync failures are retried up to 10 attempts per upload step, with a
-30-second delay that doubles after each failure (the same schedule as v2).
+30-second delay that doubles after each failure.
 This applies to both normal uploads and `--downloads-only`. Catalogue and
 download-index publication retries restage the same snapshot before publishing it,
 so a disconnect after a successful remote rename can recover safely. COG
@@ -397,32 +407,33 @@ transfer failure after all attempts still fails the upload; download-index
 failure after a successful COG publication remains a warning. No delay is
 added after the last failed attempt.
 
-For automatic publishing after each model run, set in `config_hrdps_west.py`:
+For an operator-managed run followed by local publication, sequence the commands:
 
-```python
-settings['webui_enabled'] = True
-settings['webui_keep_days'] = 10
-settings['webui_weekly_days'] = None  # SWE/SD weekly since September 1; 0 disables weekly history
-settings['webui_upload_host'] = 'USER@HOST'  # omit for directly served local disk
-settings['webui_upload_dir'] = '/var/www/html/v3/data'
+```bash
+snowcast run /projects/western-cordillera &&
+snowcast publish /projects/western-cordillera --site-dir /srv/snowcast
 ```
 
-This is opt-in until the real host is configured. Model physics, output cadence,
-checkpoint retention, existing AEP exports, and the legacy v2 path are unchanged.
+Then synchronize original downloads and upload the catalogue as appropriate for
+the installation. See the [project migration guide](../projects/README.md) for
+replacing old cron invocations and copying daily TIFF/ASCII archives. The retired
+Python settings/plotting/v2 upload pipeline is no longer an entry point.
+Authoritative site configuration and remote multi-project registration remain
+next-stage work.
 
-Original-TIFF rotation moves external masks, PAM metadata and overviews together
-with their raster, counting retention by TIFF rather than sidecar. With
-`webui_data_dir` configured it shares the publisher lock, preventing publication
-midway through rotation. Source sidecars are removed only after their TIFF has
-been transferred successfully.
+Original-TIFF rotation moves external masks, PAM metadata and overviews with
+their raster. Project execution/publication share a project lock, preventing
+publication during rotation. Source sidecars are removed only after their TIFF
+has been transferred successfully; an archived revision cannot inherit stale
+sidecars from its predecessor.
 
 COG retention and cleanup are automatic on both machines. The publisher defaults
 to `--days 10` plus weekly SWE/SD snapshots since September 1 of the hydrological
 year containing the latest model date (UTC), not the publication date or a rolling
 365-day window. It never hashes or converts source dates outside that year.
 The optional `--weekly-days N` caps history within that year; `--weekly-days 0`
-disables the weekly archive. Leave it unset (`webui_weekly_days = None` in the
-configuration) to retain the full hydrological year, including leap years.
+disables the weekly archive. Leave it unset to retain the full hydrological
+year, including leap years. Project publication uses this default policy.
 The catalogue records `retention.hydrological_year_start`; `window_days` is capped
 at the number of days since September 1 so the viewer does not show previous-year
 gap slots during the first nine days. There is at most one timestamp
@@ -451,13 +462,13 @@ Older dates without either an original or a published COG cannot be recovered.
 To preview cleanup without deleting COGs or starting any grace clocks:
 
 ```bash
-python -m postprocess.cog_store cleanup postprocess/webdata --dry-run
+python -m snowcast_runner.cog_store cleanup /srv/snowcast/data/western-cordillera --dry-run
 ```
 
 To inspect the web host using the same stdlib-only helper from your updated repo:
 
 ```bash
-ssh root@snowcast.ca 'python3 - cleanup /var/www/html/v3/data --dry-run' < postprocess/cog_store.py
+ssh USER@HOST 'python3 - cleanup /var/www/html/v3/data/western-cordillera --dry-run' < snowcast_runner/cog_store.py
 ```
 
 Omit `--dry-run` to record unreferenced files and remove those already past the
@@ -580,6 +591,7 @@ cover site navigation, full-domain reset, date/point preservation, and dismissal
 python -m pip install rasterio numpy pytest
 python -m pytest -q tests
 cd webui
+python -m pip install -e ..
 npm ci
 npm run demo
 npm run dev
@@ -664,6 +676,15 @@ Transparency regression checks evaluate the generated colour expression with
 OpenLayers, compile it to GLSL, and check Canvas output for missing values,
 masked pixels, valid zero snow, and cold temperatures. These are not a substitute
 for a visual WebGL check on the affected device.
+
+## Project runner integration
+
+The web application remains in this repository but is built/deployed separately
+from model data. The [project runner guide](../projects/README.md) documents
+`snowcast publish` and `snowcast deploy-ui`, independent domain workspaces, and
+the site-level `domains.json` contract. This viewer currently consumes one
+catalogue through `?catalog=...`; simultaneous registry-driven domain rendering
+is a subsequent feature.
 
 ## Sentinel-2 / Landsat satellite overlay
 
