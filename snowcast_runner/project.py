@@ -65,38 +65,47 @@ JOB = {'mode': 'local', 'ranks': 1, 'launcher': [], 'setup': None, 'timeout_seco
        'memory': '4gb', 'walltime': '01:00:00', 'qsub': 'qsub', 'qstat': 'qstat', 'poll_seconds': 15}
 
 
-def job_config(raw, base):
-    keys(raw, ' '.join(JOB), 'job')
+def job_config(raw, base, *, where='job'):
+    keys(raw, ' '.join(JOB), where)
     job = merge(JOB, raw)
     if job['mode'] not in {'local', 'pbs'}:
-        raise ValueError('job.mode must be local or pbs')
+        raise ValueError(f'{where}.mode must be local or pbs')
     for field in ('ranks', 'nodes', 'cpus_per_node', 'ranks_per_node', 'attempts'):
-        positive(job[field], f'job.{field}', integer=True)
+        positive(job[field], f'{where}.{field}', integer=True)
     for field in ('retry_delay_seconds', 'poll_seconds'):
-        positive(job[field], f'job.{field}')
+        positive(job[field], f'{where}.{field}')
     if job['timeout_seconds'] is not None:
-        positive(job['timeout_seconds'], 'job.timeout_seconds')
+        positive(job['timeout_seconds'], f'{where}.timeout_seconds')
         if job['mode'] == 'pbs':
-            raise ValueError('PBS jobs use walltime; timeout_seconds is for local execution')
+            raise ValueError(f'{where}: PBS jobs use walltime; timeout_seconds is for local execution')
     if not isinstance(job['retry_codes'], list) or any(type(c) is not int or c <= 0 for c in job['retry_codes']):
-        raise ValueError('job.retry_codes must be nonzero integer exit codes')
+        raise ValueError(f'{where}.retry_codes must be nonzero integer exit codes')
     if not isinstance(job['launcher'], list) or any(not isinstance(s, str) or not s for s in job['launcher']):
-        raise ValueError('job.launcher must be an argument list')
+        raise ValueError(f'{where}.launcher must be an argument list')
     if job['ranks'] > 1 and not job['launcher']:
-        raise ValueError('Multiple ranks require a launcher, e.g. ["mpirun", "-n", "{ranks}"]')
-    if job['mode'] == 'pbs' and (job['ranks'] != job['nodes'] * job['ranks_per_node'] or job['ranks_per_node'] > job['cpus_per_node']):
-        raise ValueError('PBS ranks must match nodes × ranks_per_node and fit the CPU allocation')
+        raise ValueError(f'{where}: Multiple ranks require a launcher, e.g. ["mpirun", "-n", "{{ranks}}"]')
+    if job['mode'] == 'pbs':
+        allocated = job['nodes'] * job['ranks_per_node']
+        if job['ranks'] != allocated:
+            raise ValueError(f'{where}: ranks={job["ranks"]} must equal '
+                             f'nodes={job["nodes"]} × ranks_per_node={job["ranks_per_node"]} ({allocated})')
+        if job['ranks_per_node'] > job['cpus_per_node']:
+            raise ValueError(f'{where}: ranks_per_node={job["ranks_per_node"]} '
+                             f'exceeds cpus_per_node={job["cpus_per_node"]}')
     if not isinstance(job['walltime'], str) or not isinstance(job['memory'], str) or not re.fullmatch(r'\d+:\d{2}:\d{2}', job['walltime']) or not re.fullmatch(r'\d+(?:mb|gb)', job['memory']):
-        raise ValueError('Invalid PBS walltime or memory')
+        raise ValueError(f'{where}: Invalid PBS walltime or memory')
     for field in ('qsub', 'qstat', 'queue'):
         if not isinstance(job[field], str) or not job[field] or '\n' in job[field]:
-            raise ValueError(f'job.{field} must be a nonempty string')
+            raise ValueError(f'{where}.{field} must be a nonempty string')
     for field in ('qsub', 'qstat'):
         job[field] = executable(base, job[field])
     if job['launcher']:
         job['launcher'][0] = executable(base, job['launcher'][0])
     if job['setup']:
-        job['setup'] = path(base, job['setup'])
+        try:
+            job['setup'] = path(base, job['setup'])
+        except ValueError as error:
+            raise ValueError(f'{where}.setup: {error}') from error
     return job
 
 
@@ -160,7 +169,7 @@ def load_project(filename):
     if not isinstance(model['command'], list) or not model['command'] or any(not isinstance(s, str) or not s for s in model['command']):
         raise ValueError('model.command must be an argument list')
     model['command'][0] = executable(base, model['command'][0])
-    model['job'] = job_config(model['job'], base)
+    model['job'] = job_config(model['job'], base, where='model.job')
     if not isinstance(model['assets'], dict):
         raise ValueError('model.assets must map workspace filenames to input paths')
     for name, source in model['assets'].items():
@@ -192,7 +201,7 @@ def load_project(filename):
     pp['exporter'] = executable(base, pp['exporter'])
     if pp.get('mesh'):
         pp['mesh'] = path(base, pp['mesh'])
-    pp['job'] = job_config(pp['job'], base)
+    pp['job'] = job_config(pp['job'], base, where='postprocess.job')
     keys(pp['grid'], 'crs resolution bounds resampling', 'postprocess.grid')
     grid = merge({'crs': 'EPSG:4326', 'resolution': [pp['source_resolution']] * 2,
                   'bounds': None, 'resampling': 'nearest'}, pp['grid'])
