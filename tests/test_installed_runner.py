@@ -58,9 +58,10 @@ raise SystemExit(main(sys.argv[1:]))
     assert len(list((project_file.parent / 'work/postprocess/tiff').glob('*.tiff'))) == 4
     site_file = tmp_path / 'site.json'
     site_file.write_text(json.dumps({'version': 1, 'projects': [str(project_file)], 'staging': 'website'}))
-    for action in ('validate', 'configure', 'publish'):
-        extra = ['--project', 'west'] if action == 'publish' else []
-        checked([sys.executable, '-I', '-c', bootstrap, str(installed), 'site', action, str(site_file), *extra], cwd=outside)
+    for action in ('validate', 'configure'):
+        checked([sys.executable, '-I', '-c', bootstrap, str(installed), 'site', action, str(site_file)], cwd=outside)
+    checked([sys.executable, '-I', '-c', bootstrap, str(installed), 'publish', str(site_file),
+             '--project', 'west', '--no-upload'], cwd=outside)
     assert json.loads((tmp_path / 'website/site.json').read_text())['domains'][0]['available'] is True
     assert not list(outside.iterdir())
     assert (installed / 'bin/snowcast').is_file()

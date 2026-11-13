@@ -62,10 +62,13 @@ def configure(site, *, remote=False):
         remote_site(site, 'configure-site')
 
 
-def publish_selected(site, project_id, *, remote=False):
+def publish_selected(site, project_id, *, remote=True):
     project = next((p for p in site.projects if p.id == project_id), None)
     if project is None:
         raise ValueError(f'Project {project_id} is not selected for this site')
+    if remote and site.deploy is None:
+        raise ValueError('Publishing uploads by default; set site.deploy.host and site.deploy.directory, '
+                         'or use --no-upload for local-only publication')
     site_action('check-site', site.staging, site.spec, project_id)
     if remote:
         remote_site(site, 'check-site', project_id)

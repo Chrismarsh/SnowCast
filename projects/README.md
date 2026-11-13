@@ -400,27 +400,32 @@ Publish/refresh download indexes after these transfers. The COG upload utility
 transfers map COGs and refreshes the existing Western public archive index; it
 does not transfer original TIFF/ASCII products.
 
-## Publication helpers
+## Publication
 
-The existing local/mounted publication helper remains available with a flat
-project identity:
+Use the [site configuration](../sites/README.md) for both remote and local
+publication. Configure the site once, then publish each project independently:
 
 ```bash
-snowcast publish /projects/western-cordillera --site-dir /path/to/staging-site
+snowcast site configure sites/snowcast.json --upload
+snowcast publish sites/snowcast.json --project western-cordillera
+```
+
+`publish` uploads by default. For local-only testing, configure without
+`--upload` and add `--no-upload` to `publish`. It writes the same COGs and
+`data/<project-id>/catalog.json` in the site's configured staging directory.
+There is no separate `site publish` command or project/`--site-dir` publish form.
+UI installation remains separate:
+
+```bash
 snowcast deploy-ui --dist /path/to/webui/dist --site-dir /path/to/staging-site
 ```
 
-It writes `data/<project-id>/catalog.json`, preserving safe COG conversion,
-concurrent registry updates, hydrological-year selection and 48-hour orphan
-cleanup. SWE/SD retain ten daily dates plus older weekly snapshots from September
-1 of the latest model date's hydrological year; temperature retains ten daily
-dates. Daily source archives remain daily. This refactor does not change COG
-encoding or digest algorithms.
-
-For a shared website, use `snowcast site configure` and `snowcast site publish`
-as documented in the [site guide](../sites/README.md). They select projects and
-publish/upload each one independently. The flat per-project catalogue can still
-be opened directly with `?catalog=./data/western-cordillera/catalog.json`.
+Publication preserves safe COG conversion, concurrent registry updates,
+hydrological-year selection and 48-hour orphan cleanup. SWE/SD retain ten daily
+dates plus older weekly snapshots from September 1 of the latest model date's
+hydrological year; temperature retains ten daily dates. Daily source archives
+remain daily. The flat per-project catalogue can still be opened directly with
+`?catalog=./data/western-cordillera/catalog.json`.
 
 The flat URL differs from the earlier `data/<project>/<domain>/` location. No
 live catalogues or URLs are migrated automatically. Original archive download

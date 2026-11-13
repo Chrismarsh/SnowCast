@@ -18,8 +18,8 @@ where their coverage overlaps. There is no built-in list or limit of domains.
 
 `staging` must be outside every project's `work` directory. For SSH publication,
 set `deploy.host` to your own SSH destination/alias and `deploy.directory` to the
-website root, such as `/var/www/html/v3`. No username is built into the runner.
-Omit `deploy` for a local or mounted website. Only project IDs, display names,
+website root, such as `/var/www/html/v3-testing`. No username is built into the runner.
+For a local or mounted website, omit `deploy` and use `publish --no-upload`. Only project IDs, display names,
 catalogue URLs and colour ranges enter the public manifest; local paths and SSH
 settings are never published.
 
@@ -42,15 +42,41 @@ it does not delete model output or other project data.
 
 ## Publish each project independently
 
-After that project's `snowcast postprocess` has completed:
+For each routine update, run and publish each project once:
 
 ```bash
-snowcast site publish sites/snowcast.json --project western-cordillera --upload
-snowcast site publish sites/snowcast.json --project tvc --upload
+snowcast run projects/western-cordillera &&
+snowcast publish sites/snowcast.json --project western-cordillera
+
+snowcast run projects/tvc &&
+snowcast publish sites/snowcast.json --project tvc
 ```
 
-Omit `--upload` to publish only to staging. Either command can run independently;
-the other project keeps its existing catalogue. Repeating a command is safe.
+`run` refreshes the forcing index, prepares the configuration, runs/resumes CHM
+and postprocesses successful new output. The `&&` publishes only after that
+project's run succeeds. If you already ran `postprocess`, use just `publish`.
+Each project can update independently; the other keeps its existing catalogue.
+
+**`publish` uploads by default** to `deploy.host` / `deploy.directory` in the site
+configuration. It generates COGs in staging, uploads that project's catalogue
+and assets, and updates the remote website registry. Missing deployment settings
+fail before conversion with instructions to configure them or use `--no-upload`.
+
+For **local-only testing**, configure staging once without `--upload`, then:
+
+```bash
+snowcast site configure sites/snowcast.json
+snowcast publish sites/snowcast.json --project tvc --no-upload
+```
+
+`--no-upload` generates the same COGs and updates the local site registry, with
+no SSH or rsync calls, even if the config contains a remote deployment destination.
+It never changes the remote website. Repeating either publication mode is safe.
+
+There is one public publishing command. The old `snowcast site publish ... --upload`
+and `snowcast publish PROJECT --site-dir DIR` forms have been removed; update any
+scripts to `snowcast publish SITE_CONFIG --project ID [--no-upload]`.
+
 Each store is `data/<project-id>/` and has its own conversion/upload lock and COG
 cleanup. A separate site lock protects the shared registry. Uploads transfer and
 verify assets before atomically committing the catalogue and registering it.
@@ -78,14 +104,14 @@ destination as `deploy` (substitute your SSH destination):
 ```bash
 rsync -rt --protect-args --exclude=data/ --exclude=demo/ --exclude=demo-site/ \
   --exclude=site.json --exclude=.site-config.json --exclude=domains.json \
-  webui/dist/ USER@HOST:/var/www/html/v3/
+  webui/dist/ USER@HOST:/var/www/html/v3-testing/
 ```
 
 Do not add `--delete` over a website containing model data. Normal project
 publication does **not** rebuild or copy the UI. Subsequent data publishes need
 no UI rebuild. Apache must serve byte ranges for COGs; give `site.json` and all
 `catalog.json` files revalidation/no-cache headers. The existing COG host check
-still applies. Open `/v3/` to see all selected projects. `?site=URL` selects an
+still applies. Open `/v3-testing/` to see all selected projects. `?site=URL` selects an
 alternate site manifest; `?catalog=URL` still explicitly opens one catalogue.
 Only a missing default `site.json` (404) falls back to legacy `data/catalog.json`.
 A broken configured manifest never silently switches to a different dataset.

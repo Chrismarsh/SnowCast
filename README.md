@@ -36,6 +36,17 @@ PBS execution, postprocessing and migration. The old `snowcast.py` entry point,
 Python settings files and compatibility wrappers have been removed. Model jobs
 and checkpoints live inside the project, not the tool checkout.
 
+After configuring a website using the [site guide](sites/README.md), publish a
+project's postprocessed output with:
+
+```bash
+snowcast publish sites/snowcast.json --project western-cordillera
+```
+
+This uploads by default. Add `--no-upload` to generate the same COGs and catalogue
+in local staging without contacting the webserver. UI builds and uploads remain
+separate from model-data publication.
+
 ## Repository guide
 
 | Location | Purpose |

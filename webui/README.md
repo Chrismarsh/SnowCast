@@ -356,36 +356,36 @@ gaps. For offline indexing, pass both `--listing tiff.html` and
 
 ## Publish project map history
 
-With SnowCast installed and the project postprocessed:
+With SnowCast installed and the project postprocessed, configure the website
+once, then publish that project's latest products:
 
 ```bash
-snowcast publish /projects/western-cordillera --site-dir /srv/snowcast
+snowcast site configure sites/snowcast.json --upload
+snowcast publish sites/snowcast.json --project western-cordillera
 ```
 
-The catalogue is `/srv/snowcast/data/western-cordillera/catalog.json`. Open it
-using `?catalog=./data/western-cordillera/catalog.json` when serving that site.
-The current viewer does not yet select a project automatically from the registry.
-For standalone TIFF inputs without a project manifest, use the lower-level
-`python -m snowcast_runner.publish_cogs --help` command.
+The [site guide](../sites/README.md) describes project selection, staging and SSH
+destinations. `publish` generates COGs locally and **uploads by default**. For
+local-only testing, configure without `--upload` and publish with `--no-upload`;
+that mode does not contact the webserver. The catalogue is
+`STAGING/data/western-cordillera/catalog.json`. The viewer discovers projects from
+`site.json`; `?catalog=./data/western-cordillera/catalog.json` still opens just one.
+For standalone TIFF inputs without a project manifest, the lower-level maintenance
+utility remains available via `python -m snowcast_runner.publish_cogs --help`.
 
 The last input directory wins if archive and current directories contain the
 same variable/time. The publisher merges prior published assets, so incremental
 two-record exports still build a ten-day history. It anchors the window to the
 latest available simulation date, including that date and the previous nine
 UTC dates; missing days remain missing. Old files are not silently converted
-into observations. Model run IDs can be supplied with `--run-id` if known;
+into observations. The standalone COG utility accepts `--run-id` if known;
 publication time is recorded separately and is never passed off as run time.
 
-If the data directory is directly served by your web server, publication is
-complete. To copy it to another host:
+`snowcast publish` handles the upload and remote site registration in the same
+command. To upload after a local test, repeat `snowcast publish` without
+`--no-upload`.
 
-```bash
-python -m snowcast_runner.upload --data /srv/snowcast/data/western-cordillera \
-  --host USER@HOST --directory /var/www/html/v3/data/western-cordillera \
-  --download-index-directory /var/www/html/v3
-```
-
-This copies referenced COGs first, then transfers a catalogue snapshot and
+Uploading copies referenced COGs first, then transfers a catalogue snapshot and
 publishes it atomically on the remote filesystem. The host needs **Python 3.9+**
 (standard library only); the uploader sends the helper code over SSH. The local
 publisher and uploader share a filesystem lock. Before transferring assets, the
@@ -404,26 +404,27 @@ directory per destination.
 
 SSH/rsync failures are retried up to 10 attempts per upload step, with a
 30-second delay that doubles after each failure.
-This applies to both normal uploads and `--downloads-only`. Catalogue and
-download-index publication retries restage the same snapshot before publishing it,
-so a disconnect after a successful remote rename can recover safely. COG
-transfer failure after all attempts still fails the upload; download-index
-failure after a successful COG publication remains a warning. No delay is
-added after the last failed attempt.
+Catalogue upload retries restage the same snapshot before publishing it, so a
+disconnect after a successful remote rename can recover safely. COG transfer
+failure after all attempts still fails the upload. No delay is added after the
+last failed attempt. Site configuration/registration conflicts fail immediately
+because they require correcting the configuration. The separate standalone
+upload utility also supports `--downloads-only`; normal `snowcast publish` does
+not refresh the original daily download-archive index.
 
-For an operator-managed run followed by local publication, sequence the commands:
+For an operator-managed run followed by publication and upload, sequence the commands:
 
 ```bash
 snowcast run /projects/western-cordillera &&
-snowcast publish /projects/western-cordillera --site-dir /srv/snowcast
+snowcast publish sites/snowcast.json --project western-cordillera
 ```
 
-Then synchronize original downloads and upload the catalogue as appropriate for
-the installation. See the [project migration guide](../projects/README.md) for
+Synchronize original daily downloads separately as appropriate for the installation.
+See the [project migration guide](../projects/README.md) for
 replacing old cron invocations and copying daily TIFF/ASCII archives. The retired
 Python settings/plotting/v2 upload pipeline is no longer an entry point.
-Authoritative site configuration and remote multi-project registration remain
-next-stage work.
+The site config controls selection; each publish registers only complete catalogues.
+Original daily download-archive integration and scheduling remain separate steps.
 
 Original-TIFF rotation moves external masks, PAM metadata and overviews with
 their raster. Project execution/publication share a project lock, preventing
@@ -687,7 +688,7 @@ The web application remains in this repository but is built/deployed separately
 from model data. The [project runner guide](../projects/README.md) documents
 `snowcast publish` and `snowcast deploy-ui`, independent domain workspaces, and
 legacy `domains.json` compatibility. The [site guide](../sites/README.md) covers
-the authoritative `site.json` contract, `snowcast site configure/publish`, shared
+the authoritative `site.json` contract, `snowcast site configure` and `snowcast publish`, shared
 dates, point attribution and domain-aware legends. Explicit `?catalog=...` links
 still load one catalogue.
 

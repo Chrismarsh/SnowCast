@@ -12,40 +12,45 @@ from .state import workspace, status
 def parser():
     root = argparse.ArgumentParser(description='Run SnowCast projects independently of the tool checkout.')
     commands = root.add_subparsers(dest='action', required=True)
-    for action in ('validate', 'prepare', 'met-update', 'run', 'postprocess', 'publish', 'status'):
+    for action in ('validate', 'prepare', 'met-update', 'run', 'postprocess', 'status'):
         command = commands.add_parser(action)
         command.add_argument('project', type=Path, help='Project directory or snowcast.json file')
         if action == 'validate':
             command.add_argument('--config-only', action='store_true', help='Validate structure without requiring external model inputs')
         if action == 'run':
             command.add_argument('--no-postprocess', action='store_true')
-        if action == 'publish':
-            command.add_argument('--site-dir', type=Path, required=True, help='Local or mounted site root')
+    command = commands.add_parser('publish', help='Publish one selected project and upload to its configured website',
+                                  description='Generate COGs for one project selected by the site config and upload '
+                                              'by default. Use --no-upload for local-only publication.')
+    command.add_argument('config', type=Path, help='Authored site JSON')
+    command.add_argument('--project', required=True, help='ID of one selected project')
+    command.add_argument('--no-upload', action='store_true', help='Publish only to local staging; do not contact the webserver')
     command = commands.add_parser('deploy-ui', help='Deploy an already-built UI separately from model data')
     command.add_argument('--dist', type=Path, required=True)
     command.add_argument('--site-dir', type=Path, required=True)
-    site = commands.add_parser('site', help='Configure a website and publish its selected projects')
+    site = commands.add_parser('site', help='Validate or configure a website and its selected projects')
     actions = site.add_subparsers(dest='site_action', required=True)
-    for action in ('validate', 'configure', 'publish'):
+    for action in ('validate', 'configure'):
         command = actions.add_parser(action)
         command.add_argument('config', type=Path, help='Authored site JSON')
         if action != 'validate':
             command.add_argument('--upload', action='store_true', help='Also update the configured webserver over SSH')
-        if action == 'publish':
-            command.add_argument('--project', required=True, help='ID of one selected project')
     return root
 
 
 def main(argv=None):
     args = parser().parse_args(argv)
     try:
-        if args.action == 'site':
+        if args.action in ('site', 'publish'):
             from .site_config import load_site, configure, publish_selected
             site = load_site(args.config)
+            if args.action == 'publish':
+                publish_selected(site, args.project, remote=not args.no_upload)
+                destination = str(site.staging) if args.no_upload else f'{site.deploy["host"]}:{site.deploy["directory"]}'
+                print(f'Published {args.project} to {destination}' + (' (local only; no upload)' if args.no_upload else ''))
+                return 0
             if args.site_action == 'configure':
                 configure(site, remote=args.upload)
-            elif args.site_action == 'publish':
-                publish_selected(site, args.project, remote=args.upload)
             print(f'Site {args.site_action}: {site.spec["title"]}')
             return 0
         if args.action == 'deploy-ui':
@@ -68,7 +73,7 @@ def main(argv=None):
             return 0
         if args.action == 'met-update':
             validate_forcing(project)
-        elif args.action != 'publish':
+        else:
             validate_inputs(project)
         from .jobs import resume_pending
         from .model import run_model
@@ -92,12 +97,6 @@ def main(argv=None):
                     config, _, _ = prepare(project)
                     status(project, 'prepared', config=str(config))
                     print(config)
-                    return 0
-                if args.action == 'publish':
-                    from .site import publish_project
-                    catalogue = publish_project(project, args.site_dir)
-                    status(project, 'published', latest_time=catalogue['latest_time'])
-                    print(f'Published {project.id} to {args.site_dir}')
                     return 0
                 if args.action == 'run':
                     outcome = recovered[-1] if recovered else run_model(project)

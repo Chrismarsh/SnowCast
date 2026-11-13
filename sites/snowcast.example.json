@@ -8,6 +8,6 @@
   "staging": "../site-staging",
   "deploy": {
     "host": "USER@HOST",
-    "directory": "/var/www/html/v3"
+    "directory": "/var/www/html/v3-testing"
   }
 }
