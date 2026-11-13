@@ -24,12 +24,30 @@ def parser():
     command = commands.add_parser('deploy-ui', help='Deploy an already-built UI separately from model data')
     command.add_argument('--dist', type=Path, required=True)
     command.add_argument('--site-dir', type=Path, required=True)
+    site = commands.add_parser('site', help='Configure a website and publish its selected projects')
+    actions = site.add_subparsers(dest='site_action', required=True)
+    for action in ('validate', 'configure', 'publish'):
+        command = actions.add_parser(action)
+        command.add_argument('config', type=Path, help='Authored site JSON')
+        if action != 'validate':
+            command.add_argument('--upload', action='store_true', help='Also update the configured webserver over SSH')
+        if action == 'publish':
+            command.add_argument('--project', required=True, help='ID of one selected project')
     return root
 
 
 def main(argv=None):
     args = parser().parse_args(argv)
     try:
+        if args.action == 'site':
+            from .site_config import load_site, configure, publish_selected
+            site = load_site(args.config)
+            if args.site_action == 'configure':
+                configure(site, remote=args.upload)
+            elif args.site_action == 'publish':
+                publish_selected(site, args.project, remote=args.upload)
+            print(f'Site {args.site_action}: {site.spec["title"]}')
+            return 0
         if args.action == 'deploy-ui':
             from .site import deploy_ui
             deploy_ui(args.dist, args.site_dir)

@@ -58,9 +58,12 @@ CHM
 webui/node_modules/
 webui/dist/
 webui/public/demo/
+webui/public/demo-site/
 webui/public/observations/canswe/
 webui/.openai/
 webui/.vite/
+webui/test-results/
+webui/playwright-report/
 .pytest_cache/
 *.egg-info/
 /build/

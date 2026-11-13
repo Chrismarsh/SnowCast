@@ -72,7 +72,7 @@ def _remote_store(host, directory, action, token):
     return ['ssh', host, command]
 
 
-def upload(data: Path, host: str, directory: str, download_index_directory=None):
+def upload(data: Path, host: str, directory: str, download_index_directory=None, *, refresh_downloads=True):
     _validate_destination(host, directory)
     index_directory = download_index_directory or str(PurePosixPath(directory).parent)
     _validate_destination(host, index_directory)
@@ -105,6 +105,8 @@ def upload(data: Path, host: str, directory: str, download_index_directory=None)
                 except Exception as error:
                     print(f'WARNING: upload pin retained on host; next upload from this source will replace it: {error}', file=sys.stderr)
 
+    if not refresh_downloads:
+        return
     try:
         upload_download_index(host, index_directory)
     except Exception as error:

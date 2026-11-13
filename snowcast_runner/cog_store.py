@@ -189,9 +189,83 @@ def remote_action(action, root, token, content=None):
             raise ValueError("Unknown upload action")
 
 
+def validate_site_spec(spec):
+    """Validate the public-only site contract on both the publisher and host."""
+    if (not isinstance(spec, dict) or set(spec) != {'version', 'title', 'domains', 'overview_ranges'}
+            or spec['version'] != 1 or not isinstance(spec['title'], str) or not spec['title'].strip()
+            or not isinstance(spec['domains'], list)):
+        raise ValueError('Invalid site configuration')
+    ids = set()
+    for entry in spec['domains']:
+        if (not isinstance(entry, dict) or set(entry) != {'id', 'name', 'catalogue'}
+                or not isinstance(entry['id'], str) or not re.fullmatch(r'[a-z][a-z0-9_-]{0,63}', entry['id'])
+                or entry['id'] in ids or not isinstance(entry['name'], str) or not entry['name'].strip()
+                or entry['catalogue'] != f'data/{entry["id"]}/catalog.json'):
+            raise ValueError('Invalid or duplicate site project')
+        ids.add(entry['id'])
+    ranges = spec['overview_ranges']
+    if not isinstance(ranges, dict):
+        raise ValueError('Invalid site overview_ranges')
+    for variable, span in ranges.items():
+        if (variable not in ('swe', 'snowdepthavg', 't') or not isinstance(span, list) or len(span) != 2
+                or any(type(n) not in (int, float) or not float('-inf') < n < float('inf') for n in span)
+                or span[0] >= span[1]):
+            raise ValueError('Invalid site overview_ranges')
+
+
+def _site_manifest(root, spec):
+    domains = []
+    for entry in spec['domains']:
+        path = root / entry['catalogue']
+        if any(p.is_symlink() for p in (root / 'data', path.parent, path)):
+            raise ValueError('Site catalogue paths cannot use symlinks')
+        available = path.is_file()
+        if available:
+            catalogue = json.loads(path.read_text())
+            if catalogue.get('domain', {}).get('id') != entry['id']:
+                raise ValueError(f'Catalogue identity does not match site project {entry["id"]}')
+            verify_assets(path.parent, catalogue)
+        domains.append({**entry, 'available': available})
+    return {**spec, 'domains': domains, 'generated_at': datetime.now(timezone.utc).isoformat()}
+
+
+def site_action(action, root, spec=None, project_id=None):
+    """One host lock protects authoritative selection and independent registration.
+
+    Only configure-site changes selection/order. Publishers must match that
+    configuration; an older publisher cannot silently restore a removed project.
+    """
+    root = Path(root)
+    with store_lock(root):
+        config = root / '.site-config.json'
+        if config.is_symlink() or (root / 'site.json').is_symlink():
+            raise ValueError('Site configuration cannot use symlinks')
+        if action == 'configure-site':
+            validate_site_spec(spec)
+            manifest = _site_manifest(root, spec)
+            atomic_json(config, spec)
+            atomic_json(root / 'site.json', manifest)
+        else:
+            if not config.is_file():
+                raise ValueError('Site is not configured; run snowcast site configure first (with --upload for the host)')
+            current = json.loads(config.read_text())
+            validate_site_spec(current)
+            if spec is not None and spec != current:
+                raise ValueError('Site configuration changed; run snowcast site configure before publishing')
+            if project_id is not None and project_id not in {d['id'] for d in current['domains']}:
+                raise ValueError(f'Project {project_id} is not selected for this site')
+            if action == 'register-site':
+                if not (root / 'data' / project_id / 'catalog.json').is_file():
+                    raise ValueError(f'Project {project_id} has no published catalogue')
+                atomic_json(root / 'site.json', _site_manifest(root, current))
+            elif action != 'check-site':
+                raise ValueError('Unknown site action')
+        root.chmod(0o755)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["cleanup", "pin", "commit", "unpin"])
+    parser.add_argument("action", choices=["cleanup", "pin", "commit", "unpin", "configure-site", "check-site", "register-site"])
     parser.add_argument("directory", type=Path)
     parser.add_argument("token", nargs="?")
     parser.add_argument("--dry-run", action="store_true")
@@ -199,6 +273,8 @@ def main():
     if args.action == "cleanup":
         with store_lock(args.directory):
             cleanup_locked(args.directory, dry_run=args.dry_run)
+    elif args.action.endswith('-site'):
+        site_action(args.action, args.directory, json.load(sys.stdin), args.token)
     else:
         remote_action(args.action, args.directory, args.token, sys.stdin.read() if args.action == "pin" else None)
 

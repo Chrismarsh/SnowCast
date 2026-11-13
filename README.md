@@ -42,6 +42,7 @@ and checkpoints live inside the project, not the tool checkout.
 | --- | --- |
 | `snowcast_runner/` | Installed CLI, model orchestration, met indexing, postprocessing and publication utilities |
 | `projects/` | Independent project examples and their configuration guide |
+| `sites/` | Shared website configuration, independent publication and map guide |
 | `webui/` | Static map, downloads, help and about pages |
 | `scripts/` | UI data preparation/diagnostics and scientific example configurations |
 | `domain/` | Standalone mesh/domain preparation tools |
@@ -49,8 +50,8 @@ and checkpoints live inside the project, not the tool checkout.
 | `spack.yaml`, `spack.lock` | CHM and scientific Python environment specifications |
 
 The [web UI guide](webui/README.md) covers COG generation, daily/weekly map
-history, point sampling, observations and Apache/NGINX hosting. Site-level
-project selection and simultaneous multi-project rendering are a subsequent
-stage; the current viewer opens one catalogue at a time.
+history, point sampling, observations and Apache/NGINX hosting. The
+[site guide](sites/README.md) covers selecting projects, independent uploads and
+simultaneous map display with domain-aware colour ranges.
 
 SnowCast output is experimental. See [snowcast.ca](https://www.snowcast.ca/).

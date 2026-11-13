@@ -34,5 +34,5 @@ export function differenceCSV(from: PointValue, to: PointValue, location: number
   const quote = (s: string) => '"' + s.replaceAll('"', '""') + '"';
   const status = from.error || to.error ? 'error' : value === null ? 'nodata' : 'valid';
   return 'from_datetime_utc,to_datetime_utc,longitude,latitude,from_value,to_value,to_minus_from,unit,status\r\n' +
-    [from.time, to.time, ...location, from.value ?? '', to.value ?? '', value ?? '', quote(unit), status].join(',');
+    [from.sourceTime || from.time, to.sourceTime || to.time, ...location, from.value ?? '', to.value ?? '', value ?? '', quote(unit), status].join(',');
 }

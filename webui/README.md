@@ -190,14 +190,18 @@ Upload `dist/` to `/v3/`. Keep `data/` separate from application synchronization
 For example, from `webui/`:
 
 ```bash
-rsync -rt --exclude=data/ --exclude=demo/ dist/ USER@HOST:/var/www/html/v3/
+rsync -rt --exclude=data/ --exclude=demo/ --exclude=demo-site/ \
+  --exclude=site.json --exclude=.site-config.json --exclude=domains.json \
+  dist/ USER@HOST:/var/www/html/v3/
 ```
 
 Keep application deployment scoped to its assets; avoid `--delete` over a
 directory containing model data. The old v2 source/assets have been removed
 from this repository; deployed files are not changed by that source cleanup.
 The application uses relative asset URLs and works in a `/v3/` subdirectory.
-By default it requests `./data/catalog.json`. For an external data server, use:
+By default it discovers projects through `./site.json`, falling back to
+`./data/catalog.json` only when that manifest is missing (404). For an explicit
+single-catalogue view or external data server, use:
 
 ```text
 https://www.snowcast.ca/v3/?catalog=https%3A%2F%2Fdata.example%2Fsnowcast-data%2Fcatalog.json
@@ -546,7 +550,7 @@ cover site navigation, full-domain reset, date/point preservation, and dismissal
   map COG reads; basemaps and point samples have separate request handling.
   After 15 seconds the viewer shows a slow-loading notice and continues waiting;
   it reports a stall only after 90 seconds without raster loading progress.
-  It retains up to three raster layers; point reads run with at most three
+  It retains up to three raster layers per project; point reads run with at most three
   concurrent requests. Playback pauses in hidden tabs.
 - Tile errors remain monitored after a frame is displayed, including pan/zoom.
   Canvas rejects an image containing failed tiles rather than displaying those
@@ -682,9 +686,10 @@ for a visual WebGL check on the affected device.
 The web application remains in this repository but is built/deployed separately
 from model data. The [project runner guide](../projects/README.md) documents
 `snowcast publish` and `snowcast deploy-ui`, independent domain workspaces, and
-the site-level `domains.json` contract. This viewer currently consumes one
-catalogue through `?catalog=...`; simultaneous registry-driven domain rendering
-is a subsequent feature.
+legacy `domains.json` compatibility. The [site guide](../sites/README.md) covers
+the authoritative `site.json` contract, `snowcast site configure/publish`, shared
+dates, point attribution and domain-aware legends. Explicit `?catalog=...` links
+still load one catalogue.
 
 ## Sentinel-2 / Landsat satellite overlay
 

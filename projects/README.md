@@ -5,9 +5,8 @@ configuration, generated jobs, forcing metadata, checkpoints, outputs and
 processed products. The installed `snowcast_runner` package owns the reusable
 implementation. Projects do not depend on the SnowCast checkout or on one another.
 
-A separate site configuration will select projects for a shared website. That
-site configuration and the simultaneous multi-project map are the next stage;
-this stage implements independent projects through postprocessing.
+A separate [site configuration](../sites/README.md) selects projects for a shared
+website, with independent publication and simultaneous multi-project maps.
 
 ## Install and start a project
 
@@ -382,7 +381,7 @@ configuring deployment. No cron entry is installed by SnowCast.
 
 The runner retains original daily TIFF/ASCII products inside each project.
 Synchronization to an external download archive is an explicit operator step
-until site deployment is implemented. The removed uploader's hardcoded
+until per-project download-archive deployment is implemented. The removed uploader's hardcoded
 `collab-lp` destination is no longer assumed. To copy one project's products,
 copy archived products first and current revisions last, without `--delete`:
 
@@ -401,7 +400,7 @@ Publish/refresh download indexes after these transfers. The COG upload utility
 transfers map COGs and refreshes the existing Western public archive index; it
 does not transfer original TIFF/ASCII products.
 
-## Existing publication helpers and the next stage
+## Publication helpers
 
 The existing local/mounted publication helper remains available with a flat
 project identity:
@@ -418,16 +417,15 @@ cleanup. SWE/SD retain ten daily dates plus older weekly snapshots from Septembe
 dates. Daily source archives remain daily. This refactor does not change COG
 encoding or digest algorithms.
 
-These helper commands do not implement the planned authoritative site config or
-remote multi-project deployment. For a single catalogue, the installed
-`python -m snowcast_runner.upload` utility supports SSH transfer; see the
-[web UI guide](../webui/README.md). UI deployment preserves published data.
+For a shared website, use `snowcast site configure` and `snowcast site publish`
+as documented in the [site guide](../sites/README.md). They select projects and
+publish/upload each one independently. The flat per-project catalogue can still
+be opened directly with `?catalog=./data/western-cordillera/catalog.json`.
 
-The viewer still loads one catalogue, for example
-`?catalog=./data/western-cordillera/catalog.json`. The new flat URL differs from
-the earlier `data/<project>/<domain>/` location. No live catalogues or URLs are
-migrated automatically. Production namespace migration, total storage planning,
-site selection and the multi-project map belong to the next stage.
+The flat URL differs from the earlier `data/<project>/<domain>/` location. No
+live catalogues or URLs are migrated automatically. Original archive download
+integration, production namespace migration and scheduling remain separate
+from site publication. UI installation preserves published data and site config.
 
 ## Development checks
 

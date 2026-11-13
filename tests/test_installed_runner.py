@@ -42,7 +42,7 @@ class NoLegacy(importlib.abc.MetaPathFinder):
 sys.meta_path.insert(0, NoLegacy())
 import snowcast_runner
 assert pathlib.Path(snowcast_runner.__file__).is_relative_to(installed)
-for name in ['cli', 'chm_config', 'forcing', 'met', 'model', 'backfill', 'rasters', 'jobs', 'state', 'site', 'publish_cogs', 'upload', 'downloads']:
+for name in ['cli', 'chm_config', 'forcing', 'met', 'model', 'backfill', 'rasters', 'jobs', 'state', 'site', 'site_config', 'publish_cogs', 'upload', 'downloads']:
     importlib.import_module('snowcast_runner.' + name)
 from snowcast_runner.cli import main
 raise SystemExit(main(sys.argv[1:]))
@@ -56,6 +56,12 @@ raise SystemExit(main(sys.argv[1:]))
     assert state['project'] == 'west' and state['state'] == 'completed'
     assert state['output']['times'] == ['20261108T230000', '20261109T230000']
     assert len(list((project_file.parent / 'work/postprocess/tiff').glob('*.tiff'))) == 4
+    site_file = tmp_path / 'site.json'
+    site_file.write_text(json.dumps({'version': 1, 'projects': [str(project_file)], 'staging': 'website'}))
+    for action in ('validate', 'configure', 'publish'):
+        extra = ['--project', 'west'] if action == 'publish' else []
+        checked([sys.executable, '-I', '-c', bootstrap, str(installed), 'site', action, str(site_file), *extra], cwd=outside)
+    assert json.loads((tmp_path / 'website/site.json').read_text())['domains'][0]['available'] is True
     assert not list(outside.iterdir())
     assert (installed / 'bin/snowcast').is_file()
     checked([str(installed / 'bin/snowcast'), '--help'], cwd=outside,
