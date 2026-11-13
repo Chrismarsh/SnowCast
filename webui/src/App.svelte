@@ -394,11 +394,12 @@
 
   function download() {
     if (!point) return;
+    const projectId = siteMode ? pointProject?.id : undefined;
     const csv = displayed?.difference
-      ? differenceCSV(fromPoint || { time: displayed.difference.from.datetime, value: null }, toPoint || { time: displayed.datetime, value: null }, point, variable?.unit || '')
-      : seriesCSV(series, point, variable?.unit || '');
+      ? differenceCSV(fromPoint || { time: displayed.difference.from.datetime, value: null }, toPoint || { time: displayed.datetime, value: null }, point, variable?.unit || '', projectId)
+      : seriesCSV(series, point, variable?.unit || '', projectId);
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-    const a = document.createElement('a'); a.href = url; a.download = `snowcast-${variable?.id}-${displayed?.difference ? 'difference' : 'point'}.csv`; a.click(); URL.revokeObjectURL(url);
+    const a = document.createElement('a'); a.href = url; a.download = `snowcast-${projectId ? projectId + '-' : ''}${variable?.id}-${displayed?.difference ? 'difference' : 'point'}.csv`; a.click(); URL.revokeObjectURL(url);
   }
   function saveMapView(view: MapViewState, extent: number[]) {
     viewport = extent;

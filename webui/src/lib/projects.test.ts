@@ -37,6 +37,8 @@ describe('independent projects on a shared map', () => {
     const value = { time: '2026-11-11T00:00:00Z', sourceTime: '2026-11-11T12:00:00Z', value: 3 };
     expect(seriesCSV([value], [0, 0], 'mm')).toContain('2026-11-11T12:00:00Z');
     expect(differenceCSV(value, value, [0, 0], 'mm')).not.toContain('2026-11-11T00:00:00Z');
+    expect(seriesCSV([value], [0, 0], 'mm', p.id)).toContain('status,project\r\n2026-11-11T12:00:00Z,0,0,3,"mm","valid","tvc"');
+    expect(differenceCSV(value, value, [0, 0], 'mm', p.id)).toContain('"mm",valid,"tvc"');
   });
 
   it('subtracts dates only inside the same project and skips missing/incompatible pairs', () => {

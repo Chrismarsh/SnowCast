@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 
 const site = '/?site=./demo-site/site.json&basemap=none&renderer=canvas';
 async function ready(page: Page) {
@@ -24,6 +25,13 @@ test('renders arbitrary projects together, changes scale with the view and retai
   await expect(page.locator('.legend-labels')).toContainText('400+');
   await expect(page.locator('.large-value')).toHaveText('50mm');
   await expect(page.locator('.selected-time')).toContainText('18:00 UTC');
+  const downloadEvent = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download CSV', exact: true }).click();
+  const download = await downloadEvent;
+  expect(download.suggestedFilename()).toBe('snowcast-tvc-swe-point.csv');
+  const csv = await readFile((await download.path())!, 'utf8');
+  expect(csv).toContain('status,project');
+  expect(csv).toContain('2026-11-12T18:00:00Z,-132.5,68.5,50,"mm","valid","tvc"');
   const report = await diagnostics(page);
   expect(report.renderer).toBe('Canvas');
   expect(report.projects.map((p: { project: string }) => p.project)).toEqual(['western-cordillera', 'tvc', 'overlap']);
@@ -49,7 +57,7 @@ test('renders arbitrary projects together, changes scale with the view and retai
   await ready(page);
   await expect(page.locator('.large-value')).toHaveText('50mm');
   await page.getByRole('button', { name: 'Difference', exact: true }).click();
-  await page.getByLabel('From', { exact: true }).selectOption({ label: '10 Nov 2026, 00:00 UTC' });
+  await page.getByRole('combobox', { name: 'From', exact: true }).selectOption({ label: '10 Nov 2026, 00:00 UTC' });
   await ready(page);
   await expect(page.locator('.large-value')).toHaveText('+8.3mm');
   expect((await diagnostics(page)).projects).toHaveLength(3);
@@ -103,6 +111,25 @@ test('default discovery and legacy explicit catalogue both work', async ({ page 
   await page.goto('/?site=./missing/site.json&basemap=none&renderer=canvas');
   await expect(page.getByRole('heading', { name: 'Simulation data unavailable' })).toBeVisible();
   await expect(page.locator('.timeline')).toHaveCount(0);
+});
+
+test('default site discovery survives a raster failure and retry', async ({ page }) => {
+  await page.route('**/site.json', async route => {
+    const response = await page.request.get('/demo-site/site.json');
+    const manifest = await response.json();
+    for (const domain of manifest.domains) domain.catalogue = '/demo-site/' + domain.catalogue;
+    await route.fulfill({ json: manifest });
+  });
+  await page.route('**/data/tvc/cogs/swe/*.tif', route => route.fulfill({ status: 404, body: 'missing COG' }));
+  await page.goto('/?basemap=none&renderer=canvas');
+  await expect(page.getByRole('alert')).toContainText('Trail Valley Creek');
+  await expect(page.locator('.timeline-heading')).toContainText('12 Nov');
+  const report = await diagnostics(page);
+  expect(report.projects.filter((p: { displayed: boolean }) => p.displayed).map((p: { project: string }) => p.project)).toEqual(['western-cordillera', 'overlap']);
+  await page.unroute('**/data/tvc/cogs/swe/*.tif');
+  await page.getByRole('button', { name: 'Retry', exact: true }).click();
+  await ready(page);
+  expect((await diagnostics(page)).projects.every((p: { displayed: boolean }) => p.displayed)).toBe(true);
 });
 
 test('mobile project controls and legend fit without horizontal overflow', async ({ page }, info) => {
