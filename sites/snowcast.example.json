@@ -9,5 +9,8 @@
   "deploy": {
     "host": "USER@HOST",
     "directory": "/var/www/html/v3-testing"
+  },
+  "observations": {
+    "registry": "../snowcast_runner/observations.json"
   }
 }

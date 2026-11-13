@@ -23,7 +23,7 @@ def site_file(project_file, tmp_path):
         exports(load_project(file).work / 'postprocess/tiff')
     target = tmp_path / 'sites/snowcast.json'
     target.parent.mkdir()
-    target.write_text(json.dumps({'version': 1, 'title': 'SnowCast',
+    target.write_text(json.dumps({'version': 1, 'observations': False, 'title': 'SnowCast',
         'projects': [str(p) for p in files], 'staging': '../site staging',
         'deploy': {'host': 'fixture.example', 'directory': str(tmp_path / 'remote site')}}))
     return target

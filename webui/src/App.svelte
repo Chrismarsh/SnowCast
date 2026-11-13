@@ -10,7 +10,8 @@
   import StationControls from './components/StationControls.svelte';
   import SatelliteControls from './components/SatelliteControls.svelte';
   import { initialHls, hlsWindow, hlsParams, sceneLabel, type HlsSettings, type HlsStatus, type HlsPick } from './lib/hls';
-  import { STATION_INDEX_URL, inBounds, parseIndex, type SnowStation, type StationIndex } from './lib/canswe';
+  import { stationsForDomains, parseIndex, type SnowStation, type StationIndex } from './lib/stations';
+  import { loadObservations, type ObservationDataset } from './lib/observations';
   import type { Asset, Catalogue, PointValue, Variable } from './lib/types';
   import { dateLabel, timeLabel, formatValue, normalizeCatalogue, seriesCSV, paletteColors } from './lib/data';
   import { differenceAsset, differenceVariable, differenceCSV, pointDifference, type MapAsset } from './lib/difference';
@@ -80,7 +81,14 @@
   function refreshSatellite() { satelliteRevision++; satellite = { ...satellite }; }
   function satelliteProgress(status: HlsStatus, zoomedOut: boolean) { satelliteStatus = status; satelliteZoomedOut = zoomedOut; }
   let stationsVisible = false;
-  try { stationsVisible = localStorage.getItem('snowcast-canswe-visible') === 'true'; } catch { /* Session choice. */ }
+  try { stationsVisible = localStorage.getItem('snowcast-observations-visible') === 'true'; } catch { /* Session choice. */ }
+  let observationDatasets: ObservationDataset[] = [];
+  let observationDatasetId = initial.get('dataset') || '';
+  try { observationDatasetId ||= localStorage.getItem('snowcast-observation-dataset') || ''; } catch { /* Session choice. */ }
+  let registryLoading = true;
+  let registryError = '';
+  let registryController: AbortController | undefined;
+  $: observationDataset = observationDatasets.find(d => d.id === observationDatasetId);
   let stationIndex: StationIndex | null = null;
   let stationLoading = false;
   let stationError = '';
@@ -160,8 +168,10 @@
   $: pointFromTime = displayed?.difference ? pointDates.find(d => d.time === displayed?.difference?.from.datetime)?.asset?.datetime : undefined;
   $: if (!loading) renderingChanged(JSON.stringify([selected?.id, frameSelection.frames.map(f => [f.asset.id, f.variable.range])]));
   $: domainBounds = catalogue?.bounds;
-  $: domainStations = (stationIndex?.stations || []).filter(s => projects.some(p => inBounds(s, p.catalogue.bounds)));
-  $: if (stationIndex && catalogue && sharedStation && !sharedStationApplied) {
+  $: stationBounds = projects.map(p => p.catalogue.bounds);
+  $: nearbyKm = stationIndex?.nearby_km ?? 0;
+  $: domainStations = stationsForDomains(stationIndex?.stations || [], stationBounds, nearbyKm);
+  $: if (stationIndex && catalogue && sharedStation && !sharedStationApplied && (!initial.get('dataset') || initial.get('dataset') === observationDatasetId)) {
     sharedStationApplied = true;
     const saved = domainStations.find(s => s.id === sharedStation);
     if (saved) selectStation(saved, !initialMapView);
@@ -245,17 +255,18 @@
       return;
     }
     load();
-    if (stationsVisible) loadStations();
+    loadObservationRegistry();
     if (params.get('panel') === 'data') showDialog('data');
     if (params.get('panel') === 'help') help.open();
     if (params.get('panel') === 'diagnostics') openDiagnostics();
     const hide = () => { if (document.hidden) stop(); };
     document.addEventListener('visibilitychange', hide);
-    return () => { stop(); catalogueController?.abort(); pointController?.abort(); stationController?.abort(); document.removeEventListener('visibilitychange', hide); };
+    return () => { stop(); catalogueController?.abort(); pointController?.abort(); stationController?.abort(); registryController?.abort(); document.removeEventListener('visibilitychange', hide); };
   });
 
   async function query(location: number[], days: { time: string; asset?: Asset }[]) {
     pointController?.abort();
+    if (!projectsAtPoint(projects, location).length) { series = []; querying = false; return; }
     const controller = new AbortController(); pointController = controller;
     querying = true; series = [];
     try {
@@ -357,22 +368,44 @@
       select(next, false);
     }, 1400 / speed);
   }
-  async function loadStations() {
+  async function loadObservationRegistry() {
+    registryController?.abort();
+    const controller = new AbortController(); registryController = controller;
+    registryLoading = true; registryError = '';
+    try {
+      const result = await loadObservations(AbortSignal.any([controller.signal, AbortSignal.timeout(20000)]));
+      if (controller.signal.aborted) return;
+      observationDatasets = result.datasets;
+      const choice = result.datasets.find(d => d.id === observationDatasetId) || result.datasets[0];
+      changeObservationDataset(choice?.id || '');
+    } catch (e) { if (!controller.signal.aborted) registryError = e instanceof Error ? e.message : 'Could not load observation datasets'; }
+    finally { if (!controller.signal.aborted) registryLoading = false; }
+  }
+  function changeObservationDataset(id: string) {
+    stationController?.abort(); stationLoading = false; stationError = '';
+    stationIndex = null; stationCluster = []; selectedStation = null;
+    observationDatasetId = id;
+    try { localStorage.setItem('snowcast-observation-dataset', id); } catch { /* Session choice. */ }
+    if (stationsVisible && id) loadStations(id);
+  }
+  async function loadStations(id = observationDatasetId) {
+    const dataset = observationDatasets.find(d => d.id === id);
+    if (!dataset) return;
     stationController?.abort();
     const controller = new AbortController(); stationController = controller;
     stationLoading = true; stationError = '';
     try {
-      const response = await fetch(STATION_INDEX_URL, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20000)]) });
+      const response = await fetch(dataset.index, { cache: 'no-cache', signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20000)]) });
       if (!response.ok) throw new Error(`Station index returned HTTP ${response.status}`);
       const next = parseIndex(await response.json());
       if (controller.signal.aborted) return;
       stationIndex = next;
-    } catch (e) { if (!controller.signal.aborted) stationError = e instanceof Error ? e.message : 'Could not load CanSWE locations'; }
+    } catch (e) { if (!controller.signal.aborted) stationError = e instanceof Error ? e.message : 'Could not load station locations'; }
     finally { if (!controller.signal.aborted) stationLoading = false; }
   }
   function toggleStations(visible: boolean) {
     stationsVisible = visible;
-    try { localStorage.setItem('snowcast-canswe-visible', String(visible)); } catch { /* Session choice. */ }
+    try { localStorage.setItem('snowcast-observations-visible', String(visible)); } catch { /* Session choice. */ }
     if (visible && !stationIndex && !stationLoading) loadStations();
   }
   function selectStation(station: SnowStation, focus = false) {
@@ -429,7 +462,7 @@
     if (point) { hash.set('lon', point[0].toFixed(6)); hash.set('lat', point[1].toFixed(6)); }
     const view = map?.viewState();
     if (view) mapViewParams(hash, view);
-    if (selectedStation) hash.set('station', selectedStation.id);
+    if (selectedStation) { hash.set('station', selectedStation.id); hash.set('dataset', observationDatasetId); }
     const url = new URL(window.location.href);
     url.searchParams.set('basemap', basemap);
     url.hash = hash.toString();
@@ -455,7 +488,12 @@
       <div class="variable-tabs surface" role="group" aria-label="Map variable">{#each variables as v}<button class:active={variableId === v.id} onclick={() => chooseVariable(v.id)}>{v.label}</button>{/each}</div>
     </div>
     <div class="map-tools"><div class="surface tool-pair"><button aria-label="Zoom in" onclick={() => map?.zoom(1)}><Icon name="plus"/></button><button aria-label="Zoom out" onclick={() => map?.zoom(-1)}><Icon name="minus"/></button></div><button class="surface icon-button" aria-label="Fit model domain" onclick={() => map?.fit()}><Icon name="target"/></button><button class="surface icon-button" aria-label="Choose map layers" aria-expanded={basemapOpen} aria-controls="basemap-picker" onclick={() => { basemapOpen = !basemapOpen; stationCluster = []; }}><Icon name="layers"/></button>
-      {#if basemapOpen}<div class="basemap-picker surface" id="basemap-picker"><div class="basemap-heading"><strong>Map layers</strong><button class="icon-button" aria-label="Close map layers" onclick={() => basemapOpen = false}><Icon name="close" size={14}/></button></div><label class="basemap-label" for="basemap-select">Basemap</label><select id="basemap-select" value={basemap} onchange={e => chooseBasemap(e.currentTarget.value)}>{#each basemapIds as id}<option value={id}>{basemaps[id].label}</option>{/each}</select><p>None hides the basemap; model data and stations remain available.</p><SatelliteControls settings={satellite} onchange={changeSatellite} onrefresh={refreshSatellite}/><StationControls enabled={stationsVisible} loading={stationLoading} error={stationError} stations={domainStations} cluster={stationCluster} ontoggle={toggleStations} onchoose={station => selectStation(station,true)} onretry={loadStations}/></div>{/if}</div>
+      {#if basemapOpen}<div class="basemap-picker surface" id="basemap-picker"><div class="basemap-heading"><strong>Map layers</strong><button class="icon-button" aria-label="Close map layers" onclick={() => basemapOpen = false}><Icon name="close" size={14}/></button></div><label class="basemap-label" for="basemap-select">Basemap</label><select id="basemap-select" value={basemap} onchange={e => chooseBasemap(e.currentTarget.value)}>{#each basemapIds as id}<option value={id}>{basemaps[id].label}</option>{/each}</select><p>None hides the basemap; model data and stations remain available.</p><SatelliteControls settings={satellite} onchange={changeSatellite} onrefresh={refreshSatellite}/><section class="observation-datasets" aria-label="Observation datasets"><label class="basemap-label" for="observation-dataset">Observations</label>
+      {#if registryLoading}<p role="status">Loading observation datasets…</p>
+      {:else if registryError}<p role="status">{registryError} <button class="text-button" onclick={loadObservationRegistry}>Retry</button></p>
+      {:else if !observationDatasets.length}<p>No observation datasets have been published for this site.</p>
+      {:else}<select id="observation-dataset" value={observationDatasetId} onchange={e => changeObservationDataset(e.currentTarget.value)}>{#each observationDatasets as dataset}<option value={dataset.id}>{dataset.label}</option>{/each}</select>{/if}
+      </section>{#if observationDataset}<StationControls dataset={observationDataset} enabled={stationsVisible} loading={stationLoading} error={stationError} stations={domainStations} domainBounds={stationBounds} {nearbyKm} cluster={stationCluster} ontoggle={toggleStations} onchoose={station => selectStation(station,true)} onretry={() => loadStations()}/>{/if}</div>{/if}</div>
     {#if loading}<div class="map-message surface"><span class="spinner"></span>Loading simulation catalogue…</div>
     {:else if !variables.length}<div class="map-message empty surface"><Icon name="layers" size={32}/><h2>Simulation data unavailable</h2><p>The model catalogue could not be loaded. Please try again shortly.</p><button class="text-button" onclick={load}>Retry catalogue</button><small>{error}</small></div>
     {:else if error}<div class="map-banner error" role="alert">{error}<button class="text-button" onclick={() => { error = ''; slowFrameId = ''; frameLoading = true; map?.retry(); }}>Retry</button><button class="text-button" onclick={openDiagnostics}>Loading diagnostics</button></div>
@@ -497,8 +535,8 @@
 
   <aside bind:this={inspector} class="inspector" class:station-selected={!!selectedStation} aria-label="Location details">
     <div class="inspector-heading"><Icon name="pin" size={23}/><h1 tabindex="-1">{selectedStation ? selectedStation.name : point ? 'Selected location' : 'Explore the snowpack'}</h1>{#if point}<button class="icon-button close" aria-label="Clear selected location" onclick={closePoint}><Icon name="close" size={17}/></button>{/if}</div>
-    {#if point}<p class="coordinates">{Math.abs(point[1]).toFixed(4)}° {point[1] >= 0 ? 'N' : 'S'}, {Math.abs(point[0]).toFixed(4)}° {point[0] >= 0 ? 'E' : 'W'}</p><p class="subtle small">Regridded model estimate</p>
-    {:else}<p class="intro">Click the map for model values, or a CanSWE station for historical snow observations. Find stations in Map layers.</p>{/if}
+    {#if point}<p class="coordinates">{Math.abs(point[1]).toFixed(4)}° {point[1] >= 0 ? 'N' : 'S'}, {Math.abs(point[0]).toFixed(4)}° {point[0] >= 0 ? 'E' : 'W'}</p>{#if !selectedStation || pointProject}<p class="subtle small">Regridded model estimate</p>{/if}
+    {:else}<p class="intro">Click the map for model values, or an observation station for historical snow measurements. Find stations in Map layers.</p>{/if}
     {#if siteMode}
       <section class="project-status" aria-label="Project availability">
         <h2>Model projects</h2>
@@ -516,10 +554,10 @@
         {:else}<p class="point-project">This point is outside the published model domains.</p>{/if}
       {/if}
     {/if}
-    <section class="value-section"><div class="eyebrow">{legendVariable?.title || 'Snow water equivalent'}</div><div class="large-value">{querying ? '…' : `${displayed?.difference && currentValue != null && currentValue > 0 ? '+' : ''}${formatValue(currentValue, variable?.unit)}`}<span>{variable?.unit || 'mm'}</span></div>
+    {#if !selectedStation || pointProject}<section class="value-section"><div class="eyebrow">{legendVariable?.title || 'Snow water equivalent'}</div><div class="large-value">{querying ? '…' : `${displayed?.difference && currentValue != null && currentValue > 0 ? '+' : ''}${formatValue(currentValue, variable?.unit)}`}<span>{variable?.unit || 'mm'}</span></div>
       {#if displayed?.difference}<p class="subtle selected-time">To − From · {dateLabel(displayed.difference.from.datetime)} → {dateLabel(displayed.datetime)}</p><div class="stats"><div><strong>{formatValue(fromPoint?.value, variable?.unit)} <span>{variable?.unit}</span></strong><span>From · {siteMode && point ? (pointFromTime ? timeLabel(pointFromTime) : 'No model data') : timeLabel(displayed.difference.from.datetime)}</span></div><div><strong>{formatValue(toPoint?.value, variable?.unit)} <span>{variable?.unit}</span></strong><span>To · {siteMode && point ? (pointDisplayTime ? timeLabel(pointDisplayTime) : 'No model data') : timeLabel(displayed.datetime)}</span></div></div>{#if point && !querying && currentValue == null}<p class="subtle small">A valid model value is needed on both dates to calculate a difference.</p>{/if}
-      {:else}<p class="subtle selected-time">{displayed ? (siteMode && point ? (pointDisplayTime ? timeLabel(pointDisplayTime) : 'No model data for this date') : siteMode ? `${dateLabel(displayed.datetime)} · UTC day` : timeLabel(displayed.datetime)) : 'Select a simulation'}</p>{#if !selectedStation}<div class="stats"><div><strong>{change == null ? '—' : `${change > 0 ? '+' : ''}${formatValue(change, variable?.unit)} ${variable?.unit}`}</strong><span>Since first frame</span></div><div><strong>{siteMode && point ? pointDates.filter(d => d.asset).length : available} <span>/ {dates.length || 10}</span></strong><span>Dates available</span></div></div>{/if}{/if}</section>
-    {#if selectedStation && stationIndex}<StationPanel station={selectedStation} index={stationIndex} {variableId} showModel={mode === 'value' && !displayed?.difference} model={series} selectedTime={displayed?.datetime || ''} modelLoading={querying} onretrymodel={() => { if (point) query(point, pointDates); }}/>{:else}<section class="history-section"><div class="section-heading"><h2>History</h2><span>{variable?.label || 'SWE'} · {variable?.unit || 'mm'}</span></div>{#if querying}<div class="chart-empty"><span class="spinner"></span>Reading full-resolution values…</div>{:else if point && series.length}<Trend values={series} selectedTime={displayed?.datetime || ''} unit={variable?.unit || 'mm'} onselect={selectTime}/><p class="subtle small">{mode === 'difference' ? 'Absolute model values. Select a date to change the To date.' : 'Select a date to view it on the map.'}</p>{#if series.some(v => v.error)}<p class="query-error" role="status">Some raster reads failed. Check range requests and CORS. <button class="text-button" onclick={() => point && query(point, pointDates)}>Retry</button></p>{:else if series.every(v => v.value === null)}<p class="subtle small">No model data at this location.</p>{/if}{:else}<div class="chart-empty"><Icon name="pin" size={28}/><span>Select a point to reveal its history.</span></div>{/if}</section>
+      {:else}<p class="subtle selected-time">{displayed ? (siteMode && point ? (pointDisplayTime ? timeLabel(pointDisplayTime) : 'No model data for this date') : siteMode ? `${dateLabel(displayed.datetime)} · UTC day` : timeLabel(displayed.datetime)) : 'Select a simulation'}</p>{#if !selectedStation}<div class="stats"><div><strong>{change == null ? '—' : `${change > 0 ? '+' : ''}${formatValue(change, variable?.unit)} ${variable?.unit}`}</strong><span>Since first frame</span></div><div><strong>{siteMode && point ? pointDates.filter(d => d.asset).length : available} <span>/ {dates.length || 10}</span></strong><span>Dates available</span></div></div>{/if}{/if}</section>{/if}
+    {#if selectedStation && stationIndex && observationDataset}{#key observationDatasetId}<StationPanel dataset={observationDataset} station={selectedStation} index={stationIndex} {variableId} outsideDomain={!pointProject} showModel={!!pointProject && mode === 'value' && !displayed?.difference} model={series} selectedTime={displayed?.datetime || ''} modelLoading={querying} onretrymodel={() => { if (point) query(point, pointDates); }}/>{/key}{:else}<section class="history-section"><div class="section-heading"><h2>History</h2><span>{variable?.label || 'SWE'} · {variable?.unit || 'mm'}</span></div>{#if querying}<div class="chart-empty"><span class="spinner"></span>Reading full-resolution values…</div>{:else if point && series.length}<Trend values={series} selectedTime={displayed?.datetime || ''} unit={variable?.unit || 'mm'} onselect={selectTime}/><p class="subtle small">{mode === 'difference' ? 'Absolute model values. Select a date to change the To date.' : 'Select a date to view it on the map.'}</p>{#if series.some(v => v.error)}<p class="query-error" role="status">Some raster reads failed. Check range requests and CORS. <button class="text-button" onclick={() => point && query(point, pointDates)}>Retry</button></p>{:else if series.every(v => v.value === null)}<p class="subtle small">No model data at this location.</p>{/if}{:else}<div class="chart-empty"><Icon name="pin" size={28}/><span>Select a point to reveal its history.</span></div>{/if}</section>
     {/if}
     {#if satellite.enabled && point}
       <section class="satellite-point" aria-label="Satellite observation at selected location">

@@ -6,6 +6,8 @@ import argparse
 from contextlib import contextmanager
 from datetime import datetime, timezone
 import fcntl
+import gzip
+import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -191,10 +193,16 @@ def remote_action(action, root, token, content=None):
 
 def validate_site_spec(spec):
     """Validate the public-only site contract on both the publisher and host."""
-    if (not isinstance(spec, dict) or set(spec) != {'version', 'title', 'domains', 'overview_ranges'}
+    if (not isinstance(spec, dict) or set(spec) - {'observations'} != {'version', 'title', 'domains', 'overview_ranges'}
             or spec['version'] != 1 or not isinstance(spec['title'], str) or not spec['title'].strip()
             or not isinstance(spec['domains'], list)):
         raise ValueError('Invalid site configuration')
+    observations = spec.get('observations', [])
+    if not isinstance(observations, list) or len({e['id'] for e in observations}) != len(observations):
+        raise ValueError('Invalid observation selection')
+    for entry in observations:
+        if not re.fullmatch(r'[a-z][a-z0-9_-]{0,63}', entry.get('id', '')) or not re.fullmatch(r'[0-9a-f]{64}', entry.get('revision', '')):
+            raise ValueError('Invalid observation dataset')
     ids = set()
     for entry in spec['domains']:
         if (not isinstance(entry, dict) or set(entry) != {'id', 'name', 'catalogue'}
@@ -245,6 +253,7 @@ def site_action(action, root, spec=None, project_id=None):
             manifest = _site_manifest(root, spec)
             atomic_json(config, spec)
             atomic_json(root / 'site.json', manifest)
+            observation_manifest(root, spec)
         else:
             if not config.is_file():
                 raise ValueError('Site is not configured; run snowcast site configure first (with --upload for the host)')
@@ -263,9 +272,103 @@ def site_action(action, root, spec=None, project_id=None):
         root.chmod(0o755)
 
 
+def observation_paths(root, entry):
+    """Validate hashed, relative assets before advertising a project contribution."""
+    index = entry['index']
+    if index.get('version') != 1 or not isinstance(index.get('stations'), list):
+        raise ValueError('Invalid observation index')
+    identities = set()
+    for station in index['stations']:
+        relative = station['href']
+        match = re.fullmatch(r'stations/([A-Za-z0-9_.-]+)-([0-9a-f]{12})\.json\.gz', relative)
+        if not match or match[1] != station['id'] or station['id'] in identities:
+            raise ValueError('Invalid or duplicate observation history path')
+        identities.add(station['id'])
+        target = root / 'observations' / entry['id'] / relative
+        if any(p.is_symlink() for p in (target, target.parent, target.parent.parent, root / 'observations')):
+            raise ValueError('Observation assets cannot use symlinks')
+        content = gzip.decompress(target.read_bytes())
+        if hashlib.sha256(content).hexdigest()[:12] != match[2]:
+            raise ValueError(f'Observation history checksum mismatch: {relative}')
+        target.chmod(0o644)
+        for directory in (target.parent, target.parent.parent, root / 'observations'):
+            directory.chmod(0o755)
+
+
+def observation_manifest(root, spec, pending=None):
+    """Caller holds the site lock. Publish immutable indexes, manifest last.
+
+    Each project has its own contribution. Only current configured datasets and
+    projects participate; a new/unpublished domain does not block existing data.
+    """
+    datasets = []
+    for configured in spec.get('observations', []):
+        identity = configured['id']
+        indexes = []
+        for project in spec['domains']:
+            if not (root / project['catalogue']).is_file():
+                continue
+            path = root / '.observation-projects' / identity / f'{project["id"]}.json'
+            entry = (pending or {}).get((identity, project['id']))
+            if entry is None and path.is_file():
+                entry = json.loads(path.read_text())
+            if entry is not None and entry['revision'] == configured['revision']:
+                indexes.append(entry['index'])
+        if not indexes:
+            continue
+        stations = {}
+        domains = []
+        for index in indexes:
+            domains.extend(index['domains'])
+            for station in index['stations']:
+                if station['id'] in stations and stations[station['id']] != station:
+                    raise ValueError('Conflicting observation records across projects; republish affected projects')
+                stations[station['id']] = station
+        boxes = [d['bounds'] for d in domains]
+        combined = {**indexes[0], 'domains': domains,
+                    'bounds': [min(b[0] for b in boxes), min(b[1] for b in boxes),
+                               max(b[2] for b in boxes), max(b[3] for b in boxes)],
+                    'stations': sorted(stations.values(), key=lambda s: (s['name'].casefold(), s['id']))}
+        digest = hashlib.sha256(json.dumps(combined, sort_keys=True).encode()).hexdigest()[:20]
+        relative = f'observations/{identity}/index-{digest}.json'
+        atomic_json(root / relative, combined)
+        (root / 'observations').chmod(0o755)
+        (root / 'observations' / identity).chmod(0o755)
+        datasets.append({**{k: v for k, v in configured.items() if k != 'revision'}, 'index': relative})
+    # Only commit private contributions after the entire prospective merge succeeds.
+    for (identity, project), entry in (pending or {}).items():
+        atomic_json(root / '.observation-projects' / identity / f'{project}.json', entry)
+    atomic_json(root / 'observations.json', {'version': 1, 'datasets': datasets})
+
+
+def commit_observations(root, payload):
+    root = Path(root)
+    with store_lock(root):
+        current = json.loads((root / '.site-config.json').read_text())
+        if current != payload['spec']:
+            raise ValueError('Site configuration changed; configure before publishing observations')
+        project = payload['project']
+        if project not in {p['id'] for p in current['domains']}:
+            raise ValueError('Observation project is not selected')
+        catalogue = json.loads((root / 'data' / project / 'catalog.json').read_text())
+        configured = {d['id']: d for d in current.get('observations', [])}
+        pending = {}
+        for entry in payload['datasets']:
+            identity = entry['id']
+            if identity not in configured or entry['revision'] != configured[identity]['revision']:
+                raise ValueError('Observation registry changed; configure before publishing')
+            if [d['id'] for d in entry['index'].get('domains', [])] != [project]:
+                raise ValueError('Observation domain does not match its project')
+            if entry['index']['domains'][0]['bounds'] != catalogue.get('bounds'):
+                raise ValueError('Model domain changed; republish observations for its current bounds')
+            observation_paths(root, entry)
+            pending[(identity, project)] = entry
+        observation_manifest(root, current, pending)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["cleanup", "pin", "commit", "unpin", "configure-site", "check-site", "register-site"])
+    parser.add_argument("action", choices=["cleanup", "pin", "commit", "unpin", "configure-site", "check-site", "register-site", "commit-observations"])
     parser.add_argument("directory", type=Path)
     parser.add_argument("token", nargs="?")
     parser.add_argument("--dry-run", action="store_true")
@@ -273,6 +376,8 @@ def main():
     if args.action == "cleanup":
         with store_lock(args.directory):
             cleanup_locked(args.directory, dry_run=args.dry_run)
+    elif args.action == 'commit-observations':
+        commit_observations(args.directory, json.load(sys.stdin))
     elif args.action.endswith('-site'):
         site_action(args.action, args.directory, json.load(sys.stdin), args.token)
     else:

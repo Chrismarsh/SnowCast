@@ -44,7 +44,7 @@ class NoLegacy(importlib.abc.MetaPathFinder):
 sys.meta_path.insert(0, NoLegacy())
 import snowcast_runner
 assert pathlib.Path(snowcast_runner.__file__).is_relative_to(installed)
-for name in ['cli', 'chm_config', 'forcing', 'met', 'model', 'backfill', 'rasters', 'jobs', 'state', 'site', 'site_config', 'publish_cogs', 'upload', 'downloads', 'canswe']:
+for name in ['cli', 'chm_config', 'forcing', 'met', 'model', 'backfill', 'rasters', 'jobs', 'state', 'site', 'site_config', 'publish_cogs', 'upload', 'downloads', 'canswe', 'observation_data', 'observations']:
     importlib.import_module('snowcast_runner.' + name)
 from snowcast_runner.cli import main
 raise SystemExit(main(sys.argv[1:]))
@@ -59,29 +59,31 @@ raise SystemExit(main(sys.argv[1:]))
     assert state['output']['times'] == ['20261108T230000', '20261109T230000']
     assert len(list((project_file.parent / 'work/postprocess/tiff').glob('*.tiff'))) == 4
     site_file = tmp_path / 'site.json'
-    site_file.write_text(json.dumps({'version': 1, 'projects': [str(project_file)], 'staging': 'website'}))
+    site_file.write_text(json.dumps({'version': 1, 'observations': False, 'projects': [str(project_file)], 'staging': 'website'}))
     for action in ('validate', 'configure'):
         checked([sys.executable, '-I', '-c', bootstrap, str(installed), 'site', action, str(site_file)], cwd=outside)
     checked([sys.executable, '-I', '-c', bootstrap, str(installed), 'publish', str(site_file),
              '--project', 'west', '--no-upload'], cwd=outside)
     assert json.loads((tmp_path / 'website/site.json').read_text())['domains'][0]['available'] is True
-    # Exercise the actual packaged converter with a small real NetCDF, replacing
-    # only the pinned release checksum for this synthetic fixture.
-    converter_bootstrap = bootstrap.replace('from snowcast_runner.cli import main',
-        'from snowcast_runner import canswe\n' +
-        f'canswe.SOURCE_MD5 = {hashlib.md5(regional_source.read_bytes()).hexdigest()!r}\n' +
-        'from snowcast_runner.cli import main')
-    bundle = tmp_path / 'canswe.zip'
-    checked([sys.executable, '-I', '-c', converter_bootstrap, str(installed), 'site', 'prepare-canswe',
-             str(regional_site), '--source', str(regional_source), '--bundle', str(bundle)], cwd=outside)
-    with zipfile.ZipFile(bundle) as archive:
-        assert {s['id'] for s in json.loads(archive.read('index.json'))['stations']} == {'west', 'tvc', 'edge'}
+    # The installed wheel carries the registry; source data is never packaged.
+    registry = json.loads((installed / 'snowcast_runner/observations.json').read_text())
+    registry['datasets'][0]['source']['checksum'] = 'md5:' + hashlib.md5(regional_source.read_bytes()).hexdigest()
+    registry_file = tmp_path / 'observations.json'
+    registry_file.write_text(json.dumps(registry))
+    checked([sys.executable, '-I', '-c', bootstrap, str(installed), 'download-data', 'canswe',
+             '--registry', str(registry_file), '--source', str(regional_source), '--cache', str(tmp_path / 'cache')], cwd=outside)
+    raw = json.loads(site_file.read_text())
+    raw['observations'] = {'registry': str(registry_file), 'cache': str(tmp_path / 'cache')}
+    site_file.write_text(json.dumps(raw))
+    checked([sys.executable, '-I', '-c', bootstrap, str(installed), 'site', 'configure', str(site_file)], cwd=outside)
+    checked([sys.executable, '-I', '-c', bootstrap, str(installed), 'publish', str(site_file), '--project', 'west', '--no-upload'], cwd=outside)
+    assert json.loads((tmp_path / 'website/observations.json').read_text())['datasets'][0]['id'] == 'canswe'
     assert not list(outside.iterdir())
     assert (installed / 'bin/snowcast').is_file()
     checked([str(installed / 'bin/snowcast'), '--help'], cwd=outside,
             env={**os.environ, 'PYTHONPATH': str(installed)})
 
 
-@pytest.mark.parametrize('module', ['publish_cogs', 'cog_store', 'upload', 'downloads', 'canswe'])
+@pytest.mark.parametrize('module', ['publish_cogs', 'cog_store', 'upload', 'downloads'])
 def test_package_utilities_run_from_an_unrelated_directory(module, tmp_path):
     checked([sys.executable, '-m', 'snowcast_runner.' + module, '--help'], cwd=tmp_path)

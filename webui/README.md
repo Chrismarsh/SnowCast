@@ -274,26 +274,25 @@ seasons are labelled separately and aligned by month/day. Model coverage dates
 are shown explicitly. The table's **Same-date model** column still requires an
 exact calendar-date match in UTC; an overlay from a different year is not a match.
 
-The committed 6.3 MB bundle includes 750 western-Canada stations. `npm run dev`
-and `npm run build` automatically extract the static assets using Python's
-standard library. Builds require no CanSWE network access or netCDF4 install.
-The station index loads when stations are enabled (including shared station
-links); each compressed history is fetched on
-selection and cached (up to eight stations). Model rendering never waits for
-observations, and no model reads occur for unselected station markers.
+The UI reads the published `observations.json` at runtime. It lists available
+station datasets, with labels, descriptions, units, attribution and immutable
+index URLs generated from the runner's observation registry. The chosen dataset
+and station visibility are remembered; shared station links include the dataset ID.
+Only the selected dataset's station index and clicked histories are fetched.
+Histories are cached by complete URL, so equal station IDs from different datasets
+cannot collide.
 
-The map filters stations against each loaded project's catalogue bounds. When
-adding a domain outside the shipped western subset, regenerate the bundle with
-`snowcast site prepare-canswe SITE_CONFIG --source CANSWE_V8.nc --bundle webui/data/canswe-v8.zip`,
-then rebuild and deploy the UI. The command selects the union of all configured
-projects' locally published bounds, rather than the bounding rectangle around
-the whole site. See the [multi-project refresh instructions](../sites/README.md#refresh-canswe-when-adding-a-project).
+No observation data is included in the repository or npm builds. Download once
+with `snowcast download-data canswe`, then use normal project publication to select
+and upload each domain's observations. See the [site observation workflow](../sites/README.md#observation-datasets)
+for configuration, migration and local-only use. UI deployment must preserve
+`observations.json` and `observations/`; no UI rebuild is needed for dataset updates
+that use the existing `snow-stations-v1` renderer.
 
-Deploy the entire `dist/observations/canswe/` directory with the rest of `dist/`.
-No new service, COG rebuild, or PNG tile generation is required. Serve
-`observations/canswe/index.json` with revalidation/short caching; versioned
-station history filenames can be cached immutably. Station `.json.gz` files
-work either as ordinary gzip files or with `Content-Encoding: gzip`.
+Serve `observations.json` with revalidation/short caching. Content-addressed station
+indexes and histories may use long caching. Retain old files for already-open pages.
+For local observation testing, deploy the build into the prepared staging directory
+and serve that directory; a clean standalone UI has no observation datasets.
 
 ## Daily GeoTIFF and ASCII downloads
 

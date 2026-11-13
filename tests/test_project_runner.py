@@ -458,7 +458,7 @@ def test_runner_to_postprocessing_uses_configured_commands_and_actual_output(pro
     assert state['output']['times'] == ['20261108T230000', '20261109T230000']
     assert not list((domain.work / 'postprocess' / 'ascii').iterdir())
     site_file = tmp_path / 'site.json'
-    site_file.write_text(json.dumps({'version': 1, 'projects': [str(project_file)], 'staging': 'site'}))
+    site_file.write_text(json.dumps({'version': 1, 'observations': False, 'projects': [str(project_file)], 'staging': 'site'}))
     assert main(['site', 'configure', str(site_file)]) == 0
     assert main(['publish', str(site_file), '--project', 'west', '--no-upload']) == 0
     assert json.loads((tmp_path / 'site' / 'site.json').read_text())['domains'][0]['available'] is True

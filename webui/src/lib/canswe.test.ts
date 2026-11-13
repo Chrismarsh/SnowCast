@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { gzipSync } from 'node:zlib';
-import { binExtent, flagsLabel, halfMonth, inBounds, loadStation, matchedModel, observationComparison, observationCSV, parseIndex, parseStation, seasonDay, snowVariable, snowYear, type Observation, type SnowStation, type StationData } from './canswe';
+import { distanceToBoundsKm, stationsForDomains } from './stations';
+import { binExtent, flagsLabel, halfMonth, inBounds, loadStation, matchedModel, observationComparison, observationCSV, parseIndex, parseStation, seasonDay, snowVariable, snowYear, type Observation, type SnowStation, type StationData } from './stations';
 
 const station: SnowStation = { id: 'ALE-test', name: 'Test', lon: -115, lat: 51, elevation: 2000, agency: 'Alberta', method: 'Manual', automated: false, first: '2000-04-01', last: '2020-04-01', counts: { swe: 1, depth: 0 }, href: 'stations/ALE-test-123.json.gz' };
 const record: Observation = ['2020-04-01', 0, null, 'T', '', '', ''];
@@ -74,6 +75,18 @@ it('filters domain stations without substituting nearby sites', () => {
   expect(inBounds(station, [-116, 50, -114, 52])).toBe(true);
   expect(inBounds(station, [-114, 50, -110, 52])).toBe(false);
 });
+it('selects nearby Arctic stations, respects zero radius and excludes gaps and distant corners', () => {
+  const bounds = [-134, 68.58401629082839, -132.8927383062496, 68.96001629082839];
+  const inuvik = { ...station, id: 'inuvik', lon: -133.53334045410156, lat: 68.31666564941406 };
+  const gap = { ...station, id: 'gap', lon: -125, lat: 60 };
+  expect(distanceToBoundsKm(inuvik, bounds)).toBeCloseTo(29.728, 2);
+  expect(distanceToBoundsKm({ ...station, lon: -131.8927383062496, lat: 68.7 }, bounds)).toBeGreaterThan(39);
+  expect(distanceToBoundsKm({ ...station, lon: -131.8927383062496, lat: 68.7 }, bounds)).toBeLessThan(41);
+  expect(distanceToBoundsKm({ ...station, lon: 1.7, lat: 1.7 }, [0, 0, 1, 1])).toBeGreaterThan(100);
+  expect(stationsForDomains([station, inuvik, gap], [bounds], 0)).toEqual([]);
+  expect(stationsForDomains([station, inuvik, gap], [[-132, 46, -110, 56], bounds, bounds], 100)).toEqual([station, inuvik]);
+  expect(stationsForDomains([station, inuvik], [[-132, 46, -110, 56]], 100)).toEqual([station]);
+});
 it('rejects mismatched, duplicated or invalid station data', () => {
   expect(parseStation(data, station.id)).toBe(data);
   expect(() => parseStation(data, 'other')).toThrow();
@@ -81,6 +94,7 @@ it('rejects mismatched, duplicated or invalid station data', () => {
   expect(() => parseStation({ ...data, records: [['2020-04-01', NaN, null, '', '', '', '']] }, station.id)).toThrow();
   const index = { version: 1, minimum_years: 10, dataset: { doi: 'https://doi.org/example' }, stations: [station] };
   expect(parseIndex(index).stations).toHaveLength(1);
+  expect(() => parseIndex({ ...index, nearby_km: -1 })).toThrow('nearby distance');
   expect(() => parseIndex({ ...index, stations: [station, station] })).toThrow();
   expect(() => parseIndex({ ...index, stations: [{ ...station, href: '../../private.json' }] })).toThrow();
 });
@@ -89,13 +103,13 @@ it('reads gzip histories or HTTP-decoded bodies, caches successes, and permits r
   try {
     fetcher.mockResolvedValueOnce(new Response(gzipSync(JSON.stringify(data))));
     const signal = new AbortController().signal;
-    expect((await loadStation(station, signal)).records).toEqual([record]);
-    await loadStation(station, signal);
+    expect((await loadStation(station, signal, 'https://example.org/observations/test/index-123.json')).records).toEqual([record]);
+    await loadStation(station, signal, 'https://example.org/observations/test/index-123.json');
     expect(fetcher).toHaveBeenCalledTimes(1);
     const other = { ...station, id: 'other', href: 'stations/other.json.gz' };
     fetcher.mockResolvedValueOnce(new Response('Unavailable', { status: 503 }));
-    await expect(loadStation(other, signal)).rejects.toThrow('503');
+    await expect(loadStation(other, signal, 'https://example.org/observations/test/index-123.json')).rejects.toThrow('503');
     fetcher.mockResolvedValueOnce(new Response(JSON.stringify({ ...data, id: 'other' })));
-    expect((await loadStation(other, signal)).id).toBe('other');
+    expect((await loadStation(other, signal, 'https://example.org/observations/test/index-123.json')).id).toBe('other');
   } finally { vi.unstubAllGlobals(); }
 });

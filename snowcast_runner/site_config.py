@@ -18,12 +18,15 @@ class Site:
     projects: list[Project]
     spec: dict
     deploy: dict | None
+    observations: list
+    observation_registry: Path | None
+    observation_cache: Path | None
 
 
 def load_site(filename):
     filename = Path(filename).expanduser().resolve()
     raw = json.loads(filename.read_text())
-    keys(raw, 'version title projects staging deploy overview_ranges', 'site')
+    keys(raw, 'version title projects staging deploy overview_ranges observations', 'site')
     if type(raw.get('version')) is not int or raw['version'] != 1:
         raise ValueError('site.version must be 1')
     entries = raw.get('projects')
@@ -36,6 +39,16 @@ def load_site(filename):
     spec = {'version': 1, 'title': raw.get('title', 'SnowCast'),
             'domains': [{'id': p.id, 'name': p.name, 'catalogue': f'data/{p.id}/catalog.json'} for p in projects],
             'overview_ranges': raw.get('overview_ranges', {})}
+    from .observation_data import load_registry, public_dataset
+    options = raw.get('observations', {})
+    if options is False:
+        entries, registry, cache = [], None, None
+    else:
+        keys(options, 'registry cache', 'site.observations')
+        registry = path(filename.parent, options['registry']) if 'registry' in options else None
+        cache = path(filename.parent, options['cache']) if 'cache' in options else None
+        entries = [d for d in load_registry(registry)['datasets'] if d['enabled']]
+    spec['observations'] = [public_dataset(d) for d in entries]
     validate_site_spec(spec)
     deploy = raw.get('deploy')
     if deploy is not None:
@@ -43,7 +56,7 @@ def load_site(filename):
         if not all(isinstance(deploy.get(k), str) for k in ('host', 'directory')):
             raise ValueError('site.deploy requires host and directory')
         _validate_destination(deploy['host'], deploy['directory'])
-    return Site(filename, staging, projects, spec, deploy)
+    return Site(filename, staging, projects, spec, deploy, entries, registry, cache)
 
 
 def remote_site(site, action, project_id=None):
@@ -79,4 +92,11 @@ def publish_selected(site, project_id, *, remote=True):
             upload(site.staging / 'data' / project_id, site.deploy['host'], destination,
                    refresh_downloads=False)
             remote_site(site, 'register-site', project_id)
+        from .observations import prepare_project, upload_observations
+        payload, errors = prepare_project(site, project)
+        if remote:
+            upload_observations(site, payload)
+        if errors:
+            raise ValueError('Model published, but observations were incomplete; previous valid observations retained. '
+                             + '; '.join(errors))
     return catalogue

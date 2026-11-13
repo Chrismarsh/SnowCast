@@ -12,7 +12,7 @@
   import { Circle, Fill, Stroke, Style, Text } from 'ol/style';
   import { fromLonLat, toLonLat, transformExtent } from 'ol/proj';
   import { defaults } from 'ol/control';
-  import type { SnowStation } from '../lib/canswe';
+  import type { SnowStation } from '../lib/stations';
   import { basemaps, DEFAULT_BASEMAP, type BasemapId } from '../lib/basemaps';
   import { displayPixelRatio, TileProgress } from '../lib/mapPerformance';
   import { MAP_MAX_ZOOM, type MapViewState } from '../lib/mapView';

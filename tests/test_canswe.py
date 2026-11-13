@@ -13,16 +13,6 @@ from snowcast_runner.cli import main
 from snowcast_runner.site_config import load_site
 
 
-def module(name):
-    spec = importlib.util.spec_from_file_location(name, Path(__file__).parents[1] / 'scripts' / f'{name}.py')
-    value = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(value)
-    return value
-
-
-unpacker = module('unpack_canswe')
-
-
 def row(date, swe, depth=None, agency='', qc=''):
     return [date, swe, depth, agency, '', qc, '']
 
@@ -67,45 +57,13 @@ def test_snow_season_and_finite_missing_values():
     assert canswe.number(0) == 0
 
 
-def test_bundled_snapshot_and_representative_scientific_edge_cases(tmp_path):
-    root = Path(__file__).parents[1]
-    bundle = root / 'webui/data/canswe-v8.zip'
-    unpacker.unpack(bundle, tmp_path)
-    index = json.loads((tmp_path / 'index.json').read_text())
-    assert index['stations']
-    assert len({s['id'] for s in index['stations']}) == len(index['stations'])
-    assert index['dataset']['source_md5'] == canswe.SOURCE_MD5
-    boxes = [d['bounds'] for d in index['domains']] if 'domains' in index else [index['bounds']]
-    for station in index['stations']:
-        assert any(b[0] <= station['lon'] <= b[2] and b[1] <= station['lat'] <= b[3] for b in boxes)
-        detail = json.loads(gzip.decompress((tmp_path / station['href']).read_bytes()))
-        assert detail['id'] == station['id']
-        assert all(detail['records'][i][0] < detail['records'][i+1][0] for i in range(len(detail['records'])-1))
-        assert all(b['median'] is None if b['years'] < 10 else b['median'] is not None for b in detail['seasonal']['swe'])
-        if station['id'] == 'ALE-05BJ805P':
-            assert station['counts']['swe'] > 10000 and station['counts']['depth'] == 0
-            assert all(b['years'] == 0 for b in detail['seasonal']['depth'])
-        if 'FORTRESS' in station['name'].upper():
-            assert any(b['samples'] for b in detail['seasonal']['swe'])
-            assert all(b['median'] is None for b in detail['seasonal']['swe'])
-
-
-def test_unpack_rejects_paths_outside_static_snapshot(tmp_path):
-    bundle = tmp_path / 'bad.zip'
-    with zipfile.ZipFile(bundle, 'w') as archive:
-        archive.writestr('index.json', json.dumps({'version': 1, 'stations': [{'href': '../../escape.json.gz'}]}))
-    with pytest.raises(ValueError, match='path'):
-        unpacker.unpack(bundle, tmp_path / 'public')
-    assert not (tmp_path / 'escape.json.gz').exists()
-
-
 @pytest.fixture
 def regional_source(tmp_path, monkeypatch):
     """Tiny real NetCDF: two domains, overlap, boundaries and excluded stations."""
     from netCDF4 import Dataset
     source = tmp_path / 'observations.nc'
     points = [('west', -115, 51), ('tvc', -133.5, 68.75), ('gap', -125, 60),
-              ('outside', -100, 45), ('edge', -134, 68), ('HQ-test', -72, 50)]
+              ('outside', -100, 45), ('edge', -134, 68), ('HQ-test', -72, 50), ('near-tvc', -133.5, 67.7)]
     with Dataset(source, 'w') as data:
         data.createDimension('station', len(points))
         data.createDimension('time', 2)
@@ -126,7 +84,6 @@ def regional_source(tmp_path, monkeypatch):
             variable[:] = np.tile(values, (len(points), 1))
         for key in ['data_flag_snw', 'data_flag_snd', 'qc_flag_snw', 'qc_flag_snd']:
             data.createVariable(key, 'S1', ('station', 'time', 'character'))[:] = b''
-    monkeypatch.setattr(canswe, 'SOURCE_MD5', hashlib.md5(source.read_bytes()).hexdigest())
     return source
 
 
@@ -152,72 +109,32 @@ def regional_site(tmp_path):
     return site_file
 
 
-def test_site_bundle_selects_union_deduplicates_and_follows_project_changes(regional_source, regional_site, tmp_path, monkeypatch, capsys):
-    import subprocess
-    monkeypatch.chdir(tmp_path.parent)  # Site paths are relative to the config, not cwd.
-    monkeypatch.setattr(subprocess, 'run', lambda *a, **kw: pytest.fail('Bundle generation must remain local'))
-    bundle = tmp_path / 'ui/data/canswe.zip'
-    command = ['site', 'prepare-canswe', str(regional_site), '--source', str(regional_source), '--bundle', str(bundle)]
-    assert main(command) == 0
-    assert 'tvc (tvc): 2 CanSWE stations' in capsys.readouterr().out
-    with zipfile.ZipFile(bundle) as archive:
-        index = json.loads(archive.read('index.json'))
-        assert {s['id'] for s in index['stations']} == {'west', 'tvc', 'edge'}
-        assert len(index['stations']) == 3  # Overlapping domains do not duplicate histories.
-        assert [d['id'] for d in index['domains']] == ['west', 'tvc', 'overlap']
-        assert index['bounds'] == [-134, 46.4, -109.8, 70]
-        assert str(tmp_path) not in json.dumps(index) and 'fixture.example' not in json.dumps(index)
-        for station in index['stations']:
-            detail = json.loads(gzip.decompress(archive.read(station['href'])))
-            assert detail['id'] == station['id'] and detail['records'][0][1] == 0
-    before = bundle.read_bytes()
-    assert main(command) == 0 and bundle.read_bytes() == before  # Reproducible.
-    unpacker.unpack(bundle, tmp_path / 'public')  # Same format as npm's build hook.
-    raw = json.loads(regional_site.read_text())
-    raw['projects'] = raw['projects'][:1]
-    regional_site.write_text(json.dumps(raw))
-    assert main(command) == 0
-    with zipfile.ZipFile(bundle) as archive:
-        assert [s['id'] for s in json.loads(archive.read('index.json'))['stations']] == ['west']
-    assert not any((tmp_path / 'projects').glob('*/work'))
+def test_spherical_distance_handles_arctic_longitude_and_corners():
+    b = [-134, 68.58401629082839, -132.8927383062496, 68.96001629082839]
+    assert canswe.distance_to_bounds(b, -133.5, 68.75) == 0
+    assert canswe.distance_to_bounds(b, -133.53334045410156, 68.31666564941406) == pytest.approx(29.728, abs=.001)
+    # At Arctic latitudes longitude degrees are far shorter than latitude degrees.
+    assert 39 < canswe.distance_to_bounds(b, -131.8927383062496, 68.7) < 41
+    assert canswe.distance_to_bounds([0, 0, 1, 1], 1.7, 1.7) > 100  # Beyond a circular corner buffer.
 
 
-@pytest.mark.parametrize('problem, message', [
-    ('missing', '--project tvc --no-upload'), ('identity', 'mismatched'),
-    ('bounds', 'geographic bounds'), ('checksum', 'pinned CanSWE v8'),
-    ('licence', 'Hydro-Quebec'), ('empty', 'No stations found'),
-])
-def test_incomplete_or_invalid_selection_preserves_existing_bundle(regional_source, regional_site, tmp_path, capsys, problem, message):
-    catalogue = tmp_path / 'staging/data/tvc/catalog.json'
-    data = json.loads(catalogue.read_text())
-    if problem == 'missing':
-        catalogue.unlink()
-    elif problem == 'identity':
-        data['domain']['id'] = 'other'
-    elif problem == 'bounds':
-        data['bounds'] = [-134, 68, float('nan'), 70]
-    elif problem == 'checksum':
-        regional_source.write_bytes(b'wrong release')
-    elif problem == 'licence':
-        data['bounds'] = [-80, 45, -60, 60]
-    elif problem == 'empty':
-        data['bounds'] = [-160, 80, -150, 85]
-        raw = json.loads(regional_site.read_text()); raw['projects'] = [raw['projects'][1]]
-        regional_site.write_text(json.dumps(raw))
-    if problem != 'missing':
-        catalogue.write_text(json.dumps(data))
-    bundle = tmp_path / 'existing.zip'; bundle.write_bytes(b'keep previous bundle')
-    assert main(['site', 'prepare-canswe', str(regional_site), '--source', str(regional_source), '--bundle', str(bundle)]) == 1
-    assert message in capsys.readouterr().err
-    assert bundle.read_bytes() == b'keep previous bundle'
-
-
-def test_interrupted_pack_preserves_previous_bundle(regional_source, regional_site, tmp_path, monkeypatch):
-    bundle = tmp_path / 'existing.zip'; bundle.write_bytes(b'previous')
-    def fail_write(*args, **kwargs):
-        raise OSError('disk full')
-    monkeypatch.setattr(zipfile.ZipFile, 'writestr', fail_write)
-    with pytest.raises(OSError, match='disk full'):
-        canswe.prepare_site_bundle(load_site(regional_site), regional_source, bundle)
-    assert bundle.read_bytes() == b'previous'
-    assert not list(tmp_path.glob('.existing.zip.*.tmp'))
+def test_converter_preserves_science_and_nearby_selection(regional_source, tmp_path):
+    from snowcast_runner.observation_data import load_registry
+    entry = load_registry()['datasets'][0]
+    entry['source']['checksum'] = 'md5:' + hashlib.md5(regional_source.read_bytes()).hexdigest()
+    domains = [{'id': 'west', 'name': 'West', 'bounds': [-132, 46.4, -109.8, 56]},
+               {'id': 'tvc', 'name': 'TVC', 'bounds': [-134, 68, -132, 70]}]
+    index = canswe.prepare(regional_source, tmp_path / 'out', domains=domains, entry=entry)
+    assert {s['id'] for s in index['stations']} == {'west', 'tvc', 'edge', 'near-tvc'}
+    assert index['domains'] == domains and index['nearby_km'] == 100
+    for station in index['stations']:
+        detail = json.loads(gzip.decompress((tmp_path / 'out' / station['href']).read_bytes()))
+        assert detail['records'][0][1] == 0
+        assert len(detail['seasonal']['swe']) == 24
+        assert all(b['median'] is None for b in detail['seasonal']['swe'])
+    entry['selection']['nearby_km'] = 0
+    index = canswe.prepare(regional_source, tmp_path / 'inside', domains=domains, entry=entry)
+    assert {s['id'] for s in index['stations']} == {'west', 'tvc', 'edge'}
+    domains[0]['bounds'] = [-80, 45, -60, 60]
+    with pytest.raises(ValueError, match='Hydro-Quebec'):
+        canswe.prepare(regional_source, tmp_path / 'invalid', domains=domains, entry=entry)

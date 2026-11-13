@@ -104,6 +104,7 @@ destination as `deploy` (substitute your SSH destination):
 ```bash
 rsync -rt --protect-args --exclude=data/ --exclude=demo/ --exclude=demo-site/ \
   --exclude=site.json --exclude=.site-config.json --exclude=domains.json \
+  --exclude=observations/ --exclude=observations.json \
   webui/dist/ USER@HOST:/var/www/html/v3-testing/
 ```
 
@@ -116,100 +117,92 @@ alternate site manifest; `?catalog=URL` still explicitly opens one catalogue.
 Only a missing default `site.json` (404) falls back to legacy `data/catalog.json`.
 A broken configured manifest never silently switches to a different dataset.
 
-## Refresh CanSWE when adding a project
+## Observation datasets
 
-The checked-in observation bundle contains 750 western-Canada stations. To add
-Arctic or other coverage, download the pinned **CanSWE v8 NetCDF** once from
-<https://doi.org/10.5281/zenodo.19075529> and keep it locally. After adding a
-project to the site configuration and publishing it at least once, regenerate
-the bundle from the checkout root:
+The one maintained registry is [`snowcast_runner/observations.json`](../snowcast_runner/observations.json).
+It is included in the installed wheel. It lists dataset IDs, labels, descriptions,
+enabled status, pinned source releases/URLs/checksums, conversion adapters,
+renderers, variables/units, attribution, and the station selection radius.
+No downloaded source or generated station data is tracked in Git.
+
+Download the full source **once** into a shared local cache:
 
 ```bash
-snowcast site prepare-canswe sites/snowcast.json \
-  --source /path/to/CanSWE-CanEEN_1928-2025_v8.nc \
-  --bundle webui/data/canswe-v8.zip
-cd webui
-npm run build
+snowcast download-data canswe
+snowcast publish sites/snowcast.json --project tvc
 ```
 
-Then deploy the updated `dist/` as above, including `observations/canswe/`.
-The command is **local only** and does not run CHM, build COGs, or upload anything.
-Use `publish ... --no-upload` if the new project's catalogue should first be
-generated for local testing. All selected projects need a catalogue under
-`staging/data/<id>/catalog.json`; a missing or mismatched catalogue stops the
-refresh and leaves the existing bundle intact. Paths to the source and output
-are relative to the current directory (or absolute); project/staging paths remain
-relative to the site configuration.
+`download-data` verifies and reuses an existing source. Concurrent downloaders
+wait on the same cache lock. Downloads are streamed to a temporary file, verified,
+and atomically installed. Interrupted/invalid transfers cannot replace valid data.
+The cache defaults to `$XDG_CACHE_HOME/snowcast/data` (normally
+`~/.cache/snowcast/data`). Set `SNOWCAST_DATA_CACHE` or use `--cache /path/to/cache`
+to share a cache across project folders. Releases remain pinned until the registry
+is explicitly changed. To import a download on a machine without Internet access:
 
-Selection uses each published catalogue's longitude/latitude bounds, including
-for models with projected grids. It includes stations inside **any selected
-project's bounding rectangle**, deduplicates overlaps, and excludes the space
-between separated domains. It does not clip against individual mesh cells or
-their no-data mask. The command reports station counts per project; a project
-may have no CanSWE observations. A completely empty selection retains the old
-bundle and reports an error.
+```bash
+snowcast download-data canswe --source /path/to/CanSWE-CanEEN_1928-2025_v8.nc
+```
 
-The browser already filters the bundle dynamically against the loaded projects'
-bounds and loads a station history only when selected. Removing a project hides
-its stations without rebuilding. Adding coverage outside the existing bundle
-requires this regeneration; browser filtering cannot recover stations omitted
-from the ZIP. This is needed for domain changes, not daily model updates.
-The bundle records the selected project IDs and bounds without private paths.
-The existing checksum, quality-control and separate Hydro-Québec licence checks
-remain in place; see [snapshot provenance](../webui/data/README.md).
+`publish` **never downloads observation sources**. It verifies the cache, selects
+stations using this project's published WGS84 bounds plus the registry's default
+100 km nearby radius, and uploads compressed histories before the indexes and
+public manifest. `--no-upload` prepares the same data locally with no SSH/rsync or
+observation download. Stations outside model coverage show observations only.
+Selection uses geographic bounding rectangles, not exact mesh masks.
 
-## Map behaviour and scales
+Conversion is reused while source release, converter version, project bounds,
+metadata and selection settings remain unchanged. Daily model dates do not cause
+conversion. Each project's contribution is stored separately; the website merges
+and deduplicates the configured projects under its site lock. Unpublished projects
+do not block publication. A domain with no stations produces an empty contribution.
 
-- **Dates:** the shared timeline uses UTC calendar days. Each project displays
-  its latest output on that exact day, or a visible gap. It never substitutes
-  an earlier date. Project status and point values show actual output times.
-- **Point history:** clicking chooses the top available project at that point.
-  In overlaps, an explicit selector lets you change project. History stays with
-  that project when dates change, and share links retain the choice. CSV keeps
-  actual source timestamps. Bounding boxes determine candidate domains; nodata
-  within a chosen domain remains nodata.
-- **Difference:** subtracts the selected dates separately inside each project.
-  Projects can have different grids from one another; the two dates within a
-  project must align. Missing dates or incompatible grids are reported per
-  project and omitted from that difference map.
-- **Overview:** all visible domains use the same colour scale. By default this
-  spans the configured ranges of the loaded projects. Optional `overview_ranges`
-  in the site config pins it, for example `{"swe": [0, 400], "snowdepthavg": [0, 2]}`.
-- **Zoomed view:** when only one domain intersects the viewport, or its bounding
-  box covers at least 80% of the viewport and contains its centre, its configured
-  `display.ranges` becomes the shared map scale. The legend names that project.
-  Otherwise the overview scale applies. Overlap priority follows site order.
-  Scale ranges stay fixed across dates; difference scales are symmetric.
-- **Failures:** a missing/broken project catalogue produces a warning while
-  healthy projects remain usable. Retry project catalogues after recovery.
-  Raster failures are reported, never replaced with stale dates.
+The generated public `observations.json` lists only successfully prepared datasets
+and their immutable station-index URLs. The UI reads it at runtime, builds the
+dataset selector and loads station histories on demand. Source acquisition settings
+and local paths stay private. UI installation preserves this manifest and the
+`observations/` directory. There is **no ZIP, npm rebuild, Git commit or assistant
+step** for routine observation publication.
 
-Project ranges belong in each project's manifest, for example TVC might use:
+For custom settings, copy the registry to an operator-owned file and use:
 
 ```json
-"display": {"ranges": {"swe": [0, 150], "snowdepthavg": [0, 1.5]}}
+"observations": {
+  "registry": "./observations.json",
+  "cache": "/shared/snowcast-data"
+}
 ```
 
-The values above are illustrative; choose ranges appropriate to your model.
+These paths are relative to the site config. Download with matching options:
+`snowcast download-data canswe --registry sites/observations.json --cache /shared/snowcast-data`.
+Omit `observations` to use the installed registry/environment cache; set it to
+`false` for a model-only site. Set a dataset's `enabled` to `false` to hide it.
+After changing the registry or selected projects, run `site configure` again
+(with `--upload` for the host), then publish affected projects. Old publishers
+cannot restore removed projects/datasets. Existing immutable data files are retained
+for open browser pages; no automatic observation garbage collection is performed.
 
-Original daily TIFF/ASCII archive synchronization and project-specific download
-indexes remain separate operator steps. This stage does not add them or schedule
-model runs/publication; see the [project guide](../projects/README.md).
+If a source is missing/corrupt or conversion fails, model publication can complete,
+the last valid observation contribution is retained, and the command exits nonzero
+with the failing dataset and exact `download-data` command. Other valid datasets
+can still publish. Retry the same publish after repairing the cache. An interrupted
+upload leaves the last public observation manifest intact.
 
-## Synthetic development checks
+To add another station dataset, add a registry entry and an adapter producing
+`snow-stations-v1`: a station index with source metadata and immutable history
+URLs, dated tuples `[date, swe_mm, depth_m, agency_swe, agency_depth, qc_swe, qc_depth]`,
+and the same 24 half-month seasonal bins. Adapters must normalize units, missing
+values and flags to the common contract. Other observation types require a new
+renderer. The UI has no dataset IDs, download URLs or release dates hard-coded.
 
-```bash
-python scripts/make_multisite_demo.py
-cd webui
-npm ci
-npx playwright install chromium
-npm run test:browser
-```
+### Migrate from the old bundle
 
-The generated demo has three projects with different grids, ranges and output
-times, an overlapping research domain and a missing TVC day. Run `npm run dev`
-and open `?site=./demo-site/site.json` to explore it manually. Synthetic data is
-labelled and must not be deployed. CI runs the same browser checks, including
-Canvas rendering, source point values, gaps, comparisons, sharing, partial
-catalogue failures, legacy discovery and mobile layout. Production-size COGs,
-real SSH/Apache deployment and GPU rendering still need host/device validation.
+1. Install the updated runner (`python -m pip install -e .` from the checkout).
+2. Run `snowcast download-data canswe` (or import the existing NetCDF).
+3. Run `snowcast site configure sites/snowcast.json --upload`.
+4. Publish each existing project once to populate its observation contribution.
+5. Build/deploy the updated UI once using the observation exclusions above.
+
+The removed `site prepare-canswe` command and build-time ZIP extraction are replaced
+by this workflow. Old observations can remain on the server; the new registry
+references only the newly published immutable indexes.

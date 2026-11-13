@@ -142,3 +142,36 @@ test('mobile project controls and legend fit without horizontal overflow', async
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: info.outputPath('mobile.png'), fullPage: true });
 });
+
+test('nearby Arctic station displays observations without model comparison', async ({ page }, info) => {
+  // Match the published TVC footprint; Inuvik is about 30 km south of its edge.
+  await page.route('**/data/tvc/catalog.json', async route => {
+    const response = await route.fetch();
+    const catalogue = await response.json();
+    catalogue.bounds = [-133.9317383062496, 68.58401629082839, -132.8927383062496, 68.96001629082839];
+    await route.fulfill({ json: catalogue });
+  });
+  // Small synthetic station fixture; no downloaded CanSWE assets in Git/CI.
+  const metadata = { doi: 'https://example.org', through: '2025-07-31', citation: 'Synthetic fixture', licence: 'Example', licence_url: 'https://example.org' };
+  const bins = Array.from({ length: 24 }, (_, bin) => ({ bin, years: 0, first: null, last: null, q25: null, median: null, q75: null, samples: [] }));
+  await page.route('**/observations.json', route => route.fulfill({ json: { version: 1, datasets: [{ id: 'arctic', label: 'Arctic observations', description: 'Historical snow', renderer: 'snow-stations-v1', release: 'v1', variables: { swe: 'mm', depth: 'm' }, ...metadata, index: 'observations/arctic/index-ab12.json' }] } }));
+  await page.route('**/observations/arctic/index-ab12.json', route => route.fulfill({ json: {
+    version: 1, dataset: { name: 'Arctic observations', version: 'v1', ...metadata }, minimum_years: 10, summary: 'Synthetic', nearby_km: 100,
+    stations: [{ id: 'INA-10LC01', name: 'INUVIK UA', lon: -133.53334, lat: 68.31667, elevation: 100, agency: 'Example', method: 'Manual', automated: false, first: '2025-01-01', last: '2025-01-01', counts: { swe: 1, depth: 0 }, href: 'stations/INA-10LC01-ab12.json.gz' }],
+  } }));
+  await page.route('**/observations/arctic/stations/*.gz', route => route.fulfill({ json: { version: 1, id: 'INA-10LC01', records: [['2025-01-01', 25, null, '', '', '', '']], seasonal: { swe: bins, depth: bins } } }));
+  await page.goto(site + '#station=INA-10LC01&dataset=arctic');
+  await ready(page);
+  await expect(page.getByRole('heading', { name: 'INUVIK UA', exact: true })).toBeVisible();
+  await expect(page.locator('.station-comparison')).toContainText('Outside model coverage · observations only');
+  await expect(page.locator('.station-chart')).toBeVisible();
+  await expect(page.locator('.large-value')).toHaveCount(0);
+  await expect(page.locator('.model-key')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Observations', exact: true }).click();
+  await expect(page.getByRole('columnheader', { name: 'Same-date model' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Observation CSV', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Difference', exact: true }).click();
+  await ready(page);
+  await expect(page.locator('.station-comparison')).not.toContainText('Select Value to compare');
+  await page.screenshot({ path: info.outputPath('nearby-arctic-observations.png'), fullPage: true });
+});

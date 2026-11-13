@@ -63,7 +63,7 @@ def deploy_ui(dist, site):
     if dist == site or dist.is_relative_to(site) or site.is_relative_to(dist):
         raise ValueError('UI build and site directories must be separate')
     files = []
-    reserved = {'data', 'domains.json', 'site.json', '.site-config.json', 'catalog.json', '.publish.lock', 'demo', 'demo-site'}
+    reserved = {'observations', 'observations.json', '.observation-projects', '.observation-build', 'data', 'domains.json', 'site.json', '.site-config.json', 'catalog.json', '.publish.lock', 'demo', 'demo-site'}
     for source in dist.rglob('*'):
         relative = source.relative_to(dist)
         if source.is_symlink():
