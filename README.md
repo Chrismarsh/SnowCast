@@ -36,16 +36,32 @@ PBS execution, postprocessing and migration. The old `snowcast.py` entry point,
 Python settings files and compatibility wrappers have been removed. Model jobs
 and checkpoints live inside the project, not the tool checkout.
 
-After configuring a website using the [site guide](sites/README.md), publish a
-project's postprocessed output with:
+## Website setup and daily operation
+
+Start with the [complete site workflow](sites/README.md): first setup/migration,
+command responsibilities, daily updates, parallel projects, local previews and
+troubleshooting. It includes the copy-paste UI deployment commands for
+`/v3-testing/`.
+
+There are four separate steps: download observation sources into a cache,
+configure the selected projects, run/publish each project's data, and build/deploy
+the UI. **`publish` uploads model and observation data by default; it does not
+run `site configure`, download CanSWE, or build/deploy the UI.**
+
+After the [one-time setup](sites/README.md#first-setup-or-migration), routine
+operation is one run and one publish per project:
 
 ```bash
+snowcast run projects/western-cordillera &&
 snowcast publish sites/snowcast.json --project western-cordillera
+
+snowcast run projects/tvc &&
+snowcast publish sites/snowcast.json --project tvc
 ```
 
-This uploads by default. Add `--no-upload` to generate the same COGs and catalogue
-in local staging without contacting the webserver. UI builds and uploads remain
-separate from model-data publication.
+The project pairs can run independently. Use `--no-upload` on publication for
+local staging only. Changing UI code requires a separate npm build and UI upload;
+changing model dates or already-supported observation data does not.
 
 ## Repository guide
 
@@ -53,9 +69,9 @@ separate from model-data publication.
 | --- | --- |
 | `snowcast_runner/` | Installed CLI, model orchestration, met indexing, postprocessing and publication utilities |
 | `projects/` | Independent project examples and their configuration guide |
-| `sites/` | Shared website configuration, independent publication and map guide |
+| `sites/` | End-to-end setup, daily publication, observation cache, UI deployment and troubleshooting |
 | `webui/` | Static map, downloads, help and about pages |
-| `scripts/` | UI data preparation/diagnostics and scientific example configurations |
+| `scripts/` | Synthetic UI demos, diagnostics and scientific example configurations |
 | `domain/` | Standalone mesh/domain preparation tools |
 | `tests/` | Runner, raster, publication and data-preparation checks |
 | `spack.yaml`, `spack.lock` | CHM and scientific Python environment specifications |

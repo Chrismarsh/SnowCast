@@ -6,7 +6,9 @@ processed products. The installed `snowcast_runner` package owns the reusable
 implementation. Projects do not depend on the SnowCast checkout or on one another.
 
 A separate [site configuration](../sites/README.md) selects projects for a shared
-website, with independent publication and simultaneous multi-project maps.
+website, with independent publication and simultaneous multi-project maps. For
+the complete daily command sequence, observation cache and separate UI deployment,
+use the [site workflow](../sites/README.md).
 
 ## Install and start a project
 
@@ -403,9 +405,11 @@ does not transfer original TIFF/ASCII products.
 ## Publication
 
 Use the [site configuration](../sites/README.md) for both remote and local
-publication. Configure the site once, then publish each project independently:
+publication. Populate the observation cache and configure the site once, then
+publish each project independently:
 
 ```bash
+snowcast download-data canswe
 snowcast site configure sites/snowcast.json --upload
 snowcast publish sites/snowcast.json --project western-cordillera
 ```
@@ -414,11 +418,22 @@ snowcast publish sites/snowcast.json --project western-cordillera
 `--upload` and add `--no-upload` to `publish`. It writes the same COGs and
 `data/<project-id>/catalog.json` in the site's configured staging directory.
 There is no separate `site publish` command or project/`--site-dir` publish form.
-UI installation remains separate:
+Publication also subsets cached observations for the chosen project and merges
+its station contribution with the other published projects. Publish every project
+once when adopting the observation registry. `publish` does not configure the
+site, download sources, or build/deploy the UI. See the
+[command table](../sites/README.md#what-each-command-does) and
+[migration sequence](../sites/README.md#first-setup-or-migration).
+
+UI installation remains separate. For a local/mounted site:
 
 ```bash
 snowcast deploy-ui --dist /path/to/webui/dist --site-dir /path/to/staging-site
 ```
+
+`deploy-ui` copies a completed build locally; it does not invoke npm or SSH. For
+a remote website, follow the [UI build/upload commands](../sites/README.md#build-and-deploy-the-ui),
+which preserve observation and model data.
 
 Publication preserves safe COG conversion, concurrent registry updates,
 hydrological-year selection and 48-hour orphan cleanup. SWE/SD retain ten daily
