@@ -116,6 +116,48 @@ alternate site manifest; `?catalog=URL` still explicitly opens one catalogue.
 Only a missing default `site.json` (404) falls back to legacy `data/catalog.json`.
 A broken configured manifest never silently switches to a different dataset.
 
+## Refresh CanSWE when adding a project
+
+The checked-in observation bundle contains 750 western-Canada stations. To add
+Arctic or other coverage, download the pinned **CanSWE v8 NetCDF** once from
+<https://doi.org/10.5281/zenodo.19075529> and keep it locally. After adding a
+project to the site configuration and publishing it at least once, regenerate
+the bundle from the checkout root:
+
+```bash
+snowcast site prepare-canswe sites/snowcast.json \
+  --source /path/to/CanSWE-CanEEN_1928-2025_v8.nc \
+  --bundle webui/data/canswe-v8.zip
+cd webui
+npm run build
+```
+
+Then deploy the updated `dist/` as above, including `observations/canswe/`.
+The command is **local only** and does not run CHM, build COGs, or upload anything.
+Use `publish ... --no-upload` if the new project's catalogue should first be
+generated for local testing. All selected projects need a catalogue under
+`staging/data/<id>/catalog.json`; a missing or mismatched catalogue stops the
+refresh and leaves the existing bundle intact. Paths to the source and output
+are relative to the current directory (or absolute); project/staging paths remain
+relative to the site configuration.
+
+Selection uses each published catalogue's longitude/latitude bounds, including
+for models with projected grids. It includes stations inside **any selected
+project's bounding rectangle**, deduplicates overlaps, and excludes the space
+between separated domains. It does not clip against individual mesh cells or
+their no-data mask. The command reports station counts per project; a project
+may have no CanSWE observations. A completely empty selection retains the old
+bundle and reports an error.
+
+The browser already filters the bundle dynamically against the loaded projects'
+bounds and loads a station history only when selected. Removing a project hides
+its stations without rebuilding. Adding coverage outside the existing bundle
+requires this regeneration; browser filtering cannot recover stations omitted
+from the ZIP. This is needed for domain changes, not daily model updates.
+The bundle records the selected project IDs and bounds without private paths.
+The existing checksum, quality-control and separate Hydro-Québec licence checks
+remain in place; see [snapshot provenance](../webui/data/README.md).
+
 ## Map behaviour and scales
 
 - **Dates:** the shared timeline uses UTC calendar days. Each project displays

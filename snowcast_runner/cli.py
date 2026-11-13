@@ -28,13 +28,17 @@ def parser():
     command = commands.add_parser('deploy-ui', help='Deploy an already-built UI separately from model data')
     command.add_argument('--dist', type=Path, required=True)
     command.add_argument('--site-dir', type=Path, required=True)
-    site = commands.add_parser('site', help='Validate or configure a website and its selected projects')
+    site = commands.add_parser('site', help='Configure a website and prepare its observation bundle')
     actions = site.add_subparsers(dest='site_action', required=True)
     for action in ('validate', 'configure'):
         command = actions.add_parser(action)
         command.add_argument('config', type=Path, help='Authored site JSON')
         if action != 'validate':
             command.add_argument('--upload', action='store_true', help='Also update the configured webserver over SSH')
+    command = actions.add_parser('prepare-canswe', help='Regenerate a local station bundle for all selected project bounds')
+    command.add_argument('config', type=Path, help='Authored site JSON; projects must have local published catalogues')
+    command.add_argument('--source', type=Path, required=True, help='Pinned CanSWE-CanEEN_1928-2025_v8.nc')
+    command.add_argument('--bundle', type=Path, required=True, help='Output ZIP, e.g. webui/data/canswe-v8.zip; never uploaded')
     return root
 
 
@@ -51,6 +55,9 @@ def main(argv=None):
                 return 0
             if args.site_action == 'configure':
                 configure(site, remote=args.upload)
+            if args.site_action == 'prepare-canswe':
+                from .canswe import prepare_site_bundle
+                prepare_site_bundle(site, args.source, args.bundle)
             print(f'Site {args.site_action}: {site.spec["title"]}')
             return 0
         if args.action == 'deploy-ui':

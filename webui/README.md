@@ -282,6 +282,13 @@ links); each compressed history is fetched on
 selection and cached (up to eight stations). Model rendering never waits for
 observations, and no model reads occur for unselected station markers.
 
+The map filters stations against each loaded project's catalogue bounds. When
+adding a domain outside the shipped western subset, regenerate the bundle with
+`snowcast site prepare-canswe SITE_CONFIG --source CANSWE_V8.nc --bundle webui/data/canswe-v8.zip`,
+then rebuild and deploy the UI. The command selects the union of all configured
+projects' locally published bounds, rather than the bounding rectangle around
+the whole site. See the [multi-project refresh instructions](../sites/README.md#refresh-canswe-when-adding-a-project).
+
 Deploy the entire `dist/observations/canswe/` directory with the rest of `dist/`.
 No new service, COG rebuild, or PNG tile generation is required. Serve
 `observations/canswe/index.json` with revalidation/short caching; versioned

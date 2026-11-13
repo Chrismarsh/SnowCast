@@ -1,5 +1,6 @@
 """Build/install only the package, then exercise it with no legacy imports."""
 import json
+import hashlib
 import os
 from pathlib import Path
 import shutil
@@ -10,6 +11,7 @@ import zipfile
 import pytest
 
 from test_project_runner import project_file, configure_fake_pipeline
+from test_canswe import regional_source, regional_site
 
 
 def checked(command, **kwargs):
@@ -18,7 +20,7 @@ def checked(command, **kwargs):
     return result
 
 
-def test_wheel_runs_project_through_postprocess_outside_checkout(project_file, tmp_path):
+def test_wheel_runs_project_through_postprocess_outside_checkout(project_file, tmp_path, regional_source, regional_site):
     root = Path(__file__).resolve().parents[1]
     source, wheels, installed = (tmp_path / name for name in ('package-source', 'wheels', 'installed'))
     source.mkdir()
@@ -42,7 +44,7 @@ class NoLegacy(importlib.abc.MetaPathFinder):
 sys.meta_path.insert(0, NoLegacy())
 import snowcast_runner
 assert pathlib.Path(snowcast_runner.__file__).is_relative_to(installed)
-for name in ['cli', 'chm_config', 'forcing', 'met', 'model', 'backfill', 'rasters', 'jobs', 'state', 'site', 'site_config', 'publish_cogs', 'upload', 'downloads']:
+for name in ['cli', 'chm_config', 'forcing', 'met', 'model', 'backfill', 'rasters', 'jobs', 'state', 'site', 'site_config', 'publish_cogs', 'upload', 'downloads', 'canswe']:
     importlib.import_module('snowcast_runner.' + name)
 from snowcast_runner.cli import main
 raise SystemExit(main(sys.argv[1:]))
@@ -63,12 +65,23 @@ raise SystemExit(main(sys.argv[1:]))
     checked([sys.executable, '-I', '-c', bootstrap, str(installed), 'publish', str(site_file),
              '--project', 'west', '--no-upload'], cwd=outside)
     assert json.loads((tmp_path / 'website/site.json').read_text())['domains'][0]['available'] is True
+    # Exercise the actual packaged converter with a small real NetCDF, replacing
+    # only the pinned release checksum for this synthetic fixture.
+    converter_bootstrap = bootstrap.replace('from snowcast_runner.cli import main',
+        'from snowcast_runner import canswe\n' +
+        f'canswe.SOURCE_MD5 = {hashlib.md5(regional_source.read_bytes()).hexdigest()!r}\n' +
+        'from snowcast_runner.cli import main')
+    bundle = tmp_path / 'canswe.zip'
+    checked([sys.executable, '-I', '-c', converter_bootstrap, str(installed), 'site', 'prepare-canswe',
+             str(regional_site), '--source', str(regional_source), '--bundle', str(bundle)], cwd=outside)
+    with zipfile.ZipFile(bundle) as archive:
+        assert {s['id'] for s in json.loads(archive.read('index.json'))['stations']} == {'west', 'tvc', 'edge'}
     assert not list(outside.iterdir())
     assert (installed / 'bin/snowcast').is_file()
     checked([str(installed / 'bin/snowcast'), '--help'], cwd=outside,
             env={**os.environ, 'PYTHONPATH': str(installed)})
 
 
-@pytest.mark.parametrize('module', ['publish_cogs', 'cog_store', 'upload', 'downloads'])
+@pytest.mark.parametrize('module', ['publish_cogs', 'cog_store', 'upload', 'downloads', 'canswe'])
 def test_package_utilities_run_from_an_unrelated_directory(module, tmp_path):
     checked([sys.executable, '-m', 'snowcast_runner.' + module, '--help'], cwd=tmp_path)

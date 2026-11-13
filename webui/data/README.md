@@ -3,8 +3,9 @@
 `canswe-v8.zip` is a derived, reproducible static snapshot for the SnowCast
 station overlay. It contains a small station index and 750 individually gzipped
 station histories/seasonal summaries in the bounding box
-`[-132, 46.4, -109.8, 56]`. The viewer further filters locations to its catalogue
-bounds. The archive is extracted locally by `scripts/unpack_canswe.py` before
+`[-132, 46.4, -109.8, 56]`. Locally regenerated bundles can cover any set of
+configured projects. The viewer further filters locations to each project's
+catalogue bounds. The archive is extracted locally by `scripts/unpack_canswe.py` before
 development and production builds; the browser only requests the index and the
 selected station's file, never the archive.
 
@@ -60,13 +61,33 @@ the converter rejects them if bounds are expanded without reviewing licensing.
 
 ## Reproduce / update
 
-Download the pinned NetCDF from the dataset record, then from the repository:
+Download the pinned NetCDF from the dataset record, then from the repository
+root install the runner and regenerate for all projects selected by your site:
 
 ```bash
-python -m pip install numpy netCDF4
-python scripts/prepare_canswe.py /path/to/CanSWE-CanEEN_1928-2025_v8.nc
-python scripts/unpack_canswe.py
+python -m pip install -e .
+snowcast site prepare-canswe sites/snowcast.json \
+  --source /path/to/CanSWE-CanEEN_1928-2025_v8.nc \
+  --bundle webui/data/canswe-v8.zip
+cd webui
+npm run build
 ```
+
+Every selected project needs a locally published catalogue. The converter uses
+those WGS84 bounding rectangles, not the site's combined bounding rectangle or
+projected grid coordinates, and includes a station only once when domains
+overlap. It reports each project's station count and stores IDs/names/bounds in
+the derived index. This is bounding-box selection, not exact mesh-mask clipping.
+Missing catalogues or a failed conversion leave the existing bundle unchanged.
+See the [site guide](../../sites/README.md#refresh-canswe-when-adding-a-project)
+for local publication and deployment. The command makes no network requests.
+
+To reproduce the original western subset, the checkout convenience command
+`python scripts/prepare_canswe.py /path/to/CanSWE-CanEEN_1928-2025_v8.nc` still
+works after installing the runner. It also accepts an explicit geographic
+`--bounds WEST SOUTH EAST NORTH`. Reusable conversion code lives in
+`snowcast_runner/canswe.py`; the site command works from an installed wheel
+without the checkout.
 
 The converter verifies the source checksum and units. A new release requires
 reviewing its schema, changes, dates, licences, and updating pinned metadata
