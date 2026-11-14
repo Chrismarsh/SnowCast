@@ -44,7 +44,7 @@ class NoLegacy(importlib.abc.MetaPathFinder):
 sys.meta_path.insert(0, NoLegacy())
 import snowcast_runner
 assert pathlib.Path(snowcast_runner.__file__).is_relative_to(installed)
-for name in ['cli', 'chm_config', 'forcing', 'met', 'model', 'backfill', 'rasters', 'jobs', 'state', 'site', 'site_config', 'publish_cogs', 'upload', 'downloads', 'canswe', 'observation_data', 'observations']:
+for name in ['cli', 'chm_config', 'forcing', 'met', 'model', 'backfill', 'rasters', 'jobs', 'state', 'site', 'site_config', 'publish_cogs', 'upload', 'downloads', 'canswe', 'observation_data', 'observations', 'archive', 'archive_store']:
     importlib.import_module('snowcast_runner.' + name)
 from snowcast_runner.cli import main
 raise SystemExit(main(sys.argv[1:]))
@@ -54,6 +54,12 @@ raise SystemExit(main(sys.argv[1:]))
     outside.mkdir()
     for action in ('validate', 'prepare', 'run', 'postprocess', 'status'):
         checked([sys.executable, '-I', '-c', bootstrap, str(installed), action, str(project_file)], cwd=outside)
+    raw_project = json.loads(project_file.read_text())
+    raw_project['archive'] = {'destinations': [{'id': 'backup', 'backend': 'local',
+        'directory': str(tmp_path / 'originals'), 'public_url': 'https://archive.example/west/'}]}
+    project_file.write_text(json.dumps(raw_project))
+    checked([sys.executable, '-I', '-c', bootstrap, str(installed), 'archive', str(project_file)], cwd=outside)
+    assert (tmp_path / 'originals/archive-index.json').is_file()
     state = json.loads((project_file.parent / 'work/status.json').read_text())
     assert state['project'] == 'west' and state['state'] == 'completed'
     assert state['output']['times'] == ['20261108T230000', '20261109T230000']

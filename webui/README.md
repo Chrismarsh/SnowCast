@@ -316,69 +316,30 @@ and serve that directory; a clean standalone UI has no observation datasets.
 
 ## Daily GeoTIFF and ASCII downloads
 
-![Original TIFF download page, with a one-day archive filter](docs/tiff-downloads-preview.png)
+The **Data** link opens `downloads.html`. On a unified site the page reads project
+selection from `site.json`, then loads `data/PROJECT/downloads.json` independently
+for the selected project. Visitors choose project, archive mirror, format/grid,
+variable and dates. Grid spacing and CRS are project metadata; missing files
+remain gaps. Companion masks and metadata have their own download links.
 
-The header's **Data** link opens `downloads.html`, a separate, lightweight page
-that does not initialize the map or fetch any rasters. It offers the latest
-original SWE, snow-depth and temperature GeoTIFFs at 0.001°, plus AEP ASCII
-grids at 0.036° where available. The format/grid filter applies to latest links,
-the archive table, and URL exports. Legacy 0.01° TIFFs are omitted. It includes
-inclusive UTC date filters, file sizes, pagination and a filtered URL-list export.
-The original files remain at
-<https://hpfx.collab.science.gc.ca/~chm003/tiff/> and
-<https://hpfx.collab.science.gc.ca/~chm003/asc/>; the page does not convert them
-to COGs or relay large downloads. Map COGs remain accessible via `?panel=data`.
+Configure original-data storage in each project's `archive` JSON. Run
+`snowcast archive PROJECT` to transfer originals to local/mounted, SSH/rsync
+(including HPFX), or S3-compatible destinations. Then `snowcast publish` copies
+public download metadata from successful archive receipts to the Web UI host.
+**Publish never uploads original TIFF/ASCII files or contacts archive storage.**
+Private destinations without `public_url` are not advertised.
 
-The TIFF directory does not currently return browser CORS headers, so the page reads
-a small same-origin `download-index.json` instead. `npm run build` refreshes it
-using Python's standard library. It fetches only the two directory listings, validates
-filenames, and writes the index atomically. An offline build retains the checked-in
-snapshot with a warning. The page displays the snapshot's indexing time, actual
-simulation timestamps, and an explicit stale-index notice after 48 hours.
+See [archive configuration, commands and migration](../projects/ARCHIVING.md).
+The download archive retains daily products independently of map COG retention.
+Routine archive/index updates need no UI rebuild. UI deployment's `data/`
+exclusion protects these indexes together with the map products.
 
-**Normal `snowcast publish` does not refresh this original-download index or
-upload the original TIFF/ASCII archives.** Its uploads cover project map COGs and
-observations. The standalone `python -m snowcast_runner.upload` utility can refresh
-the index after a COG transfer, or refresh it alone with `--downloads-only`. It reads
-the public TIFF/ASCII listings after originals have been uploaded separately.
-For a project catalogue under `data/<project-id>/`, explicitly set
-`--download-index-directory` to the UI root rather than its default parent path.
-
-To update the download links immediately from the simulation/upload host, without
-retransferring COGs or rebuilding the UI:
-
-```bash
-python -m snowcast_runner.upload --downloads-only \
-  --host USER@HOST --directory /var/www/html/v3-testing/data/western-cordillera \
-  --download-index-directory /var/www/html/v3-testing
-```
-
-A failed refresh retains the live index and logs a warning without undoing a
-successful COG publication. The standalone `--downloads-only` command returns a
-failure status if it cannot refresh or upload the index.
-
-For directly served local data, or as an independent scheduled refresh on the
-web host (for example hourly, or after upstream TIFF publication):
-
-```bash
-python -m snowcast_runner.downloads \
-  --output /var/www/html/v3-testing/download-index.json
-```
-
-Alternatively, from the checkout root run `npm --prefix webui run refresh:downloads` and upload just
-`webui/public/download-index.json` to `/v3-testing/download-index.json`. No frontend
-rebuild is needed for an index refresh. A failed/empty refresh keeps the previous
-index intact. Do not overwrite a more recent server index with an older build
-snapshot. The data-archive link follows the selected format and remains available
-if the index cannot load. Both listings must succeed before replacing the index.
-No download date is inferred from the COG catalogue, and absent files are never
-shown as download links. Source sizes are rounded Apache-index values, displayed
-as approximate binary sizes. Grid spacing is angular, not a fixed metre size.
-
-The downloadable archive remains daily, including older dates; map COG retention
-does not thin or delete these original downloads. Missing published files remain
-gaps. For offline indexing, pass both `--listing tiff.html` and
-`--ascii-listing ascii.html`.
+Older single-project installations without `site.json` retain support for the
+legacy `download-index.json` sourced from the Western HPFX TIFF/ASCII listings.
+The npm prebuild still refreshes that compatibility snapshot. It does not archive
+originals or update unified project indexes. The standalone
+`python -m snowcast_runner.upload --downloads-only` command is also legacy-only;
+do not use it to refresh a unified site's project downloads.
 
 ## Publish project map history
 
@@ -437,8 +398,9 @@ disconnect after a successful remote rename can recover safely. COG transfer
 failure after all attempts still fails the upload. No delay is added after the
 last failed attempt. Site configuration/registration conflicts fail immediately
 because they require correcting the configuration. The separate standalone
-upload utility also supports `--downloads-only`; normal `snowcast publish` does
-not refresh the original daily download-archive index.
+upload utility also supports legacy `--downloads-only`; normal `snowcast publish`
+copies per-project download metadata from archive receipts instead of refreshing
+the old Western-only index.
 
 For an operator-managed run followed by publication and upload, sequence the commands:
 
@@ -447,12 +409,12 @@ snowcast run /projects/western-cordillera &&
 snowcast publish sites/snowcast.json --project western-cordillera
 ```
 
-Synchronize original daily downloads separately as appropriate for the installation.
+Archive original daily downloads separately with `snowcast archive PROJECT` when configured.
 See the [project migration guide](../projects/README.md) for
 replacing old cron invocations and copying daily TIFF/ASCII archives. The retired
 Python settings/plotting/v2 upload pipeline is no longer an entry point.
 The site config controls selection; each publish registers only complete catalogues.
-Original daily download-archive integration and scheduling remain separate steps.
+Original daily archives use `snowcast archive PROJECT`; scheduling remains operator-managed.
 
 Original-TIFF rotation moves external masks, PAM metadata and overviews with
 their raster. Project execution/publication share a project lock, preventing

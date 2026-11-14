@@ -46,3 +46,38 @@ describe('daily download index', () => {
     expect(() => parseDownloadIndex({ ...old, ascii_source: 'https://example.com/' })).toThrow('Invalid ASCII archive');
   });
 });
+
+const projectIndex = (id = 'tvc') => ({ version: 2, project: { id, name: 'Trail Valley Creek' }, indexed_at: '2026-11-13T18:00:00Z', sources: [{
+  id: 'hpfx', name: 'HPFX', url: 'https://archive.example/tvc/', files: [{ name: 'swe-100x100_20261113T230000.tiff',
+    path: 'tiff/swe-100x100_20261113T230000.tiff', variable: 'swe', format: 'GeoTIFF', time: '2026-11-13T23:00:00Z',
+    crs: 'EPSG:32608', resolution: [100, 100], bytes: 2048, sidecars: ['tiff/swe-100x100_20261113T230000.tiff.msk'] }],
+}] });
+
+it('reads project identity, actual projected grids and companion files from successful archives', () => {
+  const parsed = parseDownloadIndex(projectIndex(), 'tvc');
+  expect(parsed.sources).toEqual([{ id: 'hpfx', name: 'HPFX', url: 'https://archive.example/tvc/' }]);
+  expect(parsed.files[0]).toMatchObject({ grid: 'GeoTIFF:EPSG:32608:100x100', gridLabel: '100 × 100 (EPSG:32608 units)',
+    href: 'https://archive.example/tvc/tiff/swe-100x100_20261113T230000.tiff', source: 'hpfx', size: '2048' });
+  expect(parsed.files[0].sidecars?.[0].href).toContain('.tiff.msk');
+  expect(() => parseDownloadIndex(projectIndex(), 'western-cordillera')).toThrow('Invalid project');
+});
+
+it('keeps identical dates separate across mirrors and accepts a project awaiting archival', () => {
+  const index = projectIndex();
+  index.sources.push({ ...index.sources[0], id: 's3', name: 'Object store', url: 'https://s3.example/tvc/' });
+  expect(parseDownloadIndex(index).files).toHaveLength(2);
+  expect(parseDownloadIndex({ ...index, sources: [], indexed_at: null }).files).toEqual([]);
+});
+
+it.each(['../outside.tiff', 'tiff/../../outside.tiff', 'https://evil.example/file', 'tiff/%2e%2e/file'])('rejects unsafe archive paths %s', path => {
+  const index = projectIndex(); index.sources[0].files[0].path = path;
+  expect(() => parseDownloadIndex(index)).toThrow('Invalid archived file');
+});
+
+it('rejects executable links and impossible archive dates', () => {
+  const index = projectIndex(); index.sources[0].url = 'javascript:alert(1)';
+  expect(() => parseDownloadIndex(index)).toThrow('Invalid archive URL');
+  index.sources[0].url = 'https://archive.example/';
+  index.sources[0].files[0].time = '2026-02-30T23:00:00Z';
+  expect(() => parseDownloadIndex(index)).toThrow('Invalid archived file');
+});

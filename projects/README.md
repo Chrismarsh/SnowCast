@@ -381,26 +381,20 @@ configuring deployment. No cron entry is installed by SnowCast.
 
 ## Original daily download archives
 
-The runner retains original daily TIFF/ASCII products inside each project.
-Synchronization to an external download archive is an explicit operator step
-until per-project download-archive deployment is implemented. The removed uploader's hardcoded
-`collab-lp` destination is no longer assumed. To copy one project's products,
-copy archived products first and current revisions last, without `--delete`:
+Use `snowcast archive PROJECT` for original TIFF/ASCII uploads. Configure one or
+more `local`, `rsync` (including HPFX), or S3-compatible destinations in the
+project's JSON or a referenced JSON file. This is independent of Web UI
+publication; `publish` only advertises links from completed archive receipts.
+
+See the [archive configuration and migration guide](ARCHIVING.md) for JSON
+examples, preserving existing HPFX paths, mirrors, private backups, dry runs,
+retry behavior and daily command order.
 
 ```bash
-rsync -rt --protect-args /projects/western-cordillera/work/postprocess/archive_tiff/ USER@ARCHIVE:/path/to/project/tiff/
-rsync -rt --protect-args /projects/western-cordillera/work/postprocess/tiff/ USER@ARCHIVE:/path/to/project/tiff/
-rsync -rt --protect-args /projects/western-cordillera/work/postprocess/archive_ascii/ USER@ARCHIVE:/path/to/project/asc/
-rsync -rt --protect-args /projects/western-cordillera/work/postprocess/ascii/ USER@ARCHIVE:/path/to/project/asc/
+snowcast archive projects/western-cordillera --dry-run
+snowcast archive projects/western-cordillera
+snowcast publish sites/snowcast.json --project western-cordillera
 ```
-
-Use the existing Western archive's actual destinations to continue its URLs;
-choose separate destinations for additional projects. Run ASCII synchronization
-only when ASCII exports are enabled. Copy the complete directories so masks,
-PAM metadata, overviews and projection sidecars travel with their rasters.
-Publish/refresh download indexes after these transfers. The COG upload utility
-transfers map COGs and refreshes the existing Western public archive index; it
-does not transfer original TIFF/ASCII products.
 
 ## Publication
 

@@ -26,6 +26,8 @@ site config and UI upload command.
 | `snowcast site configure SITE_CONFIG --upload` | Applies that configuration to both local staging and the configured webserver | First remote setup and configuration changes |
 | `snowcast run PROJECT` | Prepares forcing/configuration, runs or resumes CHM, and postprocesses successful new output | Each model update, for each project |
 | `snowcast postprocess PROJECT` | Processes existing CHM output | If postprocessing was skipped or needs to be repeated |
+| `snowcast archive PROJECT [--destination ID]` | Copies original TIFF/ASCII products to the project’s configured storage backends | After postprocessing; separate from Web UI publication |
+| `snowcast archive PROJECT --dry-run` | Shows changed-file counts without contacting destinations | Before the first archive or a configuration change |
 | `snowcast publish SITE_CONFIG --project ID` | Builds local COGs/catalogue, prepares cached observation subsets, uploads the selected project's data and updates the website manifests | After that project's output is ready; uploads by default |
 | `snowcast publish SITE_CONFIG --project ID --no-upload` | Prepares the same model and observation data in local staging | Local testing; no SSH/rsync or observation downloads |
 | `npm --prefix webui run build` | Compiles the UI into `webui/dist/` | After UI code/dependency changes |
@@ -33,7 +35,8 @@ site config and UI upload command.
 | `rsync … webui/dist/ USER@HOST:/var/www/html/v3-testing/` | Uploads the compiled UI to the webserver | Initial UI installation and UI updates |
 
 **`publish` does not run `site configure`, download observation sources, or build
-or deploy the UI.** `run` does not publish. `site configure` does not run CHM or
+or deploy the UI, or upload original archives.** `archive` handles original
+TIFF/ASCII storage separately. `run` does not publish or archive. `site configure` does not run CHM or
 create observation subsets. Building the UI does not install it on the server.
 
 There is one project-data publishing command. The earlier `site publish`,
@@ -150,7 +153,16 @@ snowcast run projects/tvc &&
 snowcast publish sites/snowcast.json --project tvc
 ```
 
-For two projects, that is two `run` commands and two `publish` commands. `&&`
+For configured original archives, insert `snowcast archive PROJECT` between
+`run` and `publish` for each project. For example:
+
+```bash
+snowcast run projects/tvc &&
+snowcast archive projects/tvc &&
+snowcast publish sites/snowcast.json --project tvc
+```
+
+Without archives, that is two `run` commands and two `publish` commands. `&&`
 starts publication only when that project's run succeeds. If the outputs are
 already postprocessed, use just `publish`. Routine data updates need no
 `site configure`, CanSWE download or npm build while their settings/releases and
@@ -225,9 +237,10 @@ HTML, `site.json`, `observations.json` and each model `catalog.json`. Immutable
 hashed UI assets, COGs and observation indexes/histories may use long cache times.
 The [COG hosting checks](../webui/README.md#hosting-on-an-ordinary-disk) still apply.
 
-Original TIFF/ASCII download publication is separate from the map and observation
-workflow. Normal `snowcast publish` does **not** upload those archives or refresh
-`download-index.json`. See [daily downloads](../webui/README.md#daily-geotiff-and-ascii-downloads).
+Original TIFF/ASCII uploads use `snowcast archive PROJECT`, configured independently
+of `site.deploy`. `publish` reads successful archive receipts and uploads only
+per-project download indexes alongside the map/observation backend data. See the
+[archive guide](../projects/ARCHIVING.md) for HPFX, local and S3-compatible storage.
 If a UI build reports that it retained a stale download-index snapshot, preserve
 a newer server copy with `--exclude=download-index.json` on the UI rsync command.
 
@@ -285,6 +298,7 @@ runner adapter. A new observation renderer also requires a UI update/build.
 | `projects/PROJECT/snowcast.json` and referenced CHM settings | Authored model/run configuration | Operator |
 | `sites/snowcast.json` | Authored site selection, staging and deployment destination | Operator |
 | `snowcast_runner/observations.json` or a configured custom registry | Authored dataset acquisition, conversion and display settings | Operator/developer |
+| `PROJECT/work/archive/` | Completed archive receipts used for project download links | `archive`; read by `publish` |
 | `~/.cache/snowcast/data/` by default | Full verified observation source shared by projects | `download-data` |
 | `PROJECT/work/` | Jobs, forcing snapshots, checkpoints and postprocessed products | Project commands |
 | `STAGING/data/PROJECT/` → `WEBSITE/data/PROJECT/` | Model COGs and `catalog.json` | `publish` |

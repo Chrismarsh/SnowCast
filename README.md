@@ -43,10 +43,10 @@ command responsibilities, daily updates, parallel projects, local previews and
 troubleshooting. It includes the copy-paste UI deployment commands for
 `/v3-testing/`.
 
-There are four separate steps: download observation sources into a cache,
-configure the selected projects, run/publish each project's data, and build/deploy
-the UI. **`publish` uploads model and observation data by default; it does not
-run `site configure`, download CanSWE, or build/deploy the UI.**
+Website setup separates observation downloads, site configuration, project
+runs/publication and UI deployment. Original archives have their own command.
+**`publish` uploads model and observation data by default; it does not
+run `site configure`, download CanSWE, archive originals, or build/deploy the UI.**
 
 After the [one-time setup](sites/README.md#first-setup-or-migration), routine
 operation is one run and one publish per project:
@@ -58,6 +58,11 @@ snowcast publish sites/snowcast.json --project western-cordillera
 snowcast run projects/tvc &&
 snowcast publish sites/snowcast.json --project tvc
 ```
+
+For original TIFF/ASCII storage, configure [archive destinations](projects/ARCHIVING.md)
+in JSON and insert `snowcast archive PROJECT` between `run` and `publish`.
+Archive backends include local/mounted storage, SSH/rsync (HPFX), and S3-compatible
+object storage. `publish` only supplies the Web UI with completed archive links.
 
 The project pairs can run independently. Use `--no-upload` on publication for
 local staging only. Changing UI code requires a separate npm build and UI upload;

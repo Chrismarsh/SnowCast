@@ -120,6 +120,7 @@ class Project:
     postprocess: dict
     display: dict
     notifications: dict
+    archive: list
 
 
 def load_project(filename):
@@ -130,7 +131,7 @@ def load_project(filename):
     if isinstance(raw, dict) and (raw.get('version') == 1 or 'domains' in raw or 'defaults' in raw):
         raise ValueError('Project version 1 used nested domains. Create a version 2 project folder per domain; '
                          'see projects/README.md for migration. Existing work is not moved automatically.')
-    keys(raw, 'version id name model forcing postprocess display notifications', 'project')
+    keys(raw, 'version id name model forcing postprocess display notifications archive', 'project')
     if type(raw.get('version')) is not int or raw['version'] != 2:
         raise ValueError('Unsupported project version; expected 2')
     identifier = slug(raw.get('id'), 'project.id')
@@ -232,7 +233,9 @@ def load_project(filename):
     for var, span in display.get('ranges', {}).items():
         if var not in VARIABLES or not isinstance(span, list) or len(span) != 2 or any(type(x) not in (int, float) or not math.isfinite(x) for x in span) or span[0] >= span[1]:
             raise ValueError('display.ranges must map supported variables to increasing finite pairs')
-    return Project(filename, identifier, display_name, work, model, forcing, pp, display, notifications)
+    from .archive import destinations
+    archive = destinations(raw.get('archive', {}), base, identifier, work)
+    return Project(filename, identifier, display_name, work, model, forcing, pp, display, notifications, archive)
 
 
 def validate_forcing(project):

@@ -25,6 +25,11 @@ def parser():
     command.add_argument('config', type=Path, help='Authored site JSON')
     command.add_argument('--project', required=True, help='ID of one selected project')
     command.add_argument('--no-upload', action='store_true', help='Publish only to local staging; do not contact the webserver')
+    command = commands.add_parser('archive', help='Archive original TIFF/ASCII products to configured storage backends')
+    command.add_argument('project', type=Path, help='Project directory or snowcast.json file')
+    command.add_argument('--destination', action='append', help='Destination ID; repeat to select several (default: all)')
+    command.add_argument('--dry-run', action='store_true', help='Show the transfer plan without contacting or writing destinations')
+    command.add_argument('--force', action='store_true', help='Resend all locally available products, even if already archived')
     command = commands.add_parser('deploy-ui', help='Deploy an already-built UI separately from model data')
     command.add_argument('--dist', type=Path, required=True)
     command.add_argument('--site-dir', type=Path, required=True)
@@ -68,6 +73,10 @@ def main(argv=None):
             print(f'Deployed UI to {args.site_dir}')
             return 0
         project = load_project(args.project)
+        if args.action == 'archive':
+            from .archive import archive_project
+            archive_project(project, selected=args.destination, dry_run=args.dry_run, force=args.force)
+            return 0
         if args.action == 'validate':
             if not args.config_only:
                 validate_inputs(project)

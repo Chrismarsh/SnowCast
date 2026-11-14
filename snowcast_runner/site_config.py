@@ -92,6 +92,8 @@ def publish_selected(site, project_id, *, remote=True):
             upload(site.staging / 'data' / project_id, site.deploy['host'], destination,
                    refresh_downloads=False)
             remote_site(site, 'register-site', project_id)
+        from .archive import publish_downloads
+        publish_downloads(site, project, remote=remote)
         from .observations import prepare_project, upload_observations
         payload, errors = prepare_project(site, project)
         if remote:
