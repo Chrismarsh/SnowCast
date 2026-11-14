@@ -11,7 +11,7 @@ import tempfile
 def safe_path(root, relative=''):
     root = Path(root).absolute()
     target = root / relative
-    if not target.is_relative_to(root) or '..' in Path(relative).parts:
+    if (target != root and root not in target.parents) or '..' in Path(relative).parts:
         raise ValueError('Invalid archive path')
     if any(p.is_symlink() for p in (target, *target.parents)):
         raise ValueError('Archive paths cannot contain symlinks')
@@ -31,7 +31,10 @@ def atomic_file(target, source):
             out.flush(); os.fchmod(out.fileno(), 0o644); os.fsync(out.fileno())
         os.replace(name, target)
     finally:
-        Path(name).unlink(missing_ok=True)
+        try:
+            Path(name).unlink()
+        except FileNotFoundError:
+            pass
 
 
 @contextmanager

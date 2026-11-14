@@ -145,8 +145,8 @@ file affecting the raster. Restore the companion or choose a new archive root.
 and to the configured Web UI host. It never contacts the archive backend or
 uploads original rasters. No SSH hosts, storage paths, bucket settings or
 credential profiles are exposed in this public index. The Downloads page lets
-visitors choose project, archive mirror, format/grid, variable and dates. Grid
-spacing and CRS come from project metadata; a missing project's downloads never
+visitors choose project, archive mirror, format/grid, variable and dates. Bulk URL lists include companion files. Grid
+spacing and CRS come from archive metadata (ASCII spacing is read from each file’s header); a missing project's downloads never
 fall back to another project's files. Routine index updates need no npm build.
 
 ## Existing HPFX archives

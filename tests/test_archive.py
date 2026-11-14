@@ -174,10 +174,13 @@ def test_publish_only_reads_receipts_no_archive_upload(project_file, tmp_path, m
 def test_ascii_sidecars_and_source_symlinks(project_file, tmp_path):
     project = configure_archive(project_file, tmp_path)
     folder = project.work / 'postprocess/ascii'; folder.mkdir()
-    (folder / 'swe_20261109230000.asc').write_text('ascii')
+    (folder / 'swe_20261109230000.asc').write_text('ncols 1\nnrows 1\nxllcorner -133\nyllcorner 68\ncellsize 0.036\nNODATA_value -9999\n1\n')
     (folder / 'swe_20261109230000.prj').write_text('projection')
     archive_project(project)
     assert (tmp_path / 'archive/asc/swe_20261109230000.prj').read_text() == 'projection'
+    change(project_file, lambda raw: raw.setdefault('postprocess', {}).update(ascii={'resolution': 0.1}))
+    _, files = inventory(load_project(project_file))
+    assert files['asc/swe_20261109230000.asc']['resolution'] == [0.036, 0.036]
     (folder / 't_20261109230000.asc').symlink_to(project_file)
     with pytest.raises(ValueError, match='symlink'):
         inventory(project)

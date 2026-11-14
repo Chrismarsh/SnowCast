@@ -59,6 +59,7 @@ it('reads project identity, actual projected grids and companion files from succ
   expect(parsed.files[0]).toMatchObject({ grid: 'GeoTIFF:EPSG:32608:100x100', gridLabel: '100 × 100 (EPSG:32608 units)',
     href: 'https://archive.example/tvc/tiff/swe-100x100_20261113T230000.tiff', source: 'hpfx', size: '2048' });
   expect(parsed.files[0].sidecars?.[0].href).toContain('.tiff.msk');
+  expect(urlList(parsed.files).trim().split('\n')).toEqual([parsed.files[0].href, parsed.files[0].sidecars![0].href]);
   expect(() => parseDownloadIndex(projectIndex(), 'western-cordillera')).toThrow('Invalid project');
 });
 

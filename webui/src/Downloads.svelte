@@ -107,9 +107,9 @@
 
   <section class="latest-section" aria-labelledby="latest-heading">
     <div class="project-choices">
-      <label>Model project<select bind:value={projectId} onchange={(event) => { projectId = event.currentTarget.value; load(); }} disabled={!projects.length}>{#each projects as project}<option value={project.id}>{project.name}</option>{/each}</select></label>
-      <label>Archive<select bind:value={sourceId} disabled={!index?.sources.length}>{#each index?.sources || [] as source}<option value={source.id}>{source.name}</option>{/each}</select></label>
-      <label>Format / grid<select bind:value={grid} disabled={!grids.length}>{#each grids as item}<option value={item.id}>{item.label}</option>{/each}</select></label>
+      <label>Model project<select aria-label="Model project" bind:value={projectId} onchange={(event) => { projectId = event.currentTarget.value; load(); }} disabled={!projects.length}>{#each projects as project}<option value={project.id}>{project.name}</option>{/each}</select></label>
+      <label>Archive<select aria-label="Archive" bind:value={sourceId} disabled={!index?.sources.length}>{#each index?.sources || [] as source}<option value={source.id}>{source.name}</option>{/each}</select></label>
+      <label>Format / grid<select aria-label="Format / grid" bind:value={grid} disabled={!grids.length}>{#each grids as item}<option value={item.id}>{item.label}</option>{/each}</select></label>
     </div>
     <div class="downloads-section-heading"><div><h2 id="latest-heading">Latest available</h2><p>Most recent file for each variable in the selected project and format.</p></div></div>
     {#if loading && !index}<div class="download-state" role="status"><span class="spinner"></span>Loading available files…</div>

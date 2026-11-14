@@ -6,6 +6,7 @@ connecting to archive storage. Backends never prune remote history.
 from datetime import datetime, timezone
 import hashlib
 import json
+import math
 from pathlib import Path, PurePosixPath
 import re
 import shlex
@@ -102,6 +103,20 @@ def config_hash(destination, *, storage=False):
     return hashlib.sha256(json.dumps(destination, sort_keys=True).encode()).hexdigest()
 
 
+def ascii_resolution(file):
+    # ASCII filenames omit spacing. Read the actual header rather than label
+    # historical outputs with today's possibly changed export configuration.
+    with file.open() as stream:
+        for _ in range(8):
+            fields = stream.readline(4096).split()
+            if len(fields) == 2 and fields[0].lower() == 'cellsize':
+                spacing = float(fields[1])
+                if math.isfinite(spacing) and spacing > 0:
+                    return [spacing, spacing]
+                break
+    raise ValueError(f'ASCII product has no valid cellsize header: {file}')
+
+
 def inventory(project):
     """Select current revisions over archived copies, including dataset sidecars."""
     folder = project.work / 'postprocess'
@@ -127,7 +142,7 @@ def inventory(project):
             time = datetime.strptime(stamp, time_format).strftime('%Y-%m-%dT%H:%M:%SZ')
             is_tiff = local == 'tiff'
             grid = project.postprocess['grid']
-            resolution = grid['resolution'] if is_tiff else [project.postprocess['ascii']['resolution']] * 2
+            resolution = grid['resolution'] if is_tiff else ascii_resolution(file)
             if is_tiff and match[2] != f'{resolution[0]:g}x{resolution[1]:g}':
                 raise ValueError(f'Archive product grid does not match project: {name}')
             relative = f'{remote}/{name}'

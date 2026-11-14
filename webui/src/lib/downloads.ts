@@ -52,7 +52,9 @@ export function fileSize(size: string | null) {
 
 const dateFormat = new Intl.DateTimeFormat('en-CA', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' });
 export function downloadDate(time: string) { return dateFormat.format(new Date(time)); }
-export function urlList(files: DownloadFile[]) { return files.map(file => file.href).join('\n') + '\n'; }
+export function urlList(files: DownloadFile[]) {
+  return files.flatMap(file => [file.href, ...(file.sidecars || []).map(sidecar => sidecar.href)]).join('\n') + '\n';
+}
 
 
 function httpURL(value: string) {
