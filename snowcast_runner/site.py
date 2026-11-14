@@ -5,12 +5,15 @@ from pathlib import Path
 import shutil
 import tempfile
 
-from .cog_store import atomic_json, store_lock
+from .cog_store import atomic_json, store_lock, site_action
 from .publish_cogs import publish
 
 
 def register(site, project, catalogue_path):
     identity = project.id
+    if (site / '.site-config.json').exists():
+        site_action('register-site', site, project_id=identity)
+        return
     # Every publisher merges the latest registry under the same host-side lock.
     with store_lock(site):
         index = site / 'domains.json'
@@ -33,6 +36,8 @@ def publish_project(project, site):
     site = Path(site).resolve()
     if site == project.work or site.is_relative_to(project.work):
         raise ValueError('The site must be outside the project work directory')
+    if (site / '.site-config.json').exists():
+        site_action('check-site', site, project_id=project.id)
     # Separate physical roots also bound cleanup and allow identical timestamps.
     relative = Path('data') / project.id
     destination = site / relative
@@ -58,7 +63,7 @@ def deploy_ui(dist, site):
     if dist == site or dist.is_relative_to(site) or site.is_relative_to(dist):
         raise ValueError('UI build and site directories must be separate')
     files = []
-    reserved = {'data', 'domains.json', 'site.json', 'catalog.json', '.publish.lock'}
+    reserved = {'observations', 'observations.json', '.observation-projects', '.observation-build', 'data', 'domains.json', 'site.json', '.site-config.json', 'catalog.json', '.publish.lock', 'demo', 'demo-site'}
     for source in dist.rglob('*'):
         relative = source.relative_to(dist)
         if source.is_symlink():

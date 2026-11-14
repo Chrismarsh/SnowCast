@@ -3,14 +3,6 @@
   import OLMap from 'ol/Map';
   import View from 'ol/View';
   import TileLayer from 'ol/layer/Tile';
-  import WebGLTile from 'ol/layer/WebGLTile';
-  import ImageLayer from 'ol/layer/Image';
-  import RasterSource from 'ol/source/Raster';
-  import GeoTIFF from 'ol/source/GeoTIFF';
-  import type DataTileSource from 'ol/source/DataTile';
-  import { DifferenceSource } from '../lib/differenceSource';
-  import type { MapAsset } from '../lib/difference';
-  import DataTile, { disposedError } from 'ol/DataTile';
   import XYZ from 'ol/source/XYZ';
   import VectorLayer from 'ol/layer/Vector';
   import VectorSource from 'ol/source/Vector';
@@ -19,34 +11,28 @@
   import Point from 'ol/geom/Point';
   import { Circle, Fill, Stroke, Style, Text } from 'ol/style';
   import { fromLonLat, toLonLat, transformExtent } from 'ol/proj';
-  import { intersects } from 'ol/extent';
   import { defaults } from 'ol/control';
-  import { unByKey } from 'ol/Observable';
-  import type { Asset, Variable } from '../lib/types';
-  import type { SnowStation } from '../lib/canswe';
-  import { ensureProjection } from '../lib/raster';
-  import { colorPixel, rasterColor, paletteColors } from '../lib/data';
+  import type { SnowStation } from '../lib/stations';
   import { basemaps, DEFAULT_BASEMAP, type BasemapId } from '../lib/basemaps';
-  import { watchFrameLoad } from '../lib/frameLoad';
   import { displayPixelRatio, TileProgress } from '../lib/mapPerformance';
   import { MAP_MAX_ZOOM, type MapViewState } from '../lib/mapView';
-  import { ProjectedRaster } from '../lib/projectedRaster';
-  import { RasterRequests, RequestPool, TileFailures, rasterSourceOptions } from '../lib/rasterRequests';
   import { initialRenderer, isRendererPreference, RendererSelection, RENDERER_STORAGE_KEY, type RendererPreference } from '../lib/renderer';
   import { HlsSource } from '../lib/hlsSource';
   import { HLS_MIN_ZOOM, hlsWindow, initialHls, type HlsSettings, type HlsStatus, type HlsPick } from '../lib/hls';
+  import { ModelLayers } from '../lib/modelLayers';
+  import type { ModelFrame } from '../lib/projects';
   import 'ol/ol.css';
-  export let asset: MapAsset | undefined;
-  export let variable: Variable | undefined;
+  export let frames: ModelFrame[] = [];
+  export let selectionId = '';
   export let opacity = 0.7;
   export let hideZeroSnow = false;
   export let point: number[] | null = null;
   export let initialView: MapViewState | undefined = undefined;
-  export let onviewchange: (view: MapViewState) => void = () => {};
+  export let onviewchange: (view: MapViewState, extent: number[]) => void = () => {};
   export let bounds = [-132, 46.4, -109.8, 56];
   export let basemap: BasemapId = DEFAULT_BASEMAP;
   export let onpick: (point: number[]) => void;
-  export let onready: (id: string) => void;
+  export let onready: (id: string, errors: string[]) => void;
   export let onerror: (error: string) => void;
   export let onslow: (id: string) => void = () => {};
   export let stations: SnowStation[] = [];
@@ -67,28 +53,13 @@
   let stationSource: VectorSource;
   let stationLayer: VectorLayer<Cluster>;
   let base: TileLayer<XYZ>;
-  type RasterLayer = WebGLTile | ImageLayer<ProjectedRaster>;
-  let active: RasterLayer | undefined;
-  let activeVariable = '';
-  let useWebGL = true;
   let rendering: RendererSelection;
-  let webglFailure: Record<string, unknown> | undefined;
-  let requested = '';
-  let cancel: (() => void) | undefined;
+  let models: ModelLayers;
   let fitted = false;
   let baseProgress = new TileProgress();
   let baseMode = '';
-  let lastFailure: Record<string, unknown> | undefined;
   const options = new URLSearchParams(window.location.search);
   const lowDetail = options.get('detail') === 'low';
-  const layers = new globalThis.Map<string, RasterLayer>();
-  const sources = new globalThis.Map<string, DataTileSource>();
-  const restyleLayers = new globalThis.Map<string, (hideZero: boolean) => void>();
-  const requests = new globalThis.Map<string, AbortController>();
-  const progress = new globalThis.Map<string, TileProgress>();
-  const http = new globalThis.Map<string, RasterRequests>();
-  const failures = new globalThis.Map<string, TileFailures>();
-  const requestPool = new RequestPool();
 
   export function viewState(): MapViewState | undefined {
     const view = map?.getView(), center = view?.getCenter(), zoom = view?.getZoom();
@@ -114,43 +85,15 @@
     fitted = true;
     map.getView().animate({ center: fromLonLat([station.lon, station.lat]), zoom: Math.max(map.getView().getZoom() || 8, 11), duration: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 250 });
   }
-  export function retry() {
-    if (!asset || !variable) return;
-    cancel?.();
-    const failed = layers.get(asset.id);
-    if (failed) {
-      if (failed === active) active = undefined;
-      disposeLayer(asset.id, failed);
-    }
-    show(asset, variable);
-  }
+  export function retry() { models?.retry(); }
 
   export function diagnostics() {
-    return JSON.stringify(lastFailure || snapshotDiagnostics(), null, 2);
-  }
-
-  function snapshotDiagnostics() {
-    const source = sources.get(requested);
-    const layer = layers.get(requested);
-    // Deliberately omit URLs, signed query strings, coordinates and GPU identifiers.
-    return {
-      renderer: useWebGL ? 'WebGL' : 'Canvas', detail: lowDetail ? 'low' : 'automatic',
-      variable: variable?.id, frameTime: asset?.datetime, hideZeroSnow,
-      differenceFrom: asset?.difference?.from.datetime,
-      rendererPreference: rendering?.preference, fallbackReason: rendering?.fallbackReason,
+    return JSON.stringify({ ...models?.diagnostics(), detail: lowDetail ? 'low' : 'automatic', hideZeroSnow,
       viewport: map?.getSize(), devicePixelRatio: window.devicePixelRatio, mapPixelRatio: map?.getPixelRatio(),
-      projection: map?.getView().getProjection().getCode(), rasterProjection: source?.getProjection()?.getCode(),
-      sourceState: source?.getState() || 'not requested',
-      rasterRenderComplete: layer instanceof WebGLTile ? layer.getRenderer()?.renderComplete : !!layer?.getSource()?.frameReady,
-      rasterTiles: progress.get(requested)?.snapshot(),
-      rasterRequests: http.get(requested)?.snapshot(),
-      rasterTileFailures: failures.get(requested)?.snapshot(),
-      basemap, basemapTiles: baseProgress.snapshot(),
-      cachedFrames: layers.size,
+      projection: map?.getView().getProjection().getCode(), basemap, basemapTiles: baseProgress.snapshot(),
       satellite: satellite.enabled ? { mode: satellite.mode, view: satellite.view, ...hlsWindow(satellite),
         ...satelliteLayer?.getSource()?.status(map.getView().calculateExtent(map.getSize()), map.getView().getResolution() || 1) } : { enabled: false },
-      ...(webglFailure ? { previousWebGLFailure: webglFailure } : {}),
-    };
+    }, null, 2);
   }
 
   function setBasemap(mode: BasemapId) {
@@ -180,7 +123,6 @@
     if (isRendererPreference(requestedRenderer)) rememberRenderer(requestedRenderer);
     const probe = preference === 'canvas' ? null : document.createElement('canvas').getContext('webgl2');
     rendering = new RendererSelection(preference, !!probe, rememberRenderer);
-    useWebGL = rendering.mode === 'webgl';
     probe?.getExtension('WEBGL_lose_context')?.loseContext();
     base = new TileLayer({ preload: 0 });
     satelliteLayer = new TileLayer({ zIndex: 20, preload: 0, cacheSize: 64, visible: false, minZoom: HLS_MIN_ZOOM - 0.001 });
@@ -212,11 +154,14 @@
         ...(initialView ? { center: fromLonLat([initialView.lon, initialView.lat]), zoom: initialView.zoom } : {}),
       }),
     });
+    models = new ModelLayers(map, rendering, {
+      ready: (id, errors) => onready(id, errors), error: message => onerror(message), slow: id => onslow(id),
+    });
     fitted = !!initialView;
     map.on('moveend', () => {
       queueSatelliteStatus();
       const view = viewState();
-      if (view) onviewchange(view);
+      if (view) onviewchange(view, transformExtent(map.getView().calculateExtent(map.getSize()), map.getView().getProjection(), 'EPSG:4326'));
     });
     map.on('change:size', () => map.setPixelRatio(displayPixelRatio(window.devicePixelRatio, map.getSize() || [1, 1], lowDetail)));
     map.on('singleclick', e => {
@@ -234,7 +179,7 @@
     });
     map.on('pointermove', e => { if (!e.dragging) target.style.cursor = map.hasFeatureAtPixel(e.pixel, { layerFilter: layer => layer === stationLayer, hitTolerance: 6 }) ? 'pointer' : ''; });
     mounted = true;
-    return () => { mounted = false; cancelAnimationFrame(satelliteStatusFrame); satelliteLayer.getSource()?.dispose(); cancel?.(); for (const [id, layer] of layers) disposeLayer(id, layer); map.setTarget(undefined); map.dispose(); };
+    return () => { mounted = false; cancelAnimationFrame(satelliteStatusFrame); satelliteLayer.getSource()?.dispose(); models.dispose(); map.setTarget(undefined); map.dispose(); };
   });
 
   function queueSatelliteStatus() {
@@ -273,154 +218,15 @@
     try { localStorage.setItem(RENDERER_STORAGE_KEY, preference); } catch { /* Session-only mode. */ }
   }
 
-  function disposeLayer(id: string, layer: RasterLayer) {
-    requests.get(id)?.abort(); requests.delete(id); progress.delete(id); http.delete(id); failures.delete(id);
-    map.removeLayer(layer);
-    layer.getSource()?.dispose();
-    sources.get(id)?.dispose(); sources.delete(id);
-    layer.dispose(); layers.delete(id); restyleLayers.delete(id);
-  }
-
   function updateMarker() {
     marker.clear();
     if (point) marker.addFeature(new Feature(new Point(fromLonLat(point, map.getView().getProjection()))));
   }
 
-  function show(next: MapAsset, v: Variable) {
-    cancel?.();
-    lastFailure = undefined;
-    requested = next.id;
-    try {
-      ensureProjection(next.projection, next.proj4);
-      if (active && activeVariable !== v.id) { active.setVisible(false); active = undefined; }
-      // Keep the v2 Web Mercator view in both rendering modes.
-      if (!fitted) { fit(0); updateMarker(); fitted = true; }
-      let layer = layers.get(next.id);
-      if (!layer) {
-        const colors = paletteColors(v);
-        const controller = new AbortController();
-        requests.set(next.id, controller);
-        const loader = new RasterRequests(controller.signal, requestPool);
-        const errors = new TileFailures();
-        http.set(next.id, loader); failures.set(next.id, errors);
-        const openCOG = (a: Asset) => new GeoTIFF({ normalize: false, interpolate: false, transition: 0, projection: a.projection, sources: [{
-          url: a.href,
-          loader: (url, headers, signal) => loader.load(url, headers, signal),
-          bands: [1], nodata: a.nodata === 'NaN' || a.nodata == null ? NaN : a.nodata,
-        }], sourceOptions: rasterSourceOptions });
-        const cog = next.difference
-          ? new DifferenceSource(openCOG(next.difference.from), openCOG(next.difference.to), next.difference.from, next.difference.to, controller.signal)
-          : openCOG(next);
-        const counter = new TileProgress();
-        progress.set(next.id, counter);
-        cog.on('tileloadstart', e => { counter.start(e.tile); errors.start(e.tile); });
-        cog.on('tileloadend', e => counter.end(e.tile));
-        cog.on('tileloaderror', e => {
-          counter.end(e.tile, true);
-          const error = e.tile instanceof DataTile ? e.tile.getError() : new Error('Raster tile failed.');
-          if (error !== disposedError) errors.error(e.tile, error);
-        });
-        sources.set(next.id, cog);
-        if (useWebGL) {
-          const webgl = new WebGLTile({ source: cog, style: { color: rasterColor(next, v, hideZeroSnow) }, cacheSize: 64, opacity: 0.01, zIndex: 10 });
-          restyleLayers.set(next.id, hide => webgl.setStyle({ color: rasterColor(next, v, hide) }));
-          layer = webgl;
-        }
-        else {
-          const raster = new RasterSource({ sources: [cog], interpolate: false, operation: colorPixel });
-          raster.on('beforeoperations', e => Object.assign(e.data, {
-            colors: colors.map(c => [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)]),
-            min: v.range[0], max: v.range[1], scale: next.scale, offset: next.offset, nodata: next.nodata,
-            hideZero: hideZeroSnow && v.palette === 'snow',
-          }));
-          restyleLayers.set(next.id, () => raster.changed());
-          layer = new ImageLayer({ source: new ProjectedRaster(raster, next.projection, () => errors.clear), opacity: 0.01, zIndex: 10 });
-        }
-        layers.set(next.id, layer);
-        map.addLayer(layer);
-      }
-      const nextLayer = layer;
-      nextLayer.setVisible(true);
-      nextLayer.setOpacity(0.01); // OL rounds opacity to two decimals; zero skips loading.
-      let finished = false;
-      let failed = false;
-      const source = sources.get(next.id)!;
-      const cleanup = (keepErrors = false) => { watchdog.cancel(); unByKey(readyKey); if (!keepErrors) unByKey(errorKey); unByKey(stateKey); unByKey(progressKey); };
-      const fail = (message: string, allowRecovery = false) => {
-        if (failed || requested !== next.id) return;
-        failed = true; finished = true; cleanup();
-        lastFailure = { ...snapshotDiagnostics(), capturedAtFailure: message };
-        if (allowRecovery && rendering.recover(message)) {
-          webglFailure = lastFailure;
-          // Release every GPU frame and abort outstanding range reads before
-          // loading this same frame with Canvas. The view and point stay put.
-          for (const [id, cached] of [...layers]) disposeLayer(id, cached);
-          active = undefined; activeVariable = ''; useWebGL = false;
-          queueMicrotask(() => { if (mounted && requested === next.id) show(next, v); });
-          return;
-        }
-        nextLayer.setVisible(nextLayer === active);
-        if (nextLayer === active) nextLayer.setOpacity(opacity);
-        // A failed source must not poison future retries.
-        if (nextLayer !== active) disposeLayer(next.id, nextLayer);
-        onerror(message);
-      };
-      const tileFailure = () => {
-        const detail = failures.get(next.id)?.snapshot().lastError;
-        // Switching renderers cannot repair an identified HTTP failure.
-        const canRecover = !http.get(next.id)?.snapshot().failed;
-        fail(`A raster tile failed: ${detail?.message || 'unknown error'}. Retry or use Map diagnostics.`, canRecover);
-      };
-      const errorKey = source.on('tileloaderror', e => {
-        if (!(e.tile instanceof DataTile) || e.tile.getError() !== disposedError) tileFailure();
-      });
-      const stateKey = source.on('change', () => {
-        if (source.getState() === 'error') fail(source instanceof DifferenceSource ? source.error : 'The COG could not be opened. Check its projection, format and hosting.');
-        else if (source.getState() === 'ready') watchdog.progress();
-      });
-      const progressKey = source.on('tileloadend', () => watchdog.progress());
-      // Map-level rendercomplete also waits for Esri and all other layers.
-      // Accept this frame when its own renderer is complete, even if the
-      // basemap is still loading. Keep the date unchanged until that point.
-      const readyKey = map.on('postrender', () => {
-        if (finished || requested !== next.id || source.getState() !== 'ready') return;
-        const inView = intersects(map.getView().calculateExtent(map.getSize()), transformExtent(next.bounds, 'EPSG:4326', map.getView().getProjection()));
-        if (inView) {
-          if (nextLayer instanceof WebGLTile) {
-            if (!nextLayer.getRenderer()?.renderComplete) return;
-          } else if (!nextLayer.getSource()?.frameReady) return;
-        }
-        finished = true; cleanup(true); // Keep detecting failures after pan/zoom.
-        for (const cached of layers.values()) cached.setVisible(cached === nextLayer);
-        active = nextLayer; activeVariable = v.id; active.setOpacity(opacity);
-        while (layers.size > 3) {
-          const entry = [...layers.entries()].find(([key]) => key !== next.id)!;
-          disposeLayer(entry[0], entry[1]);
-        }
-        if (inView) rendering.frameReady();
-        onready(next.id);
-      });
-      const watchdog = watchFrameLoad(
-        () => onslow(next.id),
-        () => fail('No raster loading progress for 90 seconds. Check your connection or retry.', true),
-      );
-      cancel = () => {
-        cleanup();
-        if (finished) return;
-        finished = true;
-        nextLayer.setVisible(nextLayer === active);
-        if (nextLayer === active) nextLayer.setOpacity(opacity);
-        else disposeLayer(next.id, nextLayer);
-      };
-      if (!failures.get(next.id)?.clear) { tileFailure(); return; }
-      map.render();
-    } catch (e) { onerror(e instanceof Error ? e.message : 'Could not display raster'); }
-  }
-
-  $: if (mounted && asset && variable && asset.id !== requested) show(asset, variable);
-  $: if (active) active.setOpacity(opacity);
-  // Restyle every cached date without reopening COGs or repeating range reads.
-  $: if (mounted) { for (const restyle of restyleLayers.values()) restyle(hideZeroSnow); }
+  $: if (mounted && !fitted && frames.length) { fit(0); updateMarker(); }
+  $: if (mounted) models.show(frames, selectionId);
+  $: if (mounted) models.setOpacity(opacity);
+  $: if (mounted) models.setHideZero(hideZeroSnow);
   $: if (mounted) {
     point; updateMarker(); queueSatelliteStatus();
   }

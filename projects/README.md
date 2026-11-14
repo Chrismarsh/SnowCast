@@ -5,9 +5,10 @@ configuration, generated jobs, forcing metadata, checkpoints, outputs and
 processed products. The installed `snowcast_runner` package owns the reusable
 implementation. Projects do not depend on the SnowCast checkout or on one another.
 
-A separate site configuration will select projects for a shared website. That
-site configuration and the simultaneous multi-project map are the next stage;
-this stage implements independent projects through postprocessing.
+A separate [site configuration](../sites/README.md) selects projects for a shared
+website, with independent publication and simultaneous multi-project maps. For
+the complete daily command sequence, observation cache and separate UI deployment,
+use the [site workflow](../sites/README.md).
 
 ## Install and start a project
 
@@ -380,54 +381,65 @@ configuring deployment. No cron entry is installed by SnowCast.
 
 ## Original daily download archives
 
-The runner retains original daily TIFF/ASCII products inside each project.
-Synchronization to an external download archive is an explicit operator step
-until site deployment is implemented. The removed uploader's hardcoded
-`collab-lp` destination is no longer assumed. To copy one project's products,
-copy archived products first and current revisions last, without `--delete`:
+Use `snowcast archive PROJECT` for original TIFF/ASCII uploads. Configure one or
+more `local`, `rsync` (including HPFX), or S3-compatible destinations in the
+project's JSON or a referenced JSON file. This is independent of Web UI
+publication; `publish` only advertises links from completed archive receipts.
+
+See the [archive configuration and migration guide](ARCHIVING.md) for JSON
+examples, preserving existing HPFX paths, mirrors, private backups, dry runs,
+retry behavior and daily command order.
 
 ```bash
-rsync -rt --protect-args /projects/western-cordillera/work/postprocess/archive_tiff/ USER@ARCHIVE:/path/to/project/tiff/
-rsync -rt --protect-args /projects/western-cordillera/work/postprocess/tiff/ USER@ARCHIVE:/path/to/project/tiff/
-rsync -rt --protect-args /projects/western-cordillera/work/postprocess/archive_ascii/ USER@ARCHIVE:/path/to/project/asc/
-rsync -rt --protect-args /projects/western-cordillera/work/postprocess/ascii/ USER@ARCHIVE:/path/to/project/asc/
+snowcast archive projects/western-cordillera --dry-run
+snowcast archive projects/western-cordillera
+snowcast publish sites/snowcast.json --project western-cordillera
 ```
 
-Use the existing Western archive's actual destinations to continue its URLs;
-choose separate destinations for additional projects. Run ASCII synchronization
-only when ASCII exports are enabled. Copy the complete directories so masks,
-PAM metadata, overviews and projection sidecars travel with their rasters.
-Publish/refresh download indexes after these transfers. The COG upload utility
-transfers map COGs and refreshes the existing Western public archive index; it
-does not transfer original TIFF/ASCII products.
+## Publication
 
-## Existing publication helpers and the next stage
-
-The existing local/mounted publication helper remains available with a flat
-project identity:
+Use the [site configuration](../sites/README.md) for both remote and local
+publication. Populate the observation cache and configure the site once, then
+publish each project independently:
 
 ```bash
-snowcast publish /projects/western-cordillera --site-dir /path/to/staging-site
+snowcast download-data canswe
+snowcast site configure sites/snowcast.json --upload
+snowcast publish sites/snowcast.json --project western-cordillera
+```
+
+`publish` uploads by default. For local-only testing, configure without
+`--upload` and add `--no-upload` to `publish`. It writes the same COGs and
+`data/<project-id>/catalog.json` in the site's configured staging directory.
+There is no separate `site publish` command or project/`--site-dir` publish form.
+Publication also subsets cached observations for the chosen project and merges
+its station contribution with the other published projects. Publish every project
+once when adopting the observation registry. `publish` does not configure the
+site, download sources, or build/deploy the UI. See the
+[command table](../sites/README.md#what-each-command-does) and
+[migration sequence](../sites/README.md#first-setup-or-migration).
+
+UI installation remains separate. For a local/mounted site:
+
+```bash
 snowcast deploy-ui --dist /path/to/webui/dist --site-dir /path/to/staging-site
 ```
 
-It writes `data/<project-id>/catalog.json`, preserving safe COG conversion,
-concurrent registry updates, hydrological-year selection and 48-hour orphan
-cleanup. SWE/SD retain ten daily dates plus older weekly snapshots from September
-1 of the latest model date's hydrological year; temperature retains ten daily
-dates. Daily source archives remain daily. This refactor does not change COG
-encoding or digest algorithms.
+`deploy-ui` copies a completed build locally; it does not invoke npm or SSH. For
+a remote website, follow the [UI build/upload commands](../sites/README.md#build-and-deploy-the-ui),
+which preserve observation and model data.
 
-These helper commands do not implement the planned authoritative site config or
-remote multi-project deployment. For a single catalogue, the installed
-`python -m snowcast_runner.upload` utility supports SSH transfer; see the
-[web UI guide](../webui/README.md). UI deployment preserves published data.
+Publication preserves safe COG conversion, concurrent registry updates,
+hydrological-year selection and 48-hour orphan cleanup. SWE/SD retain ten daily
+dates plus older weekly snapshots from September 1 of the latest model date's
+hydrological year; temperature retains ten daily dates. Daily source archives
+remain daily. The flat per-project catalogue can still be opened directly with
+`?catalog=./data/western-cordillera/catalog.json`.
 
-The viewer still loads one catalogue, for example
-`?catalog=./data/western-cordillera/catalog.json`. The new flat URL differs from
-the earlier `data/<project>/<domain>/` location. No live catalogues or URLs are
-migrated automatically. Production namespace migration, total storage planning,
-site selection and the multi-project map belong to the next stage.
+The flat URL differs from the earlier `data/<project>/<domain>/` location. No
+live catalogues or URLs are migrated automatically. Original archive download
+integration, production namespace migration and scheduling remain separate
+from site publication. UI installation preserves published data and site config.
 
 ## Development checks
 

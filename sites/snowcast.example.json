@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "title": "SnowCast",
+  "projects": [
+    "../projects/western-cordillera",
+    "../projects/tvc"
+  ],
+  "staging": "../site-staging",
+  "deploy": {
+    "host": "USER@HOST",
+    "directory": "/var/www/html/v3-testing"
+  },
+  "observations": {
+    "registry": "../snowcast_runner/observations.json"
+  }
+}

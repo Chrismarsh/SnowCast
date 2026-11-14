@@ -77,7 +77,8 @@ export function normalizeCatalogue(raw: unknown, catalogueURL: string): Catalogu
   return c;
 }
 
-export function seriesCSV(values: PointValue[], location: number[], unit: string): string {
+export function seriesCSV(values: PointValue[], location: number[], unit: string, project?: string): string {
   const quote = (s: string) => '"' + s.replaceAll('"', '""') + '"';
-  return ['datetime_utc,longitude,latitude,value,unit,status', ...values.map(v => `${v.time},${location[0]},${location[1]},${v.value ?? ''},${quote(unit)},${quote(v.error ? 'error' : v.value === null ? 'nodata' : 'valid')}`)].join('\r\n');
+  const attribution = project ? ',' + quote(project) : '';
+  return ['datetime_utc,longitude,latitude,value,unit,status' + (project ? ',project' : ''), ...values.map(v => `${v.sourceTime || v.time},${location[0]},${location[1]},${v.value ?? ''},${quote(unit)},${quote(v.error ? 'error' : v.value === null ? 'nodata' : 'valid')}${attribution}`)].join('\r\n');
 }

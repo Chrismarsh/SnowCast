@@ -173,38 +173,60 @@ Headers visible to Python alone are insufficient for the viewer.
 
 ## Build and deploy
 
+For the full model/observation/UI sequence, start with the
+[site workflow](../sites/README.md). **`snowcast publish` updates data only.** It
+neither runs npm nor uploads a new UI. A locally completed build also needs to be
+uploaded before visitors can use it.
+
 Use Node 22.12+ (Node 24 recommended) to build; Node is not needed on the server.
-Run npm from the Python environment containing the installed SnowCast package;
-the download-index preparation step uses `snowcast_runner.downloads`.
+Run these commands from the checkout root with the Python environment containing
+the installed SnowCast package active. The prebuild step uses
+`snowcast_runner.downloads` to refresh the original-download index. It does not
+download or convert observations.
 
 ```bash
-cd webui
-python -m pip install -e ..
-npm ci
-npm run check
-npm test
-npm run build
+npm --prefix webui ci
+npm --prefix webui run build
 ```
 
-Upload `dist/` to `/v3/`. Keep `data/` separate from application synchronization.
-For example, from `webui/`:
+For development checks, additionally run `npm --prefix webui run check` and
+`npm --prefix webui test`. Upload the complete `webui/dist/` application to the
+same destination as `deploy` in your site config:
 
 ```bash
-rsync -rt --exclude=data/ --exclude=demo/ dist/ USER@HOST:/var/www/html/v3/
+rsync -rt --protect-args \
+  --exclude=data/ --exclude=observations/ --exclude=observations.json \
+  --exclude=site.json --exclude=.site-config.json --exclude=domains.json \
+  --exclude=demo/ --exclude=demo-site/ \
+  webui/dist/ USER@HOST:/var/www/html/v3-testing/
 ```
 
-Keep application deployment scoped to its assets; avoid `--delete` over a
-directory containing model data. The old v2 source/assets have been removed
-from this repository; deployed files are not changed by that source cleanup.
-The application uses relative asset URLs and works in a `/v3/` subdirectory.
-By default it requests `./data/catalog.json`. For an external data server, use:
+Replace `USER@HOST`. The exclusions preserve model and observation publication,
+including when stale observation assets remain in an existing `webui/public/`.
+Avoid `--delete` over a website containing data. `snowcast deploy-ui` is an
+alternative for **local/mounted** directories; it does not build or upload over
+SSH. See [local-only preview](../sites/README.md#local-only-preview).
+
+The observation-registry migration requires this UI update once: an older UI
+continues reading `observations/canswe/index.json`, even after new observations
+have been published. The updated UI reads `observations.json` and its versioned
+indexes. See [missing TVC stations](../sites/README.md#trace-missing-tvc-stations).
+
+The application uses relative URLs and works in a subdirectory such as
+`/v3-testing/`. Use its trailing slash or the webserver's directory redirect.
+It discovers models through `./site.json`, falling back to `./data/catalog.json`
+only when the default manifest is missing (404). For an explicit single-catalogue
+view or external model-data server, use, for example:
 
 ```text
-https://www.snowcast.ca/v3/?catalog=https%3A%2F%2Fdata.example%2Fsnowcast-data%2Fcatalog.json
+https://www.snowcast.ca/v3-testing/?catalog=./data/tvc/catalog.json
 ```
 
-Asset URLs inside the catalogue are resolved relative to the catalogue itself.
-Use the trailing slash on `/v3/` (or configure the web server's directory redirect).
+Model asset URLs resolve relative to their catalogue. The observation registry
+is fetched beside the UI's `index.html`, even with `?site=` or `?catalog=` links.
+The old v2 source/assets are retired; deployed files are not removed by that
+source cleanup.
+
 Esri topographic is the default basemap. The layers button opens a picker for
 OpenStreetMap, Esri topographic, Esri satellite, or None (model data only).
 The choice is saved in this browser and in the page URL; an explicit
@@ -270,118 +292,89 @@ seasons are labelled separately and aligned by month/day. Model coverage dates
 are shown explicitly. The table's **Same-date model** column still requires an
 exact calendar-date match in UTC; an overlay from a different year is not a match.
 
-The committed 6.3 MB bundle includes 750 western-Canada stations. `npm run dev`
-and `npm run build` automatically extract the static assets using Python's
-standard library. Builds require no CanSWE network access or netCDF4 install.
-The station index loads when stations are enabled (including shared station
-links); each compressed history is fetched on
-selection and cached (up to eight stations). Model rendering never waits for
-observations, and no model reads occur for unselected station markers.
+The UI reads the published `observations.json` at runtime. It lists available
+station datasets, with labels, descriptions, units, attribution and immutable
+index URLs generated from the runner's observation registry. The chosen dataset
+and station visibility are remembered; shared station links include the dataset ID.
+Only the selected dataset's station index and clicked histories are fetched.
+Histories are cached by complete URL, so equal station IDs from different datasets
+cannot collide.
 
-Deploy the entire `dist/observations/canswe/` directory with the rest of `dist/`.
-No new service, COG rebuild, or PNG tile generation is required. Serve
-`observations/canswe/index.json` with revalidation/short caching; versioned
-station history filenames can be cached immutably. Station `.json.gz` files
-work either as ordinary gzip files or with `Content-Encoding: gzip`.
+A clean checkout contains no observation data, and npm builds do not prepare it.
+Old files left in `webui/public/observations/` can still be copied into a build;
+the UI upload exclusions above keep those files off the published data paths. Download once
+with `snowcast download-data canswe`, then use normal project publication to select
+and upload each domain's observations. See the [site observation workflow](../sites/README.md#observation-datasets)
+for configuration, migration and local-only use. UI deployment must preserve
+`observations.json` and `observations/`; no UI rebuild is needed for dataset updates
+that use the existing `snow-stations-v1` renderer.
+
+Serve `observations.json` with revalidation/short caching. Content-addressed station
+indexes and histories may use long caching. Retain old files for already-open pages.
+For local observation testing, deploy the build into the prepared staging directory
+and serve that directory; a clean standalone UI has no observation datasets.
 
 ## Daily GeoTIFF and ASCII downloads
 
-![Original TIFF download page, with a one-day archive filter](docs/tiff-downloads-preview.png)
+The **Data** link opens `downloads.html`. On a unified site the page reads project
+selection from `site.json`, then loads `data/PROJECT/downloads.json` independently
+for the selected project. Visitors choose project, archive mirror, format/grid,
+variable and dates. Grid spacing and CRS are project metadata; missing files
+remain gaps. Companion masks and metadata have their own download links.
 
-The header's **Data** link opens `downloads.html`, a separate, lightweight page
-that does not initialize the map or fetch any rasters. It offers the latest
-original SWE, snow-depth and temperature GeoTIFFs at 0.001°, plus AEP ASCII
-grids at 0.036° where available. The format/grid filter applies to latest links,
-the archive table, and URL exports. Legacy 0.01° TIFFs are omitted. It includes
-inclusive UTC date filters, file sizes, pagination and a filtered URL-list export.
-The original files remain at
-<https://hpfx.collab.science.gc.ca/~chm003/tiff/> and
-<https://hpfx.collab.science.gc.ca/~chm003/asc/>; the page does not convert them
-to COGs or relay large downloads. Map COGs remain accessible via `?panel=data`.
+Configure original-data storage in each project's `archive` JSON. Run
+`snowcast archive PROJECT` to transfer originals to local/mounted, SSH/rsync
+(including HPFX), or S3-compatible destinations. Then `snowcast publish` copies
+public download metadata from successful archive receipts to the Web UI host.
+**Publish never uploads original TIFF/ASCII files or contacts archive storage.**
+Private destinations without `public_url` are not advertised.
 
-The TIFF directory does not currently return browser CORS headers, so the page reads
-a small same-origin `download-index.json` instead. `npm run build` refreshes it
-using Python's standard library. It fetches only the two directory listings, validates
-filenames, and writes the index atomically. An offline build retains the checked-in
-snapshot with a warning. The page displays the snapshot's indexing time, actual
-simulation timestamps, and an explicit stale-index notice after 48 hours.
+See [archive configuration, commands and migration](../projects/ARCHIVING.md).
+The download archive retains daily products independently of map COG retention.
+Routine archive/index updates need no UI rebuild. UI deployment's `data/`
+exclusion protects these indexes together with the map products.
 
-**Keep download links current between UI deployments:** the COG uploader
-refreshes and atomically publishes this index after uploading the COG catalogue.
-It reads the public TIFF and ASCII listings after originals have been uploaded separately;
-it does not depend on a frontend rebuild. The index goes in the parent of the
-remote data directory (`/var/www/html/v3/` for `/var/www/html/v3/data`). For a
-different layout, pass `--download-index-directory` to
-`python -m snowcast_runner.upload`. For a project catalogue under
-`data/<project-id>/`, explicitly set this to the UI root.
-
-To update the download links immediately from the simulation/upload host, without
-retransferring COGs or rebuilding the UI:
-
-```bash
-python -m snowcast_runner.upload --downloads-only \
-  --host root@snowcast.ca --directory /var/www/html/v3/data
-```
-
-A failed refresh retains the live index and logs a warning without undoing a
-successful COG publication. The standalone `--downloads-only` command returns a
-failure status if it cannot refresh or upload the index.
-
-For directly served local data, or as an independent scheduled refresh on the
-web host (for example hourly, or after upstream TIFF publication):
-
-```bash
-python -m snowcast_runner.downloads \
-  --output /var/www/html/v3/download-index.json
-```
-
-Alternatively, run `npm run refresh:downloads` and upload just
-`webui/public/download-index.json` to `/v3/download-index.json`. No frontend
-rebuild is needed for an index refresh. A failed/empty refresh keeps the previous
-index intact. Do not overwrite a more recent server index with an older build
-snapshot. The data-archive link follows the selected format and remains available
-if the index cannot load. Both listings must succeed before replacing the index.
-No download date is inferred from the COG catalogue, and absent files are never
-shown as download links. Source sizes are rounded Apache-index values, displayed
-as approximate binary sizes. Grid spacing is angular, not a fixed metre size.
-
-The downloadable archive remains daily, including older dates; map COG retention
-does not thin or delete these original downloads. Missing published files remain
-gaps. For offline indexing, pass both `--listing tiff.html` and
-`--ascii-listing ascii.html`.
+Older single-project installations without `site.json` retain support for the
+legacy `download-index.json` sourced from the Western HPFX TIFF/ASCII listings.
+The npm prebuild still refreshes that compatibility snapshot. It does not archive
+originals or update unified project indexes. The standalone
+`python -m snowcast_runner.upload --downloads-only` command is also legacy-only;
+do not use it to refresh a unified site's project downloads.
 
 ## Publish project map history
 
-With SnowCast installed and the project postprocessed:
+With SnowCast installed and the project postprocessed, configure the website
+once, populate the observation cache, then publish that project's latest products:
 
 ```bash
-snowcast publish /projects/western-cordillera --site-dir /srv/snowcast
+snowcast download-data canswe
+snowcast site configure sites/snowcast.json --upload
+snowcast publish sites/snowcast.json --project western-cordillera
 ```
 
-The catalogue is `/srv/snowcast/data/western-cordillera/catalog.json`. Open it
-using `?catalog=./data/western-cordillera/catalog.json` when serving that site.
-The current viewer does not yet select a project automatically from the registry.
-For standalone TIFF inputs without a project manifest, use the lower-level
-`python -m snowcast_runner.publish_cogs --help` command.
+The [site guide](../sites/README.md) describes project selection, staging and SSH
+destinations. `publish` generates COGs locally and **uploads by default**. For
+local-only testing, configure without `--upload` and publish with `--no-upload`;
+that mode does not contact the webserver. The catalogue is
+`STAGING/data/western-cordillera/catalog.json`. The viewer discovers projects from
+`site.json`; `?catalog=./data/western-cordillera/catalog.json` still opens just one.
+For standalone TIFF inputs without a project manifest, the lower-level maintenance
+utility remains available via `python -m snowcast_runner.publish_cogs --help`.
 
 The last input directory wins if archive and current directories contain the
 same variable/time. The publisher merges prior published assets, so incremental
 two-record exports still build a ten-day history. It anchors the window to the
 latest available simulation date, including that date and the previous nine
 UTC dates; missing days remain missing. Old files are not silently converted
-into observations. Model run IDs can be supplied with `--run-id` if known;
+into observations. The standalone COG utility accepts `--run-id` if known;
 publication time is recorded separately and is never passed off as run time.
 
-If the data directory is directly served by your web server, publication is
-complete. To copy it to another host:
+`snowcast publish` handles the upload and remote site registration in the same
+command. It requires a configured site and valid observation cache; it does not
+build/deploy the UI. To upload after a local test, configure the remote site with
+`--upload`, then repeat `snowcast publish` without `--no-upload`.
 
-```bash
-python -m snowcast_runner.upload --data /srv/snowcast/data/western-cordillera \
-  --host USER@HOST --directory /var/www/html/v3/data/western-cordillera \
-  --download-index-directory /var/www/html/v3
-```
-
-This copies referenced COGs first, then transfers a catalogue snapshot and
+Uploading copies referenced COGs first, then transfers a catalogue snapshot and
 publishes it atomically on the remote filesystem. The host needs **Python 3.9+**
 (standard library only); the uploader sends the helper code over SSH. The local
 publisher and uploader share a filesystem lock. Before transferring assets, the
@@ -400,26 +393,28 @@ directory per destination.
 
 SSH/rsync failures are retried up to 10 attempts per upload step, with a
 30-second delay that doubles after each failure.
-This applies to both normal uploads and `--downloads-only`. Catalogue and
-download-index publication retries restage the same snapshot before publishing it,
-so a disconnect after a successful remote rename can recover safely. COG
-transfer failure after all attempts still fails the upload; download-index
-failure after a successful COG publication remains a warning. No delay is
-added after the last failed attempt.
+Catalogue upload retries restage the same snapshot before publishing it, so a
+disconnect after a successful remote rename can recover safely. COG transfer
+failure after all attempts still fails the upload. No delay is added after the
+last failed attempt. Site configuration/registration conflicts fail immediately
+because they require correcting the configuration. The separate standalone
+upload utility also supports legacy `--downloads-only`; normal `snowcast publish`
+copies per-project download metadata from archive receipts instead of refreshing
+the old Western-only index.
 
-For an operator-managed run followed by local publication, sequence the commands:
+For an operator-managed run followed by publication and upload, sequence the commands:
 
 ```bash
 snowcast run /projects/western-cordillera &&
-snowcast publish /projects/western-cordillera --site-dir /srv/snowcast
+snowcast publish sites/snowcast.json --project western-cordillera
 ```
 
-Then synchronize original downloads and upload the catalogue as appropriate for
-the installation. See the [project migration guide](../projects/README.md) for
+Archive original daily downloads separately with `snowcast archive PROJECT` when configured.
+See the [project migration guide](../projects/README.md) for
 replacing old cron invocations and copying daily TIFF/ASCII archives. The retired
 Python settings/plotting/v2 upload pipeline is no longer an entry point.
-Authoritative site configuration and remote multi-project registration remain
-next-stage work.
+The site config controls selection; each publish registers only complete catalogues.
+Original daily archives use `snowcast archive PROJECT`; scheduling remains operator-managed.
 
 Original-TIFF rotation moves external masks, PAM metadata and overviews with
 their raster. Project execution/publication share a project lock, preventing
@@ -546,7 +541,7 @@ cover site navigation, full-domain reset, date/point preservation, and dismissal
   map COG reads; basemaps and point samples have separate request handling.
   After 15 seconds the viewer shows a slow-loading notice and continues waiting;
   it reports a stall only after 90 seconds without raster loading progress.
-  It retains up to three raster layers; point reads run with at most three
+  It retains up to three raster layers per project; point reads run with at most three
   concurrent requests. Playback pauses in hidden tabs.
 - Tile errors remain monitored after a frame is displayed, including pan/zoom.
   Canvas rejects an image containing failed tiles rather than displaying those
@@ -682,9 +677,10 @@ for a visual WebGL check on the affected device.
 The web application remains in this repository but is built/deployed separately
 from model data. The [project runner guide](../projects/README.md) documents
 `snowcast publish` and `snowcast deploy-ui`, independent domain workspaces, and
-the site-level `domains.json` contract. This viewer currently consumes one
-catalogue through `?catalog=...`; simultaneous registry-driven domain rendering
-is a subsequent feature.
+legacy `domains.json` compatibility. The [site guide](../sites/README.md) covers
+the authoritative `site.json` contract, `snowcast site configure` and `snowcast publish`, shared
+dates, point attribution and domain-aware legends. Explicit `?catalog=...` links
+still load one catalogue.
 
 ## Sentinel-2 / Landsat satellite overlay
 

@@ -55,12 +55,21 @@ CHM
 /pmtiles
 
 # The viewer is built separately from simulation data.
-webui/node_modules/
+webui/node_modules
 webui/dist/
 webui/public/demo/
-webui/public/observations/canswe/
+webui/public/demo-site/
+webui/public/observations/
+webui/public/observations.json
+webui/data/*.zip
+CanSWE*.nc
+CanSWE*.zip
+.observation-build/
+.observation-projects/
 webui/.openai/
 webui/.vite/
+webui/test-results/
+webui/playwright-report/
 .pytest_cache/
 *.egg-info/
 /build/

@@ -12,5 +12,6 @@ export interface Catalogue {
   window_days: number; sample_data: boolean; bounds: number[]; variables: Variable[];
   retention?: { daily_days: number; weekly_days: number | null; hydrological_year_start?: string; weekly_variables: string[]; week_starts: string };
   storage_bytes?: number;
+  domain?: { id: string; name: string };
 }
-export interface PointValue { time: string; value: number | null; error?: string }
+export interface PointValue { time: string; value: number | null; error?: string; sourceTime?: string }

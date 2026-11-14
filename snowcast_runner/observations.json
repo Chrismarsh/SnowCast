@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "datasets": [
+    {
+      "id": "canswe",
+      "enabled": true,
+      "label": "CanSWE",
+      "description": "Historical SWE and snow depth",
+      "adapter": "canswe",
+      "renderer": "snow-stations-v1",
+      "release": "v8",
+      "source": {
+        "url": "https://zenodo.org/records/19075529/files/CanSWE-CanEEN_1928-2025_v8.nc?download=1",
+        "filename": "CanSWE-CanEEN_1928-2025_v8.nc",
+        "checksum": "md5:d7eb41a9cbbce88ff399185402826a44"
+      },
+      "variables": {
+        "swe": "mm",
+        "depth": "m"
+      },
+      "selection": {
+        "nearby_km": 100
+      },
+      "metadata": {
+        "doi": "https://doi.org/10.5281/zenodo.19075529",
+        "through": "2025-07-31",
+        "citation": "Vionnet, Mortimer, Brady, Arnal & Brown (2026), CanSWE v8.",
+        "licence": "Open Government Licence – Canada",
+        "licence_url": "https://open.canada.ca/en/open-government-licence-canada",
+        "methods_url": "https://doi.org/10.5194/essd-13-4603-2021"
+      }
+    }
+  ]
+}
