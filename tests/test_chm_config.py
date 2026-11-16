@@ -77,7 +77,7 @@ def test_merge_before_mesh_validation_and_preserve_declaring_paths(project_file,
     assert config['forcing']['file'] == str(project.work / 'met/index.json')
     assert config['option']['startdate'] == '20260901T000000'
     assert config['output'] == {'output_dir': 'output',
-                                'ugrid': {'variables': ['swe'], 'specific_time': '23:00'}}
+                                'ugrid': {'variables': ['swe'], 'specific_time': '23:00', 'base_name': 'output'}}
     assert config['checkpoint'] == {'auto_resume': True}
     assert all(p.read_bytes() == before for p, before in authored.items())
 

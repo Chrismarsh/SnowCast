@@ -184,8 +184,9 @@ def accept_exports(project, source, expected_times=None):
 def postprocess(project):
     import xarray as xr
     from .progress import progress
+    from .model_output import postprocess_source
     pp = project.postprocess
-    source = project.work / 'chm' / 'output' / project.model['output_file']
+    source = postprocess_source(project)
     progress(f'Reading model output for postprocessing: {source}')
     with xr.open_dataset(source) as data:
         if 'time' not in data or not data.time.size:

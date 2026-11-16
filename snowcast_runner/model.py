@@ -1,4 +1,5 @@
 """CHM adapter: resolve inputs, stage forcing metadata, and continue checkpointed runs."""
+import json
 import re
 import shutil
 import uuid
@@ -8,12 +9,15 @@ from .cog_store import atomic_json
 from .jobs import execute, JobFailed
 from .forcing import forcing_index
 from .progress import progress
+from .model_output import configure_output, validate_output
 
 from .chm_config import read_model, model_inputs, mesh_input_entries
 
 
 def prepare(project):
     config = read_model(project)
+    configure_output(project, config)
+    validate_output(project.work / 'chm', project.model['output_file'], config)
     links = model_inputs(project, config)
     cwd = project.work / 'chm'
     cwd.mkdir(exist_ok=True)
@@ -28,8 +32,6 @@ def prepare(project):
         container[key] = Path(container[key]).name
     index, end = forcing_index(project)
     config.setdefault('forcing', {})['file'] = str(index)
-    config.setdefault('output', {})['output_dir'] = output.name
-    config['output'].setdefault('ugrid', {})['variables'] = project.postprocess['variables']
     if project.model.get('start_date'):
         config.setdefault('option', {})['startdate'] = project.model['start_date'].replace('-', '') + 'T000000'
     checkpoints = sorted((output / 'checkpoint').glob('checkpoint_*.json'))
@@ -95,6 +97,7 @@ def run_model(project):
             prune_checkpoints(project)
         return outcome
     for segment in range(project.model['max_runs']):
+        validate_output(cwd, project.model['output_file'], json.loads(config.read_text()))
         progress(f'Starting CHM segment {segment + 1}/{project.model["max_runs"]}')
         before = checkpoint_state(cwd)
         # Preserve model logs per segment; an old exception must not mark a new run failed.

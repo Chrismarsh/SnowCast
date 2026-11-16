@@ -86,6 +86,7 @@ def run_chain(project, config):
     command += [part.replace('{config}', str(config)) for part in project.model['command']]
     spec = {'cwd': str(config.parent), 'work': str(project.work), 'job': job, 'command': command,
             'python': sys.executable, 'max_runs': project.model['max_runs'],
+            'output_file': project.model['output_file'],
             'no_data_codes': project.model['no_data_codes']}
     atomic_json(directory / 'request.json', spec)
     pending = jobs / f'{token}.pending.json'
@@ -142,6 +143,9 @@ def check_segment(request, index, code=None):
         snapshot = _step(directory, index, '.before.json')
         current = {name: list(stat) for name, stat in checkpoint_state(cwd).items()}
         if code is None:
+            if 'output_file' in spec:  # Old submitted chains did not record this field.
+                from .model_output import validate_output
+                validate_output(cwd, spec['output_file'], json.loads((cwd / 'config.json').read_text()))
             atomic_json(snapshot, current)
             archive_model_log(Path(spec['work']), cwd)
             return 0

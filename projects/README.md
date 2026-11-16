@@ -299,8 +299,15 @@ segment run inside that allocation, with the remaining walltime passed to CHM.
 
 `run` prepares, executes CHM and postprocesses. `run --no-postprocess` stops after
 CHM. `postprocess` processes existing model output without rerunning CHM.
-`model.output_file` (default `output.nc`) must match the actual CHM output
-filename; it tells the postprocessor which file to read.
+`model.output_file` (default `output.nc`) selects the project's fixed NetCDF
+filename. Preparation sets CHM's generated `output.output_dir` to `output` and
+`output.ugrid.base_name` to that filename without `.nc`, so CHM and the
+postprocessor use the same file. Authored configuration is not rewritten.
+NetCDF is required; UGRID rotation is currently unsupported by this fixed-file
+postprocessor and is rejected instead of silently exporting an older file.
+Checkpoint-restored UGRID paths must also name this project-owned file.
+Validation runs before CHM launches (including each new PBS segment) and before
+postprocessing. An output symlink cannot be used to share a legacy NetCDF.
 
 `run` prints progress by default: forcing coverage, the latest checkpoint,
 PBS submissions and job IDs, log paths, checkpoint continuation, and the
@@ -392,6 +399,10 @@ continues to use Float32; source TIFFs are not converted to that precision.
    version, mesh and rank compatibility first. Do not share mutable state.
    For the prior runner, the source was `<old-work-root>/<domain>/chm/output/`;
    the legacy workflow used `run_chm/output/`.
+   Copy the corresponding UGRID NetCDF as well, and update the copied
+   checkpoint's `ugrid_outputs[].path` to its new absolute destination. CHM
+   restores this path from the checkpoint even when its output configuration
+   names a different file. See the recovery procedure below.
 5. Do not copy old ownership markers, pending job records or generated scripts:
    they contain old identities/absolute paths. Retain original logs for reference.
    Historical postprocessed products can be copied with their matching
@@ -416,6 +427,58 @@ Set the actual environment path and schedule for your installation. Model and
 postprocessing environment setup is specified by that project's `job.setup`.
 Publication remains a separate command; sequence it after a successful run when
 configuring deployment. No cron entry is installed by SnowCast.
+
+## Recovering output written to a legacy workspace
+
+If CHM reaches a newer date but successful postprocessing still reports older
+dates, compare `model.output_file` with the latest checkpoint's
+`ugrid_outputs[].path`. A copied checkpoint can make CHM append to the legacy
+NetCDF while SnowCast reads an older copy in the new project. Changing
+`recent_steps`, republishing, or simply rerunning CHM does not repair that path.
+
+1. Stop scheduled launches for both workflows and wait until neither has an
+   active or queued model/regridding job. The old and new outputs must be idle
+   while copying data and editing checkpoint metadata.
+2. Find the updated legacy NetCDF from the checkpoint's UGRID entry. Confirm
+   its time axis includes the missing dates and that it belongs to this same
+   model/mesh. The destination is the new project's
+   `work/chm/output/<model.output_file>`.
+3. Back up the destination and copy the complete updated NetCDF into it. Keep
+   the legacy file intact; do not link the two workflows' mutable output files.
+   For the default filename, this example preserves an existing destination
+   under a dated backup name (replace the source path):
+
+   ```bash
+   rsync -ah --progress --backup --suffix=".before-recovery-$(date +%Y%m%dT%H%M%S)" \
+     /absolute/path/to/legacy/output.nc \
+     projects/western-cordillera/work/chm/output/output.nc
+   ```
+
+4. Back up the latest JSON checkpoint **inside the new project**, then change
+   its matching `ugrid_outputs` entry's `path` to the destination's absolute
+   path and `base_name` to `model.output_file` without `.nc`. Keep its simulation
+   time, timestep counter, rank count, `files` list and rank-state files intact.
+   Store the backup with a suffix after `.json` so auto-resume cannot select it.
+   Do not edit the legacy workflow's checkpoint. Older copied checkpoints also
+   need this correction before deliberately restoring one of them.
+5. Regenerate and verify the staged configuration, then process and publish the
+   already-computed results:
+
+   ```bash
+   snowcast prepare projects/western-cordillera &&
+   snowcast postprocess projects/western-cordillera &&
+   snowcast publish sites/snowcast.json --project western-cordillera
+   ```
+
+   `postprocess.recent_steps` must include the desired dates in the copied
+   NetCDF. `snowcast status projects/western-cordillera` reports the accepted
+   export timestamps. If HPFX/download mirrors are configured, run
+   `snowcast archive projects/western-cordillera` after postprocessing and before
+   publishing to update those originals and their download listings as well.
+
+The path checks intentionally do not copy large NetCDF files or modify
+checkpoint metadata automatically. Pulling this fix prevents further mismatched
+runs/exports; existing workspaces still need the above recovery once.
 
 ## Original daily download archives
 
