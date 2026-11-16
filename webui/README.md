@@ -191,15 +191,20 @@ npm --prefix webui run build
 
 For development checks, additionally run `npm --prefix webui run check` and
 `npm --prefix webui test`. Upload the complete `webui/dist/` application to the
-same destination as `deploy` in your site config:
+same destination as `deploy` in your site config. This example is **production**,
+using `sites/snowcast.json`:
 
 ```bash
 rsync -rt --protect-args \
   --exclude=data/ --exclude=observations/ --exclude=observations.json \
   --exclude=site.json --exclude=.site-config.json --exclude=domains.json \
   --exclude=demo/ --exclude=demo-site/ \
-  webui/dist/ USER@HOST:/var/www/html/v3-testing/
+  webui/dist/ USER@HOST:/var/www/html/v3/
 ```
+
+For testing, use `sites/snowcast-testing.json` for data publication and change
+the rsync destination to `USER@HOST:/var/www/html/v3-testing/`. See
+[production and testing](../sites/README.md#production-and-testing).
 
 Replace `USER@HOST`. The exclusions preserve model and observation publication,
 including when stale observation assets remain in an existing `webui/public/`.
@@ -213,13 +218,13 @@ have been published. The updated UI reads `observations.json` and its versioned
 indexes. See [missing TVC stations](../sites/README.md#trace-missing-tvc-stations).
 
 The application uses relative URLs and works in a subdirectory such as
-`/v3-testing/`. Use its trailing slash or the webserver's directory redirect.
+`/v3/` or `/v3-testing/`. Use its trailing slash or the webserver's directory redirect.
 It discovers models through `./site.json`, falling back to `./data/catalog.json`
 only when the default manifest is missing (404). For an explicit single-catalogue
 view or external model-data server, use, for example:
 
 ```text
-https://www.snowcast.ca/v3-testing/?catalog=./data/tvc/catalog.json
+https://www.snowcast.ca/v3/?catalog=./data/tvc/catalog.json
 ```
 
 Model asset URLs resolve relative to their catalogue. The observation registry

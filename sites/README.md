@@ -3,10 +3,12 @@
 This is the end-to-end guide for a shared website containing Western Cordillera,
 TVC and other independent model projects. Commands below run from the **SnowCast
 checkout root** in the Python environment where the runner is installed. The
-examples deploy to `/var/www/html/v3-testing/`; use the same destination in your
-site config and UI upload command.
+production examples use `sites/snowcast.json` and `/var/www/html/v3/`. Testing
+uses `sites/snowcast-testing.json` and `/var/www/html/v3-testing/`. Match the
+site config and UI upload destination as shown below.
 
 - [What each command does](#what-each-command-does)
+- [Production and testing](#production-and-testing)
 - [First setup or migration](#first-setup-or-migration)
 - [Daily model updates](#daily-model-updates)
 - [Build and deploy the UI](#build-and-deploy-the-ui)
@@ -32,7 +34,7 @@ site config and UI upload command.
 | `snowcast publish SITE_CONFIG --project ID --no-upload` | Prepares the same model and observation data in local staging | Local testing; no SSH/rsync or observation downloads |
 | `npm --prefix webui run build` | Compiles the UI into `webui/dist/` | After UI code/dependency changes |
 | `snowcast deploy-ui --dist webui/dist --site-dir DIRECTORY` | Installs an already-built UI into a **local or mounted** directory, preserving published data | Local installation; does not upload over SSH |
-| `rsync … webui/dist/ USER@HOST:/var/www/html/v3-testing/` | Uploads the compiled UI to the webserver | Initial UI installation and UI updates |
+| `rsync … webui/dist/ USER@HOST:/var/www/html/v3/` | Uploads the compiled UI to the webserver | Initial UI installation and UI updates |
 
 **`publish` does not run `site configure`, download observation sources, or build
 or deploy the UI, or upload original archives.** `archive` handles original
@@ -41,6 +43,47 @@ create observation subsets. Building the UI does not install it on the server.
 
 There is one project-data publishing command. The earlier `site publish`,
 `publish PROJECT --site-dir ...`, and `site prepare-canswe` forms are retired.
+
+## Production and testing
+
+Use the unsuffixed site configuration for production and `-testing` for testing:
+
+| Environment | Authored configuration | Example to copy | Local staging | Remote directory |
+| --- | --- | --- | --- | --- |
+| Production | `sites/snowcast.json` | `sites/snowcast.example.json` | `site-staging/` | `/var/www/html/v3/` |
+| Testing | `sites/snowcast-testing.json` | `sites/snowcast-testing.example.json` | `site-staging-testing/` | `/var/www/html/v3-testing/` |
+
+The filename is a convention: the `deploy` fields determine the remote target.
+Keep separate staging directories when using both environments. Project paths,
+observation cache and HPFX archive settings can be shared. Original archive
+uploads are independent of the website environment.
+
+If your existing `sites/snowcast.json` still targets testing, preserve it first
+(skip the copy if you already have a testing configuration):
+
+```bash
+cp -n sites/snowcast.json sites/snowcast-testing.json
+```
+
+Then edit the two configurations to match the table. In `snowcast.json`, use
+`"staging": "../site-staging"` and `deploy.directory` `/var/www/html/v3`.
+In `snowcast-testing.json`, use `"staging": "../site-staging-testing"` and
+`deploy.directory` `/var/www/html/v3-testing`. Keep your actual SSH host, project
+selection and observation settings. If you already created a
+`snowcast-production.json`, its settings belong in `snowcast.json` instead.
+
+Follow the production setup/publish/UI steps below to promote the existing model
+outputs. For testing, explicitly select its configuration:
+
+```bash
+snowcast site configure sites/snowcast-testing.json --upload
+snowcast publish sites/snowcast-testing.json --project western-cordillera
+snowcast publish sites/snowcast-testing.json --project tvc
+```
+
+Use `/var/www/html/v3-testing/` as the UI rsync destination for those commands.
+The same compiled UI works in both directories because its URLs are relative.
+Scheduled publication commands must select the matching configuration file.
 
 ## First setup or migration
 
@@ -58,8 +101,11 @@ installation follows that checkout's Python code; rerun installation when packag
 metadata/dependencies change. A non-editable installation must be reinstalled to
 pick up code and packaged registry updates.
 
-For a new site, copy `sites/snowcast.example.json` to `sites/snowcast.json` and edit
-it. Keep your existing site config when updating an existing installation.
+For a new production site, copy `sites/snowcast.example.json` to
+`sites/snowcast.json` and edit it. For testing, copy
+`sites/snowcast-testing.example.json` to `sites/snowcast-testing.json`. Keep your
+existing authored settings when updating an installation; pulling the examples
+does not modify those settings.
 
 ```json
 {
@@ -69,7 +115,7 @@ it. Keep your existing site config when updating an existing installation.
   "staging": "../site-staging",
   "deploy": {
     "host": "USER@HOST",
-    "directory": "/var/www/html/v3-testing"
+    "directory": "/var/www/html/v3"
   }
 }
 ```
@@ -213,14 +259,17 @@ rsync -rt --protect-args \
   --exclude=data/ --exclude=observations/ --exclude=observations.json \
   --exclude=site.json --exclude=.site-config.json --exclude=domains.json \
   --exclude=demo/ --exclude=demo-site/ \
-  webui/dist/ USER@HOST:/var/www/html/v3-testing/
+  webui/dist/ USER@HOST:/var/www/html/v3/
 ```
 
-Replace `USER@HOST`; do not add `--delete` over a site containing published data.
+This command deploys the UI to **production**. For testing, use the same
+exclusions with destination `USER@HOST:/var/www/html/v3-testing/`, matching
+`sites/snowcast-testing.json`. Replace `USER@HOST`; do not add `--delete` over a
+site containing published data.
 The exclusions protect generated model/observation manifests and assets, including
 when an older checkout left stale observations in `webui/public/`. A hard refresh
 loads newly deployed HTML/JavaScript; it cannot replace old files still on the
-server. Open `https://www.snowcast.ca/v3-testing/` after updating that installation.
+server. Open `https://www.snowcast.ca/v3/` after updating that installation.
 
 For installation on a local/mounted website directory, use instead:
 
@@ -296,7 +345,8 @@ runner adapter. A new observation renderer also requires a UI update/build.
 | Location | Role | Written by |
 | --- | --- | --- |
 | `projects/PROJECT/snowcast.json` and referenced CHM settings | Authored model/run configuration | Operator |
-| `sites/snowcast.json` | Authored site selection, staging and deployment destination | Operator |
+| `sites/snowcast.json` | Production site selection, staging and deployment destination | Operator |
+| `sites/snowcast-testing.json` | Testing site selection and separate staging/deployment destination | Operator |
 | `snowcast_runner/observations.json` or a configured custom registry | Authored dataset acquisition, conversion and display settings | Operator/developer |
 | `PROJECT/work/archive/` | Completed archive receipts used for project download links | `archive`; read by `publish` |
 | `~/.cache/snowcast/data/` by default | Full verified observation source shared by projects | `download-data` |
@@ -407,7 +457,7 @@ contract. See [CanSWE processing](../webui/data/README.md) for its scientific ru
 ### Trace missing TVC stations
 
 1. Open the website's `observations.json`, for example
-   <https://www.snowcast.ca/v3-testing/observations.json>.
+   <https://www.snowcast.ca/v3/observations.json>.
 2. Find the CanSWE dataset and follow its `index` relative to the website root.
    The current format is `observations/canswe/index-<hash>.json`. Inspect its
    `domains`, `nearby_km` and station names. Do not use the old fixed `index.json`

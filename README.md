@@ -41,7 +41,8 @@ and checkpoints live inside the project, not the tool checkout.
 Start with the [complete site workflow](sites/README.md): first setup/migration,
 command responsibilities, daily updates, parallel projects, local previews and
 troubleshooting. It includes the copy-paste UI deployment commands for
-`/v3-testing/`.
+`/v3/`. Production uses `sites/snowcast.json`; testing uses
+`sites/snowcast-testing.json` and `/v3-testing/`.
 
 Website setup separates observation downloads, site configuration, project
 runs/publication and UI deployment. Original archives have their own command.
