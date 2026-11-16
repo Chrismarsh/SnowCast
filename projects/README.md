@@ -436,6 +436,25 @@ dates, compare `model.output_file` with the latest checkpoint's
 NetCDF while SnowCast reads an older copy in the new project. Changing
 `recent_steps`, republishing, or simply rerunning CHM does not repair that path.
 
+For example, a CHM log reaching November 16 followed by a `completed` status
+with `output.times` of November 11, 12 and 13 means the export selected those
+older dates from its input NetCDF. `recent_steps: 3` was applied; it does not
+prove CHM and postprocessing used the same file. Inspect `snowcast status
+PROJECT` before another command overwrites the recorded status.
+
+Run the relative-path examples below from the SnowCast repository root, using
+the same Python environment as `snowcast`. From a directory inside the checkout
+(including `work/chm/output/logs_*`), return to the root with:
+
+```bash
+cd "$(git rev-parse --show-toplevel)"
+snowcast status projects/western-cordillera
+```
+
+An absolute project path works from any directory. A missing path ending in
+`logs_.../projects/western-cordillera` means the relative path was resolved from
+the log directory; the command has not reached the project's status file.
+
 1. Stop scheduled launches for both workflows and wait until neither has an
    active or queued model/regridding job. The old and new outputs must be idle
    while copying data and editing checkpoint metadata.
@@ -461,12 +480,68 @@ NetCDF while SnowCast reads an older copy in the new project. Changing
    Store the backup with a suffix after `.json` so auto-resume cannot select it.
    Do not edit the legacy workflow's checkpoint. Older copied checkpoints also
    need this correction before deliberately restoring one of them.
+
+   For the normal single-UGRID project, run this **after completing the NetCDF
+   copy in step 3**. It locks the project, refuses pending jobs, preserves a
+   backup, and changes only the UGRID path and basename. It does not copy or
+   check the time coverage of the NetCDF; confirm the required dates first.
+
+   ```bash
+   python - <<'PY'
+   import json
+   from snowcast_runner.project import load_project
+   from snowcast_runner.state import workspace
+   from snowcast_runner.cog_store import atomic_json
+
+   p = load_project("projects/western-cordillera")
+
+   with workspace(p):
+       if list((p.work / "jobs").glob("*.pending.json")):
+           raise SystemExit("Resolve pending jobs before editing the checkpoint.")
+
+       out = p.work / "chm" / "output"
+       target = out / p.model["output_file"]
+       if not target.is_file() or target.is_symlink():
+           raise SystemExit(f"Copy the updated NetCDF here first: {target}")
+
+       checkpoints = sorted((out / "checkpoint").glob("checkpoint_*.json"))
+       if not checkpoints:
+           raise SystemExit("No project checkpoint found.")
+
+       checkpoint = checkpoints[-1]
+       original = checkpoint.read_bytes()
+       data = json.loads(original)
+       entries = data.get("ugrid_outputs", [])
+       if not isinstance(entries, list) or len(entries) != 1 or not isinstance(entries[0], dict):
+           raise SystemExit("Expected one UGRID output; inspect this checkpoint manually.")
+
+       print("Checkpoint:", checkpoint)
+       print("Old path:", entries[0].get("path"))
+       print("New path:", target)
+
+       backup = checkpoint.with_name(checkpoint.name + ".before-path-fix")
+       with backup.open("xb") as f:
+           f.write(original)
+
+       entries[0]["path"] = str(target)
+       entries[0]["base_name"] = target.stem
+       atomic_json(checkpoint, data)
+       print("Updated. Backup:", backup)
+   PY
+   ```
+
+   An existing `.before-path-fix` backup stops the script before it changes the
+   checkpoint; retain that original backup. Pending records must be resolved
+   through normal job recovery, not deleted to bypass the check. The workspace
+   lock cannot stop a legacy writer or a PBS job whose runner disconnected, so
+   step 1 still applies.
 5. Regenerate and verify the staged configuration, then process and publish the
    already-computed results:
 
    ```bash
    snowcast prepare projects/western-cordillera &&
    snowcast postprocess projects/western-cordillera &&
+   snowcast status projects/western-cordillera &&
    snowcast publish sites/snowcast.json --project western-cordillera
    ```
 

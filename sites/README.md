@@ -468,6 +468,10 @@ contract. See [CanSWE processing](../webui/data/README.md) for its scientific ru
 | Local preview works but the remote site does not change | `--no-upload` writes only staging, and `deploy-ui` is local/mounted only. Use remote configuration/publication and the separate UI rsync. |
 | `PROJECT is already running` | Wait for that project's active run/publish to finish, then retry. Different projects can proceed independently. |
 | `Forcing index belongs to a different archive` during `run` | This concerns the meteorological forcing source, independently of website deployment and original-output archiving. Relocating the same data with an old-path symlink is supported by the updated runner; see [forcing configuration and relocation](../projects/README.md#forcing-and-simulation-period). For a genuine mismatch, compare the recorded/requested paths and use separate indexes for different archives. |
+| CHM reaches a new date, but `completed` status and local TIFFs still show old dates | Compare the configured NetCDF with the checkpoint's `ugrid_outputs[].path`. A migrated checkpoint may still write to the legacy workflow. Follow [legacy-output recovery, including the checkpoint repair command](../projects/README.md#recovering-output-written-to-a-legacy-workspace). |
+| `run` reports `up_to_date` but TIFFs need regeneration | That result skips postprocessing. Use `snowcast postprocess PROJECT`, check its recorded export dates, then publish. `recent_steps` selects existing NetCDF output timesteps. |
+| Local TIFFs are current but the website or HPFX is old | Website COGs require `publish SITE_CONFIG --project ID`. HPFX originals require `archive PROJECT`; archive before publishing if the website's download listings also need updating. |
+| Missing project path contains `work/chm/output/logs_.../projects/...` | Return to the repository root before using `projects/...`, or pass an absolute project path. The relative command has not reached the project. |
 
 ### Publication says site is not configured
 
