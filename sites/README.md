@@ -73,7 +73,10 @@ selection and observation settings. If you already created a
 `snowcast-production.json`, its settings belong in `snowcast.json` instead.
 
 Follow the production setup/publish/UI steps below to promote the existing model
-outputs. For testing, explicitly select its configuration:
+outputs. **Changing `deploy.host` or `deploy.directory` requires configuration of
+the new remote destination with `--upload` before publishing.** A configured
+`/v3-testing/` does not configure `/v3/`. For testing, explicitly select its
+configuration:
 
 ```bash
 snowcast site configure sites/snowcast-testing.json --upload
@@ -151,6 +154,11 @@ snowcast site validate sites/snowcast.json
 snowcast site configure sites/snowcast.json --upload
 ```
 
+**The command defaults differ:** `site configure` without `--upload` configures
+only local staging, while `publish` uploads by default. For a website, use
+`site configure ... --upload`; for local-only work, pair plain `site configure`
+with `publish ... --no-upload`.
+
 Configuration can precede the first model publication. Selected projects without
 published catalogues are marked unavailable. This is an explicit step: `publish`
 checks the installed configuration and fails if it is missing or has changed.
@@ -160,6 +168,10 @@ overview ranges or enabled observation settings. Configure before starting
 publishers using the new settings. Old publishers cannot restore removed entries.
 Removing a project hides it and retains its files; configuration does not delete
 model products or observation histories.
+
+Also repeat configuration after changing the staging directory, SSH host or
+remote directory. Use `--upload` when setting up the remote website, even if the
+same project selection was already configured at another destination.
 
 ### 4. Publish each project's output and observation contribution
 
@@ -331,6 +343,7 @@ not transfer the preview's model or observation data.
 | Existing postprocessed output, publication retry | `publish` for that project |
 | Add a project | Add it to the site config; configure locally/remotely; run/postprocess and publish the new project |
 | Change site selection/order, project name or overview ranges | Reconfigure; republish affected project data as needed |
+| Change staging, `deploy.host` or `deploy.directory`, including promotion from testing to production | Configure the selected site file with `--upload`; publish each selected project to the new destination and deploy the UI there |
 | Change observation radius, metadata, enabled datasets or converter version | Reconfigure; publish each selected project that should contribute observations |
 | Change the pinned observation release/source | Download with the updated registry; reconfigure; publish each contributing project |
 | Missing/corrupt observation cache | `download-data` with the matching registry/cache; retry the affected publication |
@@ -445,7 +458,8 @@ contract. See [CanSWE processing](../webui/data/README.md) for its scientific ru
 
 | Symptom | Check and remedy |
 | --- | --- |
-| `Site is not configured` or `Site configuration changed` | Run `site configure SITE_CONFIG --upload` for remote publication, or omit `--upload` for local-only use. Publishing does not configure automatically. |
+| `Site is not configured` after running configure | Check whether only local staging was configured or the destination changed. Use the [exact recovery commands below](#publication-says-site-is-not-configured). |
+| `Site configuration changed` | Reconfigure with the same site file used by publication; include `--upload` for remote publication. Publishing does not configure automatically. |
 | `no valid cached source` | Run the exact `download-data` command in the error. Check that download and publication use the same registry, cache path and OS user. |
 | Model dates update but CanSWE still lacks TVC | Check the new observation index and deployed JavaScript as described below. Build and deploy the updated UI if it still requests the legacy index. |
 | Stations from only one project appear | Publish each other project once. Configuration alone does not generate its observation contribution. |
@@ -453,6 +467,35 @@ contract. See [CanSWE processing](../webui/data/README.md) for its scientific ru
 | Dataset is listed but no markers appear | Enable its station toggle in Map layers; check the selected dataset, search/filter and map extent. Nearby stations may lie outside the model footprint. |
 | Local preview works but the remote site does not change | `--no-upload` writes only staging, and `deploy-ui` is local/mounted only. Use remote configuration/publication and the separate UI rsync. |
 | `PROJECT is already running` | Wait for that project's active run/publish to finish, then retry. Different projects can proceed independently. |
+
+### Publication says site is not configured
+
+For normal uploading publication, this traceback comes from the configuration
+check executed on the webserver over SSH:
+
+```text
+File "<string>", line ...
+ValueError: Site is not configured; run snowcast site configure first (with --upload for the host)
+```
+
+The configured remote directory has no `.site-config.json`. Running plain
+`site configure` only prepared local staging. Another common cause is changing
+the remote destination from `/var/www/html/v3-testing` to `/var/www/html/v3`
+after configuration. Each destination needs its own configuration.
+
+For production, run both commands using the same authored configuration:
+
+```bash
+snowcast site configure sites/snowcast.json --upload &&
+snowcast publish sites/snowcast.json --project western-cordillera
+```
+
+The `&&` prevents publication if configuration fails. For testing, substitute
+`sites/snowcast-testing.json` in both commands. If this still fails after a
+successful `--upload`, compare the exact configuration file, `deploy.host` and
+`deploy.directory` used by both commands, and inspect the configuration output
+for SSH errors. Configuration at another host or directory does not satisfy
+this check. Existing postprocessed model output can be republished directly.
 
 ### Trace missing TVC stations
 
