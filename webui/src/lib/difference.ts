@@ -29,10 +29,10 @@ export function pointDifference(from?: PointValue, to?: PointValue): number | nu
   return Number.isFinite(delta) ? delta : null;
 }
 
-export function differenceCSV(from: PointValue, to: PointValue, location: number[], unit: string): string {
+export function differenceCSV(from: PointValue, to: PointValue, location: number[], unit: string, project?: string): string {
   const value = pointDifference(from, to);
   const quote = (s: string) => '"' + s.replaceAll('"', '""') + '"';
   const status = from.error || to.error ? 'error' : value === null ? 'nodata' : 'valid';
-  return 'from_datetime_utc,to_datetime_utc,longitude,latitude,from_value,to_value,to_minus_from,unit,status\r\n' +
-    [from.time, to.time, ...location, from.value ?? '', to.value ?? '', value ?? '', quote(unit), status].join(',');
+  return 'from_datetime_utc,to_datetime_utc,longitude,latitude,from_value,to_value,to_minus_from,unit,status' + (project ? ',project' : '') + '\r\n' +
+    [from.sourceTime || from.time, to.sourceTime || to.time, ...location, from.value ?? '', to.value ?? '', value ?? '', quote(unit), status, ...(project ? [quote(project)] : [])].join(',');
 }

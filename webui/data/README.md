@@ -1,12 +1,11 @@
-# CanSWE snapshot
+# CanSWE subset
 
-`canswe-v8.zip` is a derived, reproducible static snapshot for the SnowCast
-station overlay. It contains a small station index and 750 individually gzipped
-station histories/seasonal summaries in the bounding box
-`[-132, 46.4, -109.8, 56]`. The viewer further filters locations to its catalogue
-bounds. The archive is extracted locally by `scripts/unpack_canswe.py` before
-development and production builds; the browser only requests the index and the
-selected station's file, never the archive.
+Observation subsets are generated during project publication from a verified,
+locally cached source. The registry defines source release, attribution and
+selection settings. The publisher selects each project's WGS84 bounds plus its
+nearby radius (default 100 km), then merges overlapping selections. The viewer
+filters stations to loaded project bounds plus that radius. Histories are fetched
+only when a station is selected; the browser never downloads the source NetCDF.
 
 Source: Vionnet, V., Mortimer, C., Brady, M., Arnal, L., and Brown, R. (2026),
 Canadian historical Snow Water Equivalent dataset (CanSWE, 1928–2025), v8.
@@ -24,9 +23,8 @@ records have individual start/end dates. This is not a real-time data source.
 The source NetCDF declares the Open Government Licence – Canada:
 https://open.canada.ca/en/open-government-licence-canada
 
-This western subset contains British Columbia, Alberta, Meteorological Service
-of Canada, Canadian Rockies Hydrological Observatory, Changing Cold Regions
-Network, and Saskatchewan observations. Provider names and station IDs are
+This subset includes western Canadian observations and stations near TVC in the
+Northwest Territories. Provider names and station IDs are
 preserved, and the UI links to the dataset, methods paper, and licence.
 The source's separately licensed Hydro-Québec records are not in this subset;
 the converter rejects them if bounds are expanded without reviewing licensing.
@@ -58,25 +56,24 @@ the converter rejects them if bounds are expanded without reviewing licensing.
   It does not search for a nearby valid pixel or correct for elevation/land-cover
   differences. Snow courses and grid cells have different spatial support.
 
-## Reproduce / update
+## Download and publish
 
-Download the pinned NetCDF from the dataset record, then from the repository:
+There is no committed subset. The installed `observations.json` registry pins
+the source release/checksum and carries the display and attribution settings.
 
 ```bash
-python -m pip install numpy netCDF4
-python scripts/prepare_canswe.py /path/to/CanSWE-CanEEN_1928-2025_v8.nc
-python scripts/unpack_canswe.py
+snowcast download-data canswe
+snowcast publish sites/snowcast.json --project tvc
 ```
 
-The converter verifies the source checksum and units. A new release requires
-reviewing its schema, changes, dates, licences, and updating pinned metadata
-before regenerating. Only refreshes require netCDF4; regular app builds use
-Python's standard library and the committed snapshot, without contacting Zenodo.
-Histories have content-versioned URLs and are written before the index. Keep
-old deployed history files while clients may still hold an earlier index.
+Sources stay in the shared local cache. Publish subsets by each project's geographic
+bounds with the configured nearby radius (default 100 km), deduplicates overlap,
+and uploads histories before the public registry. Outside-domain stations remain
+observations only. UI builds do not touch observations. See the
+[site guide](../../sites/README.md#observation-datasets) for cache overrides,
+offline imports, migration and the common station format.
 
-The bundle is about 6.3 MB; the plain station index is about 242 KB and the
-largest selected history is about 126 KB compressed. Station files use explicit
-gzip plus browser DecompressionStream; they also work when the web server sends
-Content-Encoding: gzip and fetch has already decompressed the body. Existing
-modern browser requirements apply. No TIFF conversion or PNG generation is involved.
+The converter verifies source checksum and units. New releases require reviewing
+the schema, flags and licensing before changing the registry. Compressed histories
+are decoded by the browser on selection, including when HTTP already decompresses
+them. Missing values stay null, and the original scientific rules above are unchanged.

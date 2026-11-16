@@ -25,7 +25,7 @@ def workspace(project):
                'met', 'met/metadata.json', 'met/index.json', 'chm', 'chm/config.json',
                'chm/log', 'chm/output', 'chm/output/checkpoint', 'jobs', 'postprocess',
                'postprocess/raw', 'postprocess/grid.json', 'postprocess/tiff',
-               'postprocess/ascii', 'postprocess/archive_tiff', 'postprocess/archive_ascii')
+               'postprocess/ascii', 'postprocess/archive_tiff', 'postprocess/archive_ascii', 'archive')
     for relative in managed:
         target = project.work / relative
         if target.is_symlink():

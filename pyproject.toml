@@ -15,3 +15,6 @@ snowcast = "snowcast_runner.cli:main"
 [tool.setuptools.packages.find]
 include = ["snowcast_runner*"]
 namespaces = true
+
+[tool.setuptools.package-data]
+snowcast_runner = ["observations.json"]

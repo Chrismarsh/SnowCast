@@ -75,8 +75,18 @@ def update_index(archive, index, *, start_date=None):
         identity = {'version': 1, 'archive': str(archive)}
         if binding.is_symlink():
             raise ValueError(f'Forcing index archive binding cannot be a symlink: {binding}')
-        if binding.exists() and json.loads(binding.read_text()) != identity:
-            raise ValueError(f'Forcing index belongs to a different archive; use a separate index: {index}')
+        recorded = json.loads(binding.read_text()) if binding.exists() else None
+        if binding.exists():
+            if (not isinstance(recorded, dict) or set(recorded) != {'version', 'archive'}
+                    or type(recorded['version']) is not int or recorded['version'] != 1
+                    or not isinstance(recorded['archive'], str) or not Path(recorded['archive']).is_absolute()):
+                raise ValueError(f'Invalid forcing index archive binding: {binding}')
+            # Relocating an archive while keeping its old path as a symlink
+            # preserves its identity, just as it preserves existing file paths.
+            if Path(recorded['archive']).resolve() != archive:
+                raise ValueError(f'Forcing index belongs to a different archive; use a separate index: {index}. '
+                                 f'Recorded archive: {recorded["archive"]}; requested archive: {archive}; '
+                                 f'binding: {binding}')
         records = _records(index) if index.exists() else []
         known = {os.path.abspath(index.parent / row['file_name']) for row in records}
         active_paths = set()
@@ -121,7 +131,9 @@ def update_index(archive, index, *, start_date=None):
         if not active:
             period = f' on or after {start_date}' if start_date else ''
             raise ValueError(f'No forcing available{period} in {archive}')
-        if not binding.exists():
+        # Refresh a relocated archive's canonical identity only after the full
+        # update validates. Failed reads leave both the index and binding intact.
+        if recorded != identity:
             atomic_json(binding, identity)
         if added:
             records.sort(key=lambda row: (row['start_time'], row['file_name']))

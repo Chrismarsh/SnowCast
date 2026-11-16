@@ -8,6 +8,7 @@ import uuid
 
 from .cog_store import atomic_json
 from .jobs import JobFailed, submit_pbs, wait_pbs
+from .progress import progress
 
 
 def _step(directory, index, suffix):
@@ -47,6 +48,7 @@ def resume_chain(pending, *, submit_remaining=False):
         if not segment.exists():
             raise RuntimeError(f'Model chain submission was interrupted; rerun snowcast run for this project '
                                f'to submit the remaining segments. Pending state: {pending}')
+        progress(f'Waiting for CHM segment {index + 1}/{spec["max_runs"]}')
         code = wait_pbs(segment, consume=False)
         if finished.exists():
             break
@@ -55,6 +57,7 @@ def resume_chain(pending, *, submit_remaining=False):
             atomic_json(finished, {'state': 'failed', 'error': f'CHM segment {index + 1} exited with {code} '
                         f'without a valid continuation result; see {_step(directory, index, ".log")}'})
             break
+        progress(f'CHM segment {index + 1} saved a checkpoint; continuing to the next PBS job')
     if not finished.exists():
         atomic_json(finished, {'state': 'failed', 'error': f'CHM did not finish after {spec["max_runs"]} PBS jobs'})
     outcome = json.loads(finished.read_text())
@@ -63,6 +66,7 @@ def resume_chain(pending, *, submit_remaining=False):
     pending.unlink()
     if outcome['state'] == 'failed':
         raise JobFailed(outcome['error'])
+    progress(f'CHM chain finished: {outcome["state"]}')
     return outcome['state']
 
 
@@ -82,10 +86,13 @@ def run_chain(project, config):
     command += [part.replace('{config}', str(config)) for part in project.model['command']]
     spec = {'cwd': str(config.parent), 'work': str(project.work), 'job': job, 'command': command,
             'python': sys.executable, 'max_runs': project.model['max_runs'],
+            'output_file': project.model['output_file'],
             'no_data_codes': project.model['no_data_codes']}
     atomic_json(directory / 'request.json', spec)
     pending = jobs / f'{token}.pending.json'
     atomic_json(pending, {'kind': 'model-chain', 'directory': str(directory)})
+    progress(f'Queuing up to {spec["max_runs"]} CHM segments, {job["walltime"]} each, '
+             f'{job["ranks"]} ranks; logs: {directory}')
     return resume_chain(pending, submit_remaining=True)
 
 
@@ -136,6 +143,9 @@ def check_segment(request, index, code=None):
         snapshot = _step(directory, index, '.before.json')
         current = {name: list(stat) for name, stat in checkpoint_state(cwd).items()}
         if code is None:
+            if 'output_file' in spec:  # Old submitted chains did not record this field.
+                from .model_output import validate_output
+                validate_output(cwd, spec['output_file'], json.loads((cwd / 'config.json').read_text()))
             atomic_json(snapshot, current)
             archive_model_log(Path(spec['work']), cwd)
             return 0

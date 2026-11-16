@@ -457,8 +457,11 @@ def test_runner_to_postprocessing_uses_configured_commands_and_actual_output(pro
     state = json.loads((domain.work / 'status.json').read_text())
     assert state['output']['times'] == ['20261108T230000', '20261109T230000']
     assert not list((domain.work / 'postprocess' / 'ascii').iterdir())
-    assert main(['publish', str(project_file), '--site-dir', str(tmp_path / 'site')]) == 0
-    assert (tmp_path / 'site' / 'domains.json').exists()
+    site_file = tmp_path / 'site.json'
+    site_file.write_text(json.dumps({'version': 1, 'observations': False, 'projects': [str(project_file)], 'staging': 'site'}))
+    assert main(['site', 'configure', str(site_file)]) == 0
+    assert main(['publish', str(site_file), '--project', 'west', '--no-upload']) == 0
+    assert json.loads((tmp_path / 'site' / 'site.json').read_text())['domains'][0]['available'] is True
 
 
 def test_pbs_script_executes_setup_and_persists_exit_status(project_file, monkeypatch):

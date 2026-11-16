@@ -2,21 +2,17 @@
 
 Requires numpy and netCDF4. The browser never downloads/decodes the NetCDF.
 """
-import argparse
 from collections import defaultdict
 from datetime import date
 import hashlib
 import gzip
 import json
+import math
 from pathlib import Path
 import re
-import zipfile
 
 import numpy as np
 
-DOI = 'https://doi.org/10.5281/zenodo.19075529'
-SOURCE_MD5 = 'd7eb41a9cbbce88ff399185402826a44'
-DEFAULT_BOUNDS = [-132, 46.4, -109.8, 56]
 MIN_YEARS = 10
 METHODS = ['Manual snow survey', 'Manual single point', 'Snow pillow / scale',
            'Passive gamma', 'GNSS / GPS', 'Cosmic ray', 'Time domain reflectometry']
@@ -70,37 +66,52 @@ def write_json(path, value):
     temporary.replace(path)
 
 
-def pack(output, bundle):
-    """One reproducible git artifact; extract for the dev server and builds.
+def geographic_bounds(bounds, where):
+    if (not isinstance(bounds, (list, tuple)) or len(bounds) != 4 or
+            any(type(v) not in (int, float) or not math.isfinite(v) for v in bounds) or
+            not (-180 <= bounds[0] < bounds[2] <= 180 and -90 <= bounds[1] < bounds[3] <= 90)):
+        raise ValueError(f'{where}: expected geographic bounds [west, south, east, north]')
+    return list(bounds)
 
-    Individual histories remain gzipped and are decoded after a station click.
-    This avoids relying on hosting-specific gzip configuration.
+
+def contains(bounds, lon, lat):
+    return bounds[0] <= lon <= bounds[2] and bounds[1] <= lat <= bounds[3]
+
+
+def distance_to_bounds(bounds, lon, lat):
+    """Spherical km to a geographic rectangle, including its curved parallels.
+
+    Keep the calculation in sync with webui/src/lib/canswe.ts.
     """
-    index = json.loads((output / 'index.json').read_text())
-    entries = {}
-    for station in index['stations']:
-        path = output / station['href']
-        raw = gzip.decompress(path.read_bytes()) if path.suffix == '.gz' else path.read_bytes()
-        station['href'] = station['href'].removesuffix('.gz') + '.gz'
-        entries[station['href']] = gzip.compress(raw, compresslevel=9, mtime=0)
-    entries['index.json'] = (json.dumps(index, separators=(',', ':'), ensure_ascii=False) + '\n').encode()
-    bundle.parent.mkdir(parents=True, exist_ok=True)
-    temporary = bundle.with_suffix('.tmp')
-    with zipfile.ZipFile(temporary, 'w', compression=zipfile.ZIP_STORED) as archive:
-        for name, content in sorted(entries.items()):
-            entry = zipfile.ZipInfo(name, date_time=(2026, 3, 17, 0, 0, 0))
-            entry.external_attr = 0o644 << 16
-            archive.writestr(entry, content)
-    temporary.replace(bundle)
-    print(f'Packed {len(index["stations"])} histories → {bundle} ({bundle.stat().st_size:,} bytes)')
+    west, south, east, north = bounds
+    if west <= lon <= east:
+        return 6371 * math.radians(max(south - lat, lat - north, 0))
+    phi, low, high = map(math.radians, (lat, south, north))
+    distances = []
+    for edge in (west, east):
+        delta = math.radians(lon - edge)
+        nearest = max(low, min(high, math.atan2(math.sin(phi), math.cos(phi) * math.cos(delta))))
+        for target in (low, high, nearest):
+            a = math.sin((target - phi) / 2) ** 2 + math.cos(phi) * math.cos(target) * math.sin(delta / 2) ** 2
+            distances.append(2 * 6371 * math.asin(math.sqrt(max(0, min(1, a)))))
+    return min(distances)
 
 
-def prepare(source, output, bounds=DEFAULT_BOUNDS):
+def nearby_distance(value):
+    if type(value) not in (int, float) or not math.isfinite(value) or value < 0:
+        raise ValueError('nearby-km must be a finite nonnegative distance')
+    return value
+
+
+def prepare(source, output, *, domains, entry):
     from netCDF4 import Dataset, num2date
 
-    digest = hashlib.md5(source.read_bytes()).hexdigest()
-    if digest != SOURCE_MD5:
-        raise ValueError('Input does not match the pinned CanSWE v8 file; review release metadata before updating.')
+    from .observation_data import verify_source
+    verify_source(source, entry)
+    nearby_km = nearby_distance(entry['selection']['nearby_km'])
+    boxes = [geographic_bounds(d['bounds'], d['id']) for d in domains]
+    bounds = [min(b[0] for b in boxes), min(b[1] for b in boxes),
+              max(b[2] for b in boxes), max(b[3] for b in boxes)]
     stations = []
     with Dataset(source) as data:
         if data['snd'].units != 'm' or data['snw'].units != 'kg m**-2':
@@ -109,13 +120,12 @@ def prepare(source, output, bounds=DEFAULT_BOUNDS):
         dates = [f'{d.year:04d}-{d.month:02d}-{d.day:02d}' for d in days]
         for i, raw_id in enumerate(data['station_id'][:]):
             lon, lat = number(data['lon'][i]), number(data['lat'][i])
-            if lon is None or lat is None or not (bounds[0] <= lon <= bounds[2] and bounds[1] <= lat <= bounds[3]):
+            if lon is None or lat is None or not any(distance_to_bounds(b, lon, lat) <= nearby_km for b in boxes):
                 continue
             station_id = str(raw_id)
             if not re.fullmatch(r'[A-Za-z0-9_.-]+', station_id):
                 raise ValueError(f'Unsafe station ID: {station_id!r}')
-            # This western subset has no HQ stations. Do not accidentally widen
-            # the distribution to the separately licensed Hydro-Quebec records.
+            # Preserve the existing licence guard when expanding the selection.
             if station_id.startswith('HQ') or 'quebec' in str(data['source'][i]).lower():
                 raise ValueError('Hydro-Quebec data requires separate licence handling')
             swe, depth = data['snw'][i], data['snd'][i]
@@ -139,28 +149,18 @@ def prepare(source, output, bounds=DEFAULT_BOUNDS):
             encoded = json.dumps(detail, separators=(',', ':'), ensure_ascii=False, allow_nan=False).encode()
             # Immutable detail URLs; publish index last. Old pages can finish
             # reading the same snapshot during an update.
-            filename = f'{station_id}-{hashlib.sha256(encoded).hexdigest()[:12]}.json'
+            filename = f'{station_id}-{hashlib.sha256(encoded).hexdigest()[:12]}.json.gz'
             station['href'] = 'stations/' + filename
-            write_json(output / station['href'], detail)
+            target = output / station['href']
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(gzip.compress(encoded, compresslevel=9, mtime=0))
             stations.append(station)
-        index = {'version': 1, 'dataset': {'name': 'CanSWE', 'version': 'v8', 'doi': DOI,
-                 'through': '2025-07-31', 'citation': 'Vionnet, Mortimer, Brady, Arnal & Brown (2026), CanSWE v8.',
-                 'licence': 'Open Government Licence – Canada', 'licence_url': 'https://open.canada.ca/en/open-government-licence-canada',
-                 'source_md5': digest}, 'bounds': bounds, 'minimum_years': MIN_YEARS,
+        index = {'version': 1, 'dataset': {'name': entry['label'], 'version': entry['release'],
+                 **entry['metadata']}, 'bounds': bounds, 'nearby_km': nearby_km, 'minimum_years': MIN_YEARS,
                  'summary': 'All available years; calendar half-month bins; one median per snow year, then 25th/50th/75th percentiles. At least 10 years per range. Sparse bins show individual year medians. No interpolation. Excludes CanSWE QC flags and agency A/C/E/G/M/Y flags.',
                  'stations': sorted(stations, key=lambda s: (s['name'].casefold(), s['id']))}
-        if not stations:
-            raise ValueError('No stations found; existing index left unchanged')
+        if domains is not None:
+            index['domains'] = domains
         write_json(output / 'index.json', index)
     print(f'Prepared {len(stations)} CanSWE stations in {output}')
-
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('source', type=Path, help='Pinned CanSWE-CanEEN_1928-2025_v8.nc')
-    parser.add_argument('--output', type=Path, default=Path(__file__).resolve().parents[1] / 'webui/public/observations/canswe')
-    parser.add_argument('--bounds', type=float, nargs=4, default=DEFAULT_BOUNDS, metavar=('WEST', 'SOUTH', 'EAST', 'NORTH'))
-    parser.add_argument('--bundle', type=Path, default=Path(__file__).resolve().parents[1] / 'webui/data/canswe-v8.zip')
-    args = parser.parse_args()
-    prepare(args.source, args.output, args.bounds)
-    pack(args.output, args.bundle)
+    return index

@@ -5,9 +5,10 @@ configuration, generated jobs, forcing metadata, checkpoints, outputs and
 processed products. The installed `snowcast_runner` package owns the reusable
 implementation. Projects do not depend on the SnowCast checkout or on one another.
 
-A separate site configuration will select projects for a shared website. That
-site configuration and the simultaneous multi-project map are the next stage;
-this stage implements independent projects through postprocessing.
+A separate [site configuration](../sites/README.md) selects projects for a shared
+website, with independent publication and simultaneous multi-project maps. For
+the complete daily command sequence, observation cache and separate UI deployment,
+use the [site workflow](../sites/README.md).
 
 ## Install and start a project
 
@@ -234,8 +235,30 @@ an explicit `index`. Writers lock the canonical index path, including symlink
 aliases used by different projects. A small archive-binding file next to the index
 prevents two independent projects from updating one index from different
 archives. Different start dates filter independent snapshots without removing
-shared history. Use separate indexes for separate archives. If an archive is
-relocated, create a new index for its new location instead of mixing paths.
+shared history. Use separate indexes for separate archives.
+
+If you relocate the same forcing archive and keep the old directory as a symlink
+to its new location, existing metadata file paths remain valid. The runner
+resolves both the recorded archive path and the configured path before comparing
+them. A successful update refreshes the archive binding to the new canonical
+path; a failed update preserves the previous binding and metadata. You can keep
+`forcing.archive` pointing through the old symlink or update it to the new path.
+Keep the old symlink while existing metadata or submitted jobs still reference
+it. The paths must also be accessible on the compute nodes.
+
+After pulling the relocation fix into the installation used by cron, check each
+project without submitting CHM:
+
+```bash
+snowcast met-update projects/western-cordillera
+snowcast met-update projects/tvc
+```
+
+This preserves existing metadata and indexes any new forcing files. An unchanged
+metadata index can still contain the old path; that is valid through the symlink.
+If the old path no longer resolves to the same archive, the runner rejects the
+mismatch and reports both paths. A genuinely different forcing archive needs a
+separate index; do not remove its binding simply to bypass that check.
 
 Index writes are atomic. An unchanged index is not rewritten, and an unreadable
 new file leaves the previous index intact. Already indexed files are assumed
@@ -276,8 +299,31 @@ segment run inside that allocation, with the remaining walltime passed to CHM.
 
 `run` prepares, executes CHM and postprocesses. `run --no-postprocess` stops after
 CHM. `postprocess` processes existing model output without rerunning CHM.
-`model.output_file` (default `output.nc`) must match the actual CHM output
-filename; it tells the postprocessor which file to read.
+`model.output_file` (default `output.nc`) selects the project's fixed NetCDF
+filename. Preparation sets CHM's generated `output.output_dir` to `output` and
+`output.ugrid.base_name` to that filename without `.nc`, so CHM and the
+postprocessor use the same file. Authored configuration is not rewritten.
+NetCDF is required; UGRID rotation is currently unsupported by this fixed-file
+postprocessor and is rejected instead of silently exporting an older file.
+Checkpoint-restored UGRID paths must also name this project-owned file.
+Validation runs before CHM launches (including each new PBS segment) and before
+postprocessing. An output symlink cannot be used to share a legacy NetCDF.
+
+`run` prints progress by default: forcing coverage, the latest checkpoint,
+PBS submissions and job IDs, log paths, checkpoint continuation, and the
+number/date range of output timesteps selected for postprocessing. Messages
+include a UTC timestamp and project ID, and are flushed immediately to stderr
+so they appear in redirected cron logs. PBS waits report scheduler state
+changes and a heartbeat every five minutes (at the next configured poll).
+Detailed CHM/MPI output stays in the reported job logs; this is stage progress,
+not a live model timestep counter. The final result remains on stdout.
+
+Use `snowcast run PROJECT --quiet` (or `-q`) to suppress progress while retaining
+the final result and errors. Capture both streams in cron with `>> run.log 2>&1`.
+For backfills, check the reported export dates: `postprocess.recent_steps`
+defaults to two output timesteps. Increase it to include the required dates
+still present in `output.nc`; if the model is already `up_to_date`, invoke
+`snowcast postprocess PROJECT` explicitly because `run` skips that stage.
 
 A project lock excludes duplicate writers, including a local job whose runner
 was killed. PBS pending submissions are recovered before changing staged
@@ -353,6 +399,10 @@ continues to use Float32; source TIFFs are not converted to that precision.
    version, mesh and rank compatibility first. Do not share mutable state.
    For the prior runner, the source was `<old-work-root>/<domain>/chm/output/`;
    the legacy workflow used `run_chm/output/`.
+   Copy the corresponding UGRID NetCDF as well, and update the copied
+   checkpoint's `ugrid_outputs[].path` to its new absolute destination. CHM
+   restores this path from the checkpoint even when its output configuration
+   names a different file. See the recovery procedure below.
 5. Do not copy old ownership markers, pending job records or generated scripts:
    they contain old identities/absolute paths. Retain original logs for reference.
    Historical postprocessed products can be copied with their matching
@@ -378,56 +428,194 @@ postprocessing environment setup is specified by that project's `job.setup`.
 Publication remains a separate command; sequence it after a successful run when
 configuring deployment. No cron entry is installed by SnowCast.
 
-## Original daily download archives
+## Recovering output written to a legacy workspace
 
-The runner retains original daily TIFF/ASCII products inside each project.
-Synchronization to an external download archive is an explicit operator step
-until site deployment is implemented. The removed uploader's hardcoded
-`collab-lp` destination is no longer assumed. To copy one project's products,
-copy archived products first and current revisions last, without `--delete`:
+If CHM reaches a newer date but successful postprocessing still reports older
+dates, compare `model.output_file` with the latest checkpoint's
+`ugrid_outputs[].path`. A copied checkpoint can make CHM append to the legacy
+NetCDF while SnowCast reads an older copy in the new project. Changing
+`recent_steps`, republishing, or simply rerunning CHM does not repair that path.
+
+For example, a CHM log reaching November 16 followed by a `completed` status
+with `output.times` of November 11, 12 and 13 means the export selected those
+older dates from its input NetCDF. `recent_steps: 3` was applied; it does not
+prove CHM and postprocessing used the same file. Inspect `snowcast status
+PROJECT` before another command overwrites the recorded status.
+
+Run the relative-path examples below from the SnowCast repository root, using
+the same Python environment as `snowcast`. From a directory inside the checkout
+(including `work/chm/output/logs_*`), return to the root with:
 
 ```bash
-rsync -rt --protect-args /projects/western-cordillera/work/postprocess/archive_tiff/ USER@ARCHIVE:/path/to/project/tiff/
-rsync -rt --protect-args /projects/western-cordillera/work/postprocess/tiff/ USER@ARCHIVE:/path/to/project/tiff/
-rsync -rt --protect-args /projects/western-cordillera/work/postprocess/archive_ascii/ USER@ARCHIVE:/path/to/project/asc/
-rsync -rt --protect-args /projects/western-cordillera/work/postprocess/ascii/ USER@ARCHIVE:/path/to/project/asc/
+cd "$(git rev-parse --show-toplevel)"
+snowcast status projects/western-cordillera
 ```
 
-Use the existing Western archive's actual destinations to continue its URLs;
-choose separate destinations for additional projects. Run ASCII synchronization
-only when ASCII exports are enabled. Copy the complete directories so masks,
-PAM metadata, overviews and projection sidecars travel with their rasters.
-Publish/refresh download indexes after these transfers. The COG upload utility
-transfers map COGs and refreshes the existing Western public archive index; it
-does not transfer original TIFF/ASCII products.
+An absolute project path works from any directory. A missing path ending in
+`logs_.../projects/western-cordillera` means the relative path was resolved from
+the log directory; the command has not reached the project's status file.
 
-## Existing publication helpers and the next stage
+1. Stop scheduled launches for both workflows and wait until neither has an
+   active or queued model/regridding job. The old and new outputs must be idle
+   while copying data and editing checkpoint metadata.
+2. Find the updated legacy NetCDF from the checkpoint's UGRID entry. Confirm
+   its time axis includes the missing dates and that it belongs to this same
+   model/mesh. The destination is the new project's
+   `work/chm/output/<model.output_file>`.
+3. Back up the destination and copy the complete updated NetCDF into it. Keep
+   the legacy file intact; do not link the two workflows' mutable output files.
+   For the default filename, this example preserves an existing destination
+   under a dated backup name (replace the source path):
 
-The existing local/mounted publication helper remains available with a flat
-project identity:
+   ```bash
+   rsync -ah --progress --backup --suffix=".before-recovery-$(date +%Y%m%dT%H%M%S)" \
+     /absolute/path/to/legacy/output.nc \
+     projects/western-cordillera/work/chm/output/output.nc
+   ```
+
+4. Back up the latest JSON checkpoint **inside the new project**, then change
+   its matching `ugrid_outputs` entry's `path` to the destination's absolute
+   path and `base_name` to `model.output_file` without `.nc`. Keep its simulation
+   time, timestep counter, rank count, `files` list and rank-state files intact.
+   Store the backup with a suffix after `.json` so auto-resume cannot select it.
+   Do not edit the legacy workflow's checkpoint. Older copied checkpoints also
+   need this correction before deliberately restoring one of them.
+
+   For the normal single-UGRID project, run this **after completing the NetCDF
+   copy in step 3**. It locks the project, refuses pending jobs, preserves a
+   backup, and changes only the UGRID path and basename. It does not copy or
+   check the time coverage of the NetCDF; confirm the required dates first.
+
+   ```bash
+   python - <<'PY'
+   import json
+   from snowcast_runner.project import load_project
+   from snowcast_runner.state import workspace
+   from snowcast_runner.cog_store import atomic_json
+
+   p = load_project("projects/western-cordillera")
+
+   with workspace(p):
+       if list((p.work / "jobs").glob("*.pending.json")):
+           raise SystemExit("Resolve pending jobs before editing the checkpoint.")
+
+       out = p.work / "chm" / "output"
+       target = out / p.model["output_file"]
+       if not target.is_file() or target.is_symlink():
+           raise SystemExit(f"Copy the updated NetCDF here first: {target}")
+
+       checkpoints = sorted((out / "checkpoint").glob("checkpoint_*.json"))
+       if not checkpoints:
+           raise SystemExit("No project checkpoint found.")
+
+       checkpoint = checkpoints[-1]
+       original = checkpoint.read_bytes()
+       data = json.loads(original)
+       entries = data.get("ugrid_outputs", [])
+       if not isinstance(entries, list) or len(entries) != 1 or not isinstance(entries[0], dict):
+           raise SystemExit("Expected one UGRID output; inspect this checkpoint manually.")
+
+       print("Checkpoint:", checkpoint)
+       print("Old path:", entries[0].get("path"))
+       print("New path:", target)
+
+       backup = checkpoint.with_name(checkpoint.name + ".before-path-fix")
+       with backup.open("xb") as f:
+           f.write(original)
+
+       entries[0]["path"] = str(target)
+       entries[0]["base_name"] = target.stem
+       atomic_json(checkpoint, data)
+       print("Updated. Backup:", backup)
+   PY
+   ```
+
+   An existing `.before-path-fix` backup stops the script before it changes the
+   checkpoint; retain that original backup. Pending records must be resolved
+   through normal job recovery, not deleted to bypass the check. The workspace
+   lock cannot stop a legacy writer or a PBS job whose runner disconnected, so
+   step 1 still applies.
+5. Regenerate and verify the staged configuration, then process and publish the
+   already-computed results:
+
+   ```bash
+   snowcast prepare projects/western-cordillera &&
+   snowcast postprocess projects/western-cordillera &&
+   snowcast status projects/western-cordillera &&
+   snowcast publish sites/snowcast.json --project western-cordillera
+   ```
+
+   `postprocess.recent_steps` must include the desired dates in the copied
+   NetCDF. `snowcast status projects/western-cordillera` reports the accepted
+   export timestamps. If HPFX/download mirrors are configured, run
+   `snowcast archive projects/western-cordillera` after postprocessing and before
+   publishing to update those originals and their download listings as well.
+
+The path checks intentionally do not copy large NetCDF files or modify
+checkpoint metadata automatically. Pulling this fix prevents further mismatched
+runs/exports; existing workspaces still need the above recovery once.
+
+## Original daily download archives
+
+Use `snowcast archive PROJECT` for original TIFF/ASCII uploads. Configure one or
+more `local`, `rsync` (including HPFX), or S3-compatible destinations in the
+project's JSON or a referenced JSON file. This is independent of Web UI
+publication; `publish` only advertises links from completed archive receipts.
+
+See the [archive configuration and migration guide](ARCHIVING.md) for JSON
+examples, preserving existing HPFX paths, mirrors, private backups, dry runs,
+retry behavior and daily command order.
 
 ```bash
-snowcast publish /projects/western-cordillera --site-dir /path/to/staging-site
+snowcast archive projects/western-cordillera --dry-run
+snowcast archive projects/western-cordillera
+snowcast publish sites/snowcast.json --project western-cordillera
+```
+
+## Publication
+
+Use the [site configuration](../sites/README.md) for both remote and local
+publication. Populate the observation cache and configure the site once, then
+publish each project independently:
+
+```bash
+snowcast download-data canswe
+snowcast site configure sites/snowcast.json --upload
+snowcast publish sites/snowcast.json --project western-cordillera
+```
+
+`publish` uploads by default. For local-only testing, configure without
+`--upload` and add `--no-upload` to `publish`. It writes the same COGs and
+`data/<project-id>/catalog.json` in the site's configured staging directory.
+There is no separate `site publish` command or project/`--site-dir` publish form.
+Publication also subsets cached observations for the chosen project and merges
+its station contribution with the other published projects. Publish every project
+once when adopting the observation registry. `publish` does not configure the
+site, download sources, or build/deploy the UI. See the
+[command table](../sites/README.md#what-each-command-does) and
+[migration sequence](../sites/README.md#first-setup-or-migration).
+
+UI installation remains separate. For a local/mounted site:
+
+```bash
 snowcast deploy-ui --dist /path/to/webui/dist --site-dir /path/to/staging-site
 ```
 
-It writes `data/<project-id>/catalog.json`, preserving safe COG conversion,
-concurrent registry updates, hydrological-year selection and 48-hour orphan
-cleanup. SWE/SD retain ten daily dates plus older weekly snapshots from September
-1 of the latest model date's hydrological year; temperature retains ten daily
-dates. Daily source archives remain daily. This refactor does not change COG
-encoding or digest algorithms.
+`deploy-ui` copies a completed build locally; it does not invoke npm or SSH. For
+a remote website, follow the [UI build/upload commands](../sites/README.md#build-and-deploy-the-ui),
+which preserve observation and model data.
 
-These helper commands do not implement the planned authoritative site config or
-remote multi-project deployment. For a single catalogue, the installed
-`python -m snowcast_runner.upload` utility supports SSH transfer; see the
-[web UI guide](../webui/README.md). UI deployment preserves published data.
+Publication preserves safe COG conversion, concurrent registry updates,
+hydrological-year selection and 48-hour orphan cleanup. SWE/SD retain ten daily
+dates plus older weekly snapshots from September 1 of the latest model date's
+hydrological year; temperature retains ten daily dates. Daily source archives
+remain daily. The flat per-project catalogue can still be opened directly with
+`?catalog=./data/western-cordillera/catalog.json`.
 
-The viewer still loads one catalogue, for example
-`?catalog=./data/western-cordillera/catalog.json`. The new flat URL differs from
-the earlier `data/<project>/<domain>/` location. No live catalogues or URLs are
-migrated automatically. Production namespace migration, total storage planning,
-site selection and the multi-project map belong to the next stage.
+The flat URL differs from the earlier `data/<project>/<domain>/` location. No
+live catalogues or URLs are migrated automatically. Original archive download
+integration, production namespace migration and scheduling remain separate
+from site publication. UI installation preserves published data and site config.
 
 ## Development checks
 

@@ -7,14 +7,13 @@ export interface SnowStation {
 }
 export interface StationIndex {
   version: number; dataset: { name: string; version: string; doi: string; through: string; citation: string; licence: string; licence_url: string };
-  stations: SnowStation[]; minimum_years: number; summary: string;
+  stations: SnowStation[]; minimum_years: number; summary: string; nearby_km?: number;
 }
-// Date, mm SWE, m depth, SWE/depth agency flags, SWE/depth CanSWE QC flags.
+// Date, mm SWE, m depth, SWE/depth agency flags, SWE/depth common QC flags (adapters normalize source flags).
 export type Observation = [string, number | null, number | null, string, string, string, string];
 export interface SeasonalBin { bin: number; years: number; first: number | null; last: number | null; q25: number | null; median: number | null; q75: number | null; samples: [number, number][] }
 export interface StationData { version: number; id: string; records: Observation[]; seasonal: { swe: SeasonalBin[]; depth: SeasonalBin[] } }
 export type SnowVariable = 'swe' | 'depth';
-export const STATION_INDEX_URL = new URL('./observations/canswe/index.json', typeof document === 'undefined' ? 'http://localhost/' : document.baseURI).href;
 export const agencyFlags: Record<string, string> = { A: 'Sampling problems', B: 'Outside nominal sampling period', C: 'Sampling problems and outside nominal period', E: 'Estimated', G: 'Measurement more than 1 km from station', M: 'Missing', P: 'Patches', R: 'Revised', T: 'Trace', Y: 'Precise sampling date unavailable' };
 export const qcFlags: Record<string, string> = { H: 'Snow depth outside QC range', M: 'Previously masked', V: 'Outlier', W: 'SWE outside QC range', D: 'Density failed QC' };
 const cache = new Map<string, StationData>();
@@ -27,6 +26,25 @@ export function snowVariable(id?: string): SnowVariable | null {
 }
 export function inBounds(station: SnowStation, bounds: number[]): boolean {
   return station.lon >= bounds[0] && station.lon <= bounds[2] && station.lat >= bounds[1] && station.lat <= bounds[3];
+}
+// Spherical distance to a geographic rectangle. Keep in sync with
+// snowcast_runner/canswe.py so generation and browser filtering agree.
+export function distanceToBoundsKm(station: SnowStation, bounds: number[]): number {
+  const [west, south, east, north] = bounds, { lon, lat } = station;
+  const rad = Math.PI / 180, radius = 6371;
+  if (lon >= west && lon <= east) return radius * rad * Math.max(south - lat, lat - north, 0);
+  const phi = lat * rad, low = south * rad, high = north * rad;
+  return Math.min(...[west, east].flatMap(edge => {
+    const delta = (lon - edge) * rad;
+    const nearest = Math.max(low, Math.min(high, Math.atan2(Math.sin(phi), Math.cos(phi) * Math.cos(delta))));
+    return [low, high, nearest].map(target => {
+      const a = Math.sin((target - phi) / 2) ** 2 + Math.cos(phi) * Math.cos(target) * Math.sin(delta / 2) ** 2;
+      return 2 * radius * Math.asin(Math.sqrt(Math.max(0, Math.min(1, a))));
+    });
+  }));
+}
+export function stationsForDomains(stations: SnowStation[], bounds: number[][], nearbyKm = 0): SnowStation[] {
+  return stations.filter(s => bounds.some(b => distanceToBoundsKm(s, b) <= nearbyKm));
 }
 export function snowYear(value: string): number { return Number(value.slice(0, 4)) + (Number(value.slice(5, 7)) >= 8 ? 1 : 0); }
 export function halfMonth(value: string): number { return ((Number(value.slice(5, 7)) + 4) % 12) * 2 + (Number(value.slice(8, 10)) > 15 ? 1 : 0); }
@@ -74,32 +92,33 @@ export function observationComparison(records: Observation[], model: PointValue[
 }
 export function parseIndex(value: unknown): StationIndex {
   const data = value as StationIndex;
-  if (data?.version !== 1 || !Array.isArray(data.stations) || !data.dataset?.doi || data.minimum_years < 1) throw new Error('Invalid CanSWE index');
+  if (data?.version !== 1 || !Array.isArray(data.stations) || !data.dataset?.doi || data.minimum_years < 1) throw new Error('Invalid station index');
+  if (data.nearby_km !== undefined && (!finite(data.nearby_km) || data.nearby_km < 0)) throw new Error('Invalid station nearby distance');
   const ids = new Set<string>();
   for (const s of data.stations) {
-    if (!s.id || ids.has(s.id) || typeof s.name !== 'string' || !finite(s.lon) || !finite(s.lat) || Math.abs(s.lon) > 180 || Math.abs(s.lat) > 90 || !nullable(s.elevation) || !s.counts || !isoDate.test(s.first) || !isoDate.test(s.last) || !/^stations\/[\w.-]+\.json(?:\.gz)?$/.test(s.href)) throw new Error('Invalid CanSWE station');
+    if (!s.id || ids.has(s.id) || typeof s.name !== 'string' || !finite(s.lon) || !finite(s.lat) || Math.abs(s.lon) > 180 || Math.abs(s.lat) > 90 || !nullable(s.elevation) || !s.counts || !isoDate.test(s.first) || !isoDate.test(s.last) || !/^stations\/[\w.-]+\.json(?:\.gz)?$/.test(s.href)) throw new Error('Invalid station station');
     ids.add(s.id);
   }
   return data;
 }
 export function parseStation(value: unknown, id: string): StationData {
   const data = value as StationData;
-  if (data?.version !== 1 || data.id !== id || !Array.isArray(data.records)) throw new Error('Invalid CanSWE history');
+  if (data?.version !== 1 || data.id !== id || !Array.isArray(data.records)) throw new Error('Invalid station history');
   let previous = '';
   for (const row of data.records) {
-    if (row.length !== 7 || !isoDate.test(row[0]) || row[0] <= previous || !nullable(row[1]) || !nullable(row[2]) || row.slice(3).some(v => typeof v !== 'string')) throw new Error('Invalid CanSWE observation');
+    if (row.length !== 7 || !isoDate.test(row[0]) || row[0] <= previous || !nullable(row[1]) || !nullable(row[2]) || row.slice(3).some(v => typeof v !== 'string')) throw new Error('Invalid station observation');
     previous = row[0];
   }
   for (const variable of ['swe', 'depth'] as const) {
-    if (data.seasonal?.[variable]?.length !== 24 || data.seasonal[variable].some((b, i) => b.bin !== i || !Number.isInteger(b.years) || ![b.q25, b.median, b.q75].every(nullable) || !Array.isArray(b.samples))) throw new Error('Invalid CanSWE seasonal summary');
+    if (data.seasonal?.[variable]?.length !== 24 || data.seasonal[variable].some((b, i) => b.bin !== i || !Number.isInteger(b.years) || ![b.q25, b.median, b.q75].every(nullable) || !Array.isArray(b.samples))) throw new Error('Invalid station seasonal summary');
   }
   return data;
 }
-export async function loadStation(station: SnowStation, signal: AbortSignal): Promise<StationData> {
-  const url = new URL(station.href, STATION_INDEX_URL).href;
+export async function loadStation(station: SnowStation, signal: AbortSignal, indexURL: string): Promise<StationData> {
+  const url = new URL(station.href, indexURL).href;
   if (cache.has(url)) return cache.get(url)!;
   const response = await fetch(url, { signal: AbortSignal.any([signal, AbortSignal.timeout(20000)]) });
-  if (!response.ok) throw new Error(`CanSWE history returned HTTP ${response.status}`);
+  if (!response.ok) throw new Error(`station history returned HTTP ${response.status}`);
   const bytes = new Uint8Array(await response.arrayBuffer());
   // Works with ordinary .gz files AND servers adding Content-Encoding: gzip
   // (in which case fetch already decompressed the body).

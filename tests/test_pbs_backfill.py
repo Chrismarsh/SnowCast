@@ -88,11 +88,16 @@ def chain(project_file):
     return next(p for p in (load_project(project_file).work / 'jobs').glob('*-chm-chain-*') if p.is_dir())
 
 
-def test_backfill_queues_linked_jobs_and_stops_after_completion(pbs_project, monkeypatch):
+def test_backfill_queues_linked_jobs_and_stops_after_completion(pbs_project, monkeypatch, capsys):
     scheduler = Scheduler(monkeypatch)
     processed = []
     monkeypatch.setattr('snowcast_runner.rasters.postprocess', lambda p: processed.append(p.id) or {})
     assert main(['run', str(pbs_project)]) == 0
+    output = capsys.readouterr()
+    assert output.out == 'west: completed\n'
+    assert 'Submitted PBS job 2.server after 1.server' in output.err
+    assert 'CHM segment 1 saved a checkpoint; continuing to the next PBS job' in output.err
+    assert 'CHM chain finished: completed' in output.err
     assert len(scheduler.submissions) == 5
     assert [j['dependency'] for j in scheduler.jobs.values()] == [None, '1.server', '2.server', '3.server', '4.server']
     project = load_project(pbs_project)
@@ -108,7 +113,7 @@ def test_backfill_queues_linked_jobs_and_stops_after_completion(pbs_project, mon
     assert json.loads((chain(pbs_project) / 'finished.json').read_text())['state'] == 'completed'
 
 
-def test_chain_continues_after_disconnect_and_recovery_does_not_resubmit(pbs_project, monkeypatch):
+def test_chain_continues_after_disconnect_and_recovery_does_not_resubmit(pbs_project, monkeypatch, capsys):
     scheduler = Scheduler(monkeypatch)
     scheduler.disconnect = True
     assert main(['run', str(pbs_project), '--no-postprocess']) == 1
@@ -120,7 +125,11 @@ def test_chain_continues_after_disconnect_and_recovery_does_not_resubmit(pbs_pro
     snapshot = (project.work / 'chm/config.json').read_bytes()
     processed = []
     monkeypatch.setattr('snowcast_runner.rasters.postprocess', lambda p: processed.append(p.id) or {})
+    capsys.readouterr()
     assert main(['run', str(pbs_project)]) == 0
+    output = capsys.readouterr()
+    assert 'Reconnecting to existing job:' in output.err
+    assert 'Submitted PBS job' not in output.err
     assert len(scheduler.jobs) == 5 and processed == ['west']
     assert (project.work / 'chm/config.json').read_bytes() == snapshot
 

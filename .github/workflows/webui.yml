@@ -1,10 +1,10 @@
 name: SnowCast explorer
 on:
   pull_request:
-    paths: ['snowcast_runner/**', 'projects/**', 'pyproject.toml', 'webui/**', 'scripts/**', 'tests/**', '.github/workflows/webui.yml']
+    paths: ['snowcast_runner/**', 'projects/**', 'sites/**', 'pyproject.toml', 'webui/**', 'scripts/**', 'tests/**', '.github/workflows/webui.yml']
   push:
     branches: [develop]
-    paths: ['snowcast_runner/**', 'projects/**', 'pyproject.toml', 'webui/**', 'scripts/**', 'tests/**', '.github/workflows/webui.yml']
+    paths: ['snowcast_runner/**', 'projects/**', 'sites/**', 'pyproject.toml', 'webui/**', 'scripts/**', 'tests/**', '.github/workflows/webui.yml']
 permissions:
   contents: read
 jobs:
@@ -24,3 +24,11 @@ jobs:
       - run: python -m pytest -q tests
       - run: npm ci && npm run check && npm test && npm run build
         working-directory: webui
+      - run: python scripts/make_multisite_demo.py
+      - run: npx playwright install --with-deps chromium && npm run test:browser
+        working-directory: webui
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-checks
+          path: webui/test-results/
