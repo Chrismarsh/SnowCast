@@ -108,6 +108,109 @@ def test_incremental_update_preserves_existing_metadata_and_reads_only_new_files
     assert opened == ['20261108.nc', '20261110.nc']
 
 
+@pytest.mark.parametrize('managed', [False, True])
+@pytest.mark.parametrize('change_config', [False, True])
+def test_relocated_archive_with_old_symlink_keeps_metadata_and_appends_new_files(
+        project_file, tmp_path, monkeypatch, managed, change_config):
+    if managed:
+        change(project_file, lambda r: r['forcing'].pop('index'))
+    assert main(['prepare', str(project_file)]) == 0
+    project = load_project(project_file)
+    archive, index = project.forcing['archive'], project.forcing['index']
+    binding = index.with_name(f'.{index.name}.archive.json')
+    rows = json.loads(index.read_text())
+    rows[0]['provider'] = 'hrdps'
+    index.write_text(json.dumps(rows))
+    previous = index.read_bytes(), index.stat().st_mtime_ns
+    snapshot = project.work / 'met/index.json'
+    old_snapshot = snapshot.read_bytes()
+    checkpoint = project.work / 'chm/output/checkpoint/retained-checkpoint'
+    checkpoint.parent.mkdir(parents=True, exist_ok=True)
+    checkpoint.write_bytes(b'existing model state')
+
+    moved = tmp_path / 'relocated-forcing'
+    archive.rename(moved)
+    archive.symlink_to(moved, target_is_directory=True)
+    if change_config:
+        change(project_file, lambda r: r['forcing'].update(archive=str(moved)))
+    assert json.loads(binding.read_text())['archive'] == str(archive)
+    assert all(Path(row['file_name']).is_file() for row in rows)
+    opened = []
+    real_open = xr.open_dataset
+
+    def tracked_open(filename, *args, **kwargs):
+        opened.append(Path(filename))
+        return real_open(filename, *args, **kwargs)
+
+    monkeypatch.setattr(xr, 'open_dataset', tracked_open)
+    assert main(['met-update', str(project_file)]) == 0
+    assert opened == []  # Relocation alone does not reread any NetCDF files.
+    assert (index.read_bytes(), index.stat().st_mtime_ns) == previous
+    assert snapshot.read_bytes() == old_snapshot
+    assert json.loads(binding.read_text()) == {'version': 1, 'archive': str(moved)}
+
+    daily_file(moved, '2026-11-10')
+    assert main(['prepare', str(project_file)]) == 0
+    assert opened == [moved / '20261110.nc']
+    updated = json.loads(index.read_text())
+    assert len(updated) == 2 and updated[0]['provider'] == 'hrdps'
+    assert {Path(row['file_name']).parent for row in updated} == {moved}
+    assert json.loads(snapshot.read_text()) == updated
+    assert checkpoint.read_bytes() == b'existing model state'
+
+
+def test_failed_update_after_archive_relocation_keeps_original_binding(project_file, tmp_path, monkeypatch):
+    project = load_project(project_file)
+    archive, index = project.forcing['archive'], project.forcing['index']
+    update_index(archive, index)
+    binding = index.with_name(f'.{index.name}.archive.json')
+    before = index.read_bytes(), binding.read_bytes()
+    moved = tmp_path / 'relocated-forcing'
+    archive.rename(moved)
+    archive.symlink_to(moved, target_is_directory=True)
+    daily_file(moved, '2026-11-10')
+
+    def incomplete(*args, **kwargs):
+        raise RuntimeError('incomplete forcing download')
+
+    monkeypatch.setattr(xr, 'open_dataset', incomplete)
+    with pytest.raises(RuntimeError, match='incomplete forcing'):
+        update_index(moved, index)
+    assert (index.read_bytes(), binding.read_bytes()) == before
+
+
+def test_archive_relocation_without_old_alias_is_not_silently_rebound(project_file, tmp_path):
+    project = load_project(project_file)
+    archive, index = project.forcing['archive'], project.forcing['index']
+    update_index(archive, index)
+    binding = index.with_name(f'.{index.name}.archive.json')
+    before = index.read_bytes(), binding.read_bytes()
+    moved = tmp_path / 'relocated-forcing'
+    archive.rename(moved)
+    with pytest.raises(ValueError, match='different archive') as error:
+        update_index(moved, index)
+    assert str(archive) in str(error.value) and str(moved) in str(error.value)
+    assert (index.read_bytes(), binding.read_bytes()) == before
+
+
+def test_relocated_archive_still_rejects_active_records_from_another_archive(project_file, tmp_path):
+    project = load_project(project_file)
+    archive, index = project.forcing['archive'], project.forcing['index']
+    update_index(archive, index)
+    binding = index.with_name(f'.{index.name}.archive.json')
+    moved = tmp_path / 'relocated-forcing'
+    archive.rename(moved)
+    archive.symlink_to(moved, target_is_directory=True)
+    other = daily_file(tmp_path / 'different-archive', '2026-11-10')
+    rows = json.loads(index.read_text())
+    rows.append({'file_name': str(other), 'start_time': '20261110T000000', 'end_time': '20261110T230000'})
+    index.write_text(json.dumps(rows))
+    before = index.read_bytes(), binding.read_bytes()
+    with pytest.raises(ValueError, match='contains files from a different archive'):
+        update_index(moved, index)
+    assert (index.read_bytes(), binding.read_bytes()) == before
+
+
 def test_concurrent_projects_share_canonical_index_lock(project_file):
     project = load_project(project_file)
     archive = project.forcing['archive']

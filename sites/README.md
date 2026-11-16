@@ -467,6 +467,7 @@ contract. See [CanSWE processing](../webui/data/README.md) for its scientific ru
 | Dataset is listed but no markers appear | Enable its station toggle in Map layers; check the selected dataset, search/filter and map extent. Nearby stations may lie outside the model footprint. |
 | Local preview works but the remote site does not change | `--no-upload` writes only staging, and `deploy-ui` is local/mounted only. Use remote configuration/publication and the separate UI rsync. |
 | `PROJECT is already running` | Wait for that project's active run/publish to finish, then retry. Different projects can proceed independently. |
+| `Forcing index belongs to a different archive` during `run` | This concerns the meteorological forcing source, independently of website deployment and original-output archiving. Relocating the same data with an old-path symlink is supported by the updated runner; see [forcing configuration and relocation](../projects/README.md#forcing-and-simulation-period). For a genuine mismatch, compare the recorded/requested paths and use separate indexes for different archives. |
 
 ### Publication says site is not configured
 

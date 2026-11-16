@@ -235,8 +235,30 @@ an explicit `index`. Writers lock the canonical index path, including symlink
 aliases used by different projects. A small archive-binding file next to the index
 prevents two independent projects from updating one index from different
 archives. Different start dates filter independent snapshots without removing
-shared history. Use separate indexes for separate archives. If an archive is
-relocated, create a new index for its new location instead of mixing paths.
+shared history. Use separate indexes for separate archives.
+
+If you relocate the same forcing archive and keep the old directory as a symlink
+to its new location, existing metadata file paths remain valid. The runner
+resolves both the recorded archive path and the configured path before comparing
+them. A successful update refreshes the archive binding to the new canonical
+path; a failed update preserves the previous binding and metadata. You can keep
+`forcing.archive` pointing through the old symlink or update it to the new path.
+Keep the old symlink while existing metadata or submitted jobs still reference
+it. The paths must also be accessible on the compute nodes.
+
+After pulling the relocation fix into the installation used by cron, check each
+project without submitting CHM:
+
+```bash
+snowcast met-update projects/western-cordillera
+snowcast met-update projects/tvc
+```
+
+This preserves existing metadata and indexes any new forcing files. An unchanged
+metadata index can still contain the old path; that is valid through the symlink.
+If the old path no longer resolves to the same archive, the runner rejects the
+mismatch and reports both paths. A genuinely different forcing archive needs a
+separate index; do not remove its binding simply to bypass that check.
 
 Index writes are atomic. An unchanged index is not rewritten, and an unreadable
 new file leaves the previous index intact. Already indexed files are assumed
