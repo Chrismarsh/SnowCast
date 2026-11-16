@@ -3,6 +3,7 @@ from pathlib import Path
 
 from .met import read_index, update_index
 from .cog_store import atomic_json
+from .progress import progress
 
 
 def met_directory(project):
@@ -29,13 +30,17 @@ def update_forcing(project):
     index = project.forcing['index']
     if project.forcing['managed_index'] and index.is_symlink():
         raise ValueError(f'Managed forcing metadata cannot be a symlink: {index}')
-    return update_index(archive, index, start_date=project.model.get('start_date'))
+    progress(f'Updating forcing index: {index}; archive: {archive}')
+    detail = update_index(archive, index, start_date=project.model.get('start_date'))
+    progress(f'Forcing index ready: {detail["added"]} new files, {detail["active_files"]} active files')
+    return detail
 
 
 def forcing_index(project):
     if project.forcing.get('archive') is not None:
         update_forcing(project)
     source = project.forcing['index']
+    progress(f'Reading forcing metadata: {source}')
     start_date = project.model.get('start_date')
     records = read_index(source, start_date=start_date)
     if not records:
@@ -49,4 +54,6 @@ def forcing_index(project):
     if target.is_symlink():
         raise ValueError(f'Forcing snapshot cannot be a symlink: {target}')
     atomic_json(target, records)
+    progress(f'Forcing snapshot: {len(records)} files, '
+             f'{min(row["start_time"] for row in records)} to {max(row["end_time"] for row in records)}')
     return target, max(row['end_time'] for row in records)

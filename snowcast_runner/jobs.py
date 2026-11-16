@@ -11,6 +11,25 @@ import uuid
 
 from .cog_store import atomic_json
 from .state import RUN_LOCK_FD
+from .progress import elapsed, progress
+
+
+PBS_STATES = {'Q': 'queued', 'R': 'running', 'H': 'held', 'W': 'waiting',
+              'S': 'suspended', 'T': 'transferring', 'E': 'exiting', 'B': 'running', 'F': 'finished'}
+
+
+def _pbs_state(output, job_id):
+    state = re.search(r'^\s*job_state\s*=\s*(\w+)\s*$', output or '', re.MULTILINE)
+    if state:
+        return PBS_STATES.get(state[1], state[1])
+    # Standard qstat table: Job ID, Name, User, Time Use, S, Queue.
+    for line in (output or '').splitlines():
+        fields = line.split()
+        # qstat may truncate the server name; this query is for one job ID.
+        if (len(fields) >= 6 and fields[0].split('.', 1)[0] == job_id.split('.', 1)[0]
+                and fields[-2] in PBS_STATES):
+            return PBS_STATES[fields[-2]]
+    return None
 
 
 class JobFailed(RuntimeError):
@@ -43,8 +62,12 @@ def wait_pbs(pending_path, *, consume=True):
         raise RuntimeError(f'PBS submission acknowledgement missing: {pending_path}. '
                            'Inspect the scheduler before recording the job ID or clearing this file.')
     result = Path(pending['result'])
+    started = last_report = time.monotonic()
+    previous_state = None
+    progress(f'Waiting for PBS job {pending["job_id"]}; log: {result.with_suffix(".log")}')
     while not result.exists():
         query = subprocess.run([pending['qstat'], pending['job_id']], capture_output=True, text=True)
+        current_state = _pbs_state(query.stdout, pending['job_id']) if query.returncode == 0 else None
         if query.returncode != 0:
             history = subprocess.run([pending['qstat'], '-xf', pending['job_id']], capture_output=True, text=True)
             state = re.search(r'^\s*job_state\s*=\s*(\w+)\s*$', history.stdout or '', re.MULTILINE)
@@ -55,24 +78,34 @@ def wait_pbs(pending_path, *, consume=True):
                             'job_state': 'F', 'exit_status': code, 'source': 'qstat -xf'})
                 if consume:
                     pending_path.unlink()
+                progress(f'PBS job {pending["job_id"]} finished with exit {code} '
+                         f'(scheduler history; waited {elapsed(time.monotonic() - started)})')
                 return code
             if history.returncode == 0 and state and state[1] in {'Q', 'R', 'H', 'W', 'S', 'T', 'E', 'B'}:
-                time.sleep(pending['poll_seconds'])
-                continue
-            # An unknown job or a scheduler outage is not evidence of completion.
-            detail = (history.stderr or query.stderr or '').strip()
-            raise RuntimeError(f'PBS job {pending["job_id"]} has no result and cannot be queried; '
-                               f'pending state retained in {pending_path}. {detail}')
+                current_state = PBS_STATES[state[1]]
+            else:
+                # An unknown job or a scheduler outage is not evidence of completion.
+                detail = (history.stderr or query.stderr or '').strip()
+                raise RuntimeError(f'PBS job {pending["job_id"]} has no result and cannot be queried; '
+                                   f'pending state retained in {pending_path}. {detail}')
+        now = time.monotonic()
+        if (current_state is not None and current_state != previous_state) or now - last_report >= 300:
+            progress(f'PBS job {pending["job_id"]}: {current_state or "still waiting"} '
+                     f'(waited {elapsed(now - started)})')
+            previous_state, last_report = current_state, now
         time.sleep(pending['poll_seconds'])
     code = int(result.read_text().strip())
     if consume:
         pending_path.unlink()
+    progress(f'PBS job {pending["job_id"]} finished with exit {code} '
+             f'(waited {elapsed(time.monotonic() - started)})')
     return code
 
 
 def resume_pending(work, *, submit_model_chain=False):
     recovered = []
     for pending in sorted((work / 'jobs').glob('*.pending.json')):
+        progress(f'Reconnecting to existing job: {pending}')
         record = json.loads(pending.read_text())
         if record.get('kind') == 'model-chain':
             from .backfill import resume_chain
@@ -102,6 +135,7 @@ def submit_pbs(command, *, cwd, job, directory, token, accepted_codes=(0,), depe
                '-v', f'SNOWCAST_WALLTIME={job["walltime"]}', '-o', str(log), '-j', 'oe']
     if dependency:
         options += ['-W', f'depend=afterok:{dependency}']
+    progress(f'Submitting PBS job {token}; queue: {job["queue"]}, walltime: {job["walltime"]}')
     submission = subprocess.run([*options, str(script)], capture_output=True, text=True)
     if submission.returncode:
         raise JobFailed(f'PBS submission failed; inspect {pending}: {submission.stderr.strip()}')
@@ -109,6 +143,7 @@ def submit_pbs(command, *, cwd, job, directory, token, accepted_codes=(0,), depe
     if not job_id or any(c.isspace() for c in job_id):
         raise JobFailed(f'Unexpected PBS acknowledgement; inspect {pending}')
     atomic_json(pending, {**record, 'state': 'submitted', 'job_id': job_id})
+    progress(f'Submitted PBS job {job_id}' + (f' after {dependency}' if dependency else '') + f'; log: {log}')
     return pending, log
 
 
@@ -122,6 +157,7 @@ def execute(command, *, work, cwd, job, label, accepted_codes=(0,)):
         script, log, result = (jobs / f'{token}{suffix}' for suffix in ('.sh', '.log', '.exit'))
         if job['mode'] == 'local':
             script.write_text(script_text(command, cwd, result, job['setup']))
+            progress(f'Starting local job {label}, attempt {attempt + 1}/{job["attempts"]}; log: {log}')
             with log.open('wb') as output:
                 lock_fd = RUN_LOCK_FD.get()
                 process = subprocess.Popen(['bash', str(script)], cwd=cwd, stdout=output,
@@ -137,11 +173,13 @@ def execute(command, *, work, cwd, job, label, accepted_codes=(0,)):
                         pass
                     process.wait()
                     raise
+            progress(f'Local job {label} finished with exit {code}')
         else:
             pending, log = submit_pbs(command, cwd=cwd, job=job, directory=jobs, token=token,
                                       accepted_codes=accepted_codes)
             code = wait_pbs(pending)
         if code not in job['retry_codes'] or attempt + 1 == job['attempts']:
             return code, log
+        progress(f'Retrying {label} after exit {code} in {job["retry_delay_seconds"]} seconds')
         time.sleep(job['retry_delay_seconds'])
     raise AssertionError('Validated attempts must be positive')

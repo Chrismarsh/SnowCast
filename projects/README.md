@@ -302,6 +302,22 @@ CHM. `postprocess` processes existing model output without rerunning CHM.
 `model.output_file` (default `output.nc`) must match the actual CHM output
 filename; it tells the postprocessor which file to read.
 
+`run` prints progress by default: forcing coverage, the latest checkpoint,
+PBS submissions and job IDs, log paths, checkpoint continuation, and the
+number/date range of output timesteps selected for postprocessing. Messages
+include a UTC timestamp and project ID, and are flushed immediately to stderr
+so they appear in redirected cron logs. PBS waits report scheduler state
+changes and a heartbeat every five minutes (at the next configured poll).
+Detailed CHM/MPI output stays in the reported job logs; this is stage progress,
+not a live model timestep counter. The final result remains on stdout.
+
+Use `snowcast run PROJECT --quiet` (or `-q`) to suppress progress while retaining
+the final result and errors. Capture both streams in cron with `>> run.log 2>&1`.
+For backfills, check the reported export dates: `postprocess.recent_steps`
+defaults to two output timesteps. Increase it to include the required dates
+still present in `output.nc`; if the model is already `up_to_date`, invoke
+`snowcast postprocess PROJECT` explicitly because `run` skips that stage.
+
 A project lock excludes duplicate writers, including a local job whose runner
 was killed. PBS pending submissions are recovered before changing staged
 configuration or forcing. This means `prepare` may wait for an already-running

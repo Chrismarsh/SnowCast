@@ -7,6 +7,7 @@ from pathlib import Path
 from .cog_store import atomic_json
 from .jobs import execute, JobFailed
 from .forcing import forcing_index
+from .progress import progress
 
 from .chm_config import read_model, model_inputs, mesh_input_entries
 
@@ -75,11 +76,15 @@ def archive_model_log(work, cwd):
 
 
 def run_model(project):
+    progress('Preparing CHM configuration and forcing')
     config, forcing_end, checkpoints = prepare(project)
     if checkpoints:
+        progress(f'Latest checkpoint: {checkpoints[-1].name}; forcing ends at {forcing_end}')
         stamp = re.search(r'checkpoint_(\d{8}T\d{6})', checkpoints[-1].name)
         if stamp and stamp[1] >= forcing_end:
             return 'up_to_date'
+    else:
+        progress(f'No checkpoint found; starting from {project.model.get("start_date") or "the CHM configured start date"}')
     cwd = config.parent
     clean_exit = cwd / 'output' / 'clean_exit'
     clean_exit.unlink(missing_ok=True)
@@ -90,6 +95,7 @@ def run_model(project):
             prune_checkpoints(project)
         return outcome
     for segment in range(project.model['max_runs']):
+        progress(f'Starting CHM segment {segment + 1}/{project.model["max_runs"]}')
         before = checkpoint_state(cwd)
         # Preserve model logs per segment; an old exception must not mark a new run failed.
         archive_model_log(project.work, cwd)
@@ -101,9 +107,11 @@ def run_model(project):
         if code:
             raise JobFailed(f'{project.id}: CHM exit {code}; see {log}')
         if clean_exit.is_file():
+            progress('CHM completed successfully')
             prune_checkpoints(project)
             return 'completed'
         after = checkpoint_state(cwd)
         if after == before:
             raise JobFailed(f'{project.id}: CHM exited without clean_exit or a new checkpoint; see {log}')
+        progress(f'CHM segment {segment + 1} saved a checkpoint; continuation required')
     raise JobFailed(f'{project.id}: CHM did not produce clean_exit after {project.model["max_runs"]} segments')

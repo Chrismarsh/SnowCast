@@ -4,9 +4,11 @@ import json
 from pathlib import Path
 import sys
 import subprocess
+import time
 
 from .project import load_project, validate_inputs, validate_forcing
 from .state import workspace, status
+from .progress import elapsed, progress, reporting
 
 
 def parser():
@@ -19,6 +21,8 @@ def parser():
             command.add_argument('--config-only', action='store_true', help='Validate structure without requiring external model inputs')
         if action == 'run':
             command.add_argument('--no-postprocess', action='store_true')
+            command.add_argument('-q', '--quiet', action='store_true',
+                                 help='Suppress progress messages; still print the result and errors')
     command = commands.add_parser('publish', help='Publish one selected project and upload to its configured website',
                                   description='Generate COGs for one project selected by the site config and upload '
                                               'by default. Use --no-upload for local-only publication.')
@@ -96,8 +100,10 @@ def main(argv=None):
         from .jobs import resume_pending
         from .model import run_model
         from .rasters import postprocess
-        with workspace(project):
+        started = time.monotonic()
+        with reporting(project.id, enabled=args.action == 'run' and not args.quiet), workspace(project):
             try:
+                progress(f'Starting run; workspace: {project.work}')
                 # Do not alter configuration or staging files used by a live PBS job.
                 recovered = resume_pending(project.work, submit_model_chain=args.action == 'run')
                 if 'completed' in recovered:
@@ -120,13 +126,17 @@ def main(argv=None):
                     outcome = recovered[-1] if recovered else run_model(project)
                     if outcome == 'up_to_date' or args.no_postprocess:
                         status(project, outcome)
+                        reason = 'model is up to date' if outcome == 'up_to_date' else '--no-postprocess requested'
+                        progress(f'Postprocessing skipped ({reason}); run finished in {elapsed(time.monotonic() - started)}')
                         print(f'{project.id}: {outcome}')
                         return 0
                 detail = postprocess(project)
                 status(project, 'completed', output=detail)
+                progress(f'Run completed in {elapsed(time.monotonic() - started)}; status: {project.work / "status.json"}')
                 print(f'{project.id}: completed')
             except BaseException as error:
                 status(project, 'failed', error=str(error), stage=args.action)
+                progress(f'Run failed after {elapsed(time.monotonic() - started)}; status: {project.work / "status.json"}')
                 from .notifications import notify_failure
                 notify_failure(project, args.action, error)
                 raise

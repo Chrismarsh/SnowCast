@@ -183,8 +183,10 @@ def accept_exports(project, source, expected_times=None):
 
 def postprocess(project):
     import xarray as xr
+    from .progress import progress
     pp = project.postprocess
     source = project.work / 'chm' / 'output' / project.model['output_file']
+    progress(f'Reading model output for postprocessing: {source}')
     with xr.open_dataset(source) as data:
         if 'time' not in data or not data.time.size:
             raise ValueError(f'Model output has no time coordinate: {source}')
@@ -193,6 +195,8 @@ def postprocess(project):
             raise ValueError(f'Model output missing variables: {sorted(missing)}')
         offsets = list(range(max(0, data.time.size - pp['recent_steps']), data.time.size))
         stamps = [str(data.time[i].dt.strftime('%Y%m%dT%H%M%S').item()) for i in offsets]
+        progress(f'Postprocessing {len(offsets)} of {data.time.size} available timesteps: '
+                 f'{stamps[0]} to {stamps[-1]}; variables: {", ".join(pp["variables"])}')
     folder = project.work / 'postprocess'
     folder.mkdir(exist_ok=True)
     # A stable staging path lets a scheduler job finish after its launcher exits.
@@ -208,4 +212,7 @@ def postprocess(project):
     code, log = execute(command, work=project.work, cwd=folder, job=pp['job'], label=f'{project.id}-grid')
     if code:
         raise JobFailed(f'{project.id}: regridding exit {code}; see {log}')
-    return accept_exports(project, raw, stamps)
+    progress('Regridding finished; validating and storing raster products')
+    detail = accept_exports(project, raw, stamps)
+    progress(f'Postprocessing completed; TIFFs: {folder / "tiff"}')
+    return detail
