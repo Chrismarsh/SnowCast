@@ -1,0 +1,229 @@
+{
+  "option": {
+    "per_triangle_timeseries": "false",
+    "ui": "false",
+    "debug_level": "debug",
+    "prj_name": "SnowCast"
+  },
+  "modules": [
+    "solar",
+    "WindNinja",
+    "iswr_from_obs",
+    "Longwave_from_obs",
+    "fast_shadow",
+    "iswr",
+    "kunkel_rh",
+    "p_no_lapse",
+    "t_monthly_lapse",
+    "scale_wind_vert",
+    "Harder_precip_phase",
+    "Simple_Canopy",
+    "FSM",
+    "fetchr",
+    "PBSM3D",
+    "snow_slide"
+  ],
+  "remove_depency": {
+    "Simple_Canopy": "FSM",
+    "scale_wind_vert": "FSM",
+    "snow_slide": "FSM",
+    "PBSM3D": "FSM",
+    "WindNinja": "FSM"
+  },
+  "config": {
+    "Thornton_p": {
+      "apply_cosine_correction": "true"
+    },
+    "p_no_lapse": {
+      "apply_cosine_correction": "true"
+    },
+    "snow_slide": {
+      "use_vertical_snow": "true"
+    },
+    "PBSM3D": {
+      "nLayer": "10",
+      "smooth_coeff": "2280",
+      "rouault_diffusion_coef": "false",
+      "min_sd_trans": "0.1",
+      "enable_veg": "true",
+      "snow_diffusion_const": "0.3",
+      "settling_velocity": "0.5",
+      "do_fixed_settling": "true",
+      "do_sublimation": "true",
+      "use_tanh_fetch": "true",
+      "use_R94_lambda": "false",
+      "use_PomLi_probability": "false",
+      "use_subgrid_topo": "false",
+      "use_subgrid_topo_V2": "false",
+      "z0_ustar_coupling": "false",
+      "debug_output": "false"
+    },
+    "fetchr": {
+      "incl_veg": "false",
+      "I": "0.06"
+    },
+    "WindNinja": {
+      "Max_spdup": "3.5",
+      "ninja_recirc": "true",
+      "compute_Sx": "true",
+      "Sx_crit": "20.0"
+    },
+    "iswr": {
+      "already_cosine_corrected": "true"
+    }
+  },
+  "parameter_mapping": {
+    "landcover": {
+      "0": {
+        "canopyType": "1",
+        "is_water": "false",
+        "LAI": "0",
+        "CanopyHeight": "0.1"
+      },
+      "1": {
+        "canopyType": "0",
+        "is_water": "false",
+        "LAI": "3",
+        "CanopyHeight": "15"
+      },
+      "2": {
+        "canopyType": "0",
+        "is_water": "false",
+        "LAI": "3",
+        "CanopyHeight": "15"
+      },
+      "3": {
+        "canopyType": "0",
+        "is_water": "false",
+        "LAI": "3",
+        "CanopyHeight": "15"
+      },
+      "4": {
+        "canopyType": "0",
+        "is_water": "false",
+        "LAI": "3",
+        "CanopyHeight": "15"
+      },
+      "5": {
+        "canopyType": "0",
+        "is_water": "false",
+        "LAI": "3",
+        "CanopyHeight": "15"
+      },
+      "6": {
+        "canopyType": "0",
+        "is_water": "false",
+        "LAI": "3",
+        "CanopyHeight": "15"
+      },
+      "7": {
+        "canopyType": "0",
+        "is_water": "false",
+        "LAI": "1",
+        "CanopyHeight": "0.5"
+      },
+      "8": {
+        "canopyType": "0",
+        "is_water": "false",
+        "LAI": "1",
+        "CanopyHeight": "0.5"
+      },
+      "9": {
+        "canopyType": "1",
+        "is_water": "false",
+        "LAI": "1",
+        "CanopyHeight": "0.2"
+      },
+      "10": {
+        "canopyType": "1",
+        "is_water": "false",
+        "LAI": "1",
+        "CanopyHeight": "0.2"
+      },
+      "11": {
+        "canopyType": "1",
+        "is_water": "false",
+        "LAI": "1",
+        "CanopyHeight": "0.1"
+      },
+      "12": {
+        "canopyType": "1",
+        "is_water": "false",
+        "LAI": "1",
+        "CanopyHeight": "0.1"
+      },
+      "13": {
+        "canopyType": "1",
+        "is_water": "false",
+        "LAI": "1",
+        "CanopyHeight": "0.1"
+      },
+      "14": {
+        "canopyType": "1",
+        "is_water": "false",
+        "LAI": "0",
+        "CanopyHeight": "0"
+      },
+      "15": {
+        "canopyType": "1",
+        "is_water": "false",
+        "LAI": "1",
+        "CanopyHeight": "0.3"
+      },
+      "16": {
+        "canopyType": "1",
+        "is_water": "false",
+        "LAI": "0.1",
+        "CanopyHeight": "0.05"
+      },
+      "17": {
+        "canopyType": "1",
+        "is_water": "false",
+        "LAI": "0",
+        "CanopyHeight": "0"
+      },
+      "18": {
+        "canopyType": "1",
+        "is_water": "true",
+        "LAI": "0",
+        "CanopyHeight": "0"
+      },
+      "19": {
+        "canopyType": "1",
+        "is_water": "false",
+        "LAI": "0.1",
+        "CanopyHeight": "0.1"
+      }
+    }
+  },
+  "output": {
+    "ugrid": {
+      "write_parameters": false,
+      "specific_time": "23:00"
+    }
+  },
+  "forcing": {
+    "num_stations_to_use": "4",
+    "interpolant": "spline",
+    "use_netcdf": true,
+    "UTC_offset": "0",
+    "filter": {
+      "scale_wind_speed": {
+        "Z_F": "40",
+        "variable": "U_R",
+        "ignore_canopy": "false"
+      },
+      "debias_lw": {
+        "factor": "20.0",
+        "variable": "Qli"
+      }
+    }
+  },
+  "checkpoint": {
+    "save_checkpoint": true,
+    "specific_time": "23:00",
+    "on_wallclock_limit": true,
+    "minutes_of_wallclock": 5,
+    "auto_resume": true
+  }
+}

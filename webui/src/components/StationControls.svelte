@@ -1,28 +1,33 @@
 <script lang="ts">
-  import type { SnowStation } from '../lib/canswe';
+  import { inBounds, type SnowStation } from '../lib/stations';
+  import type { ObservationDataset } from '../lib/observations';
+  export let dataset: ObservationDataset;
   export let enabled = true;
   export let loading = false;
   export let error = '';
   export let stations: SnowStation[] = [];
   export let cluster: SnowStation[] = [];
+  export let domainBounds: number[][] = [];
+  export let nearbyKm = 0;
   export let ontoggle: (value: boolean) => void;
   export let onchoose: (station: SnowStation) => void;
   export let onretry: () => void;
   let search = '';
   $: options = (cluster.length && !search ? cluster : stations).filter(s => `${s.name} ${s.id}`.toLowerCase().includes(search.trim().toLowerCase()));
+  $: insideCount = options.filter(s => domainBounds.some(b => inBounds(s, b))).length;
 </script>
-<section class="station-controls" aria-label="CanSWE station layer">
-  <label class="station-toggle"><input type="checkbox" checked={enabled} onchange={e => ontoggle(e.currentTarget.checked)}/><span>CanSWE stations<small>Historical SWE &amp; snow depth</small></span></label>
+<section class="station-controls" aria-label={`${dataset.label} station layer`}>
+  <label class="station-toggle"><input type="checkbox" checked={enabled} onchange={e => ontoggle(e.currentTarget.checked)}/><span>{dataset.label} stations<small>{dataset.description}</small></span></label>
   {#if enabled}
     {#if loading}<p role="status">Loading station locations…</p>
     {:else if error}<p class="station-error" role="status">{error} <button class="text-button" onclick={onretry}>Retry</button></p>
     {:else}
       <label class="station-search" for="station-search">Find a station<input id="station-search" type="search" bind:value={search} placeholder="Name or station ID"/></label>
-      <p class="station-count">{cluster.length && !search ? `${cluster.length} sites at this location — choose a record` : `${options.length} stations in the model domain`}</p>
-      <ul class="station-list" aria-label="Matching CanSWE stations">{#each options.slice(0,20) as station}<li><button onclick={() => onchoose(station)}><strong>{station.name}</strong><span>{station.id} · {station.first.slice(0,4)}–{station.last.slice(0,4)}</span></button></li>{/each}</ul>
+      <p class="station-count">{cluster.length && !search ? `${cluster.length} sites at this location — choose a record` : `${insideCount} inside model domains${nearbyKm ? ` · ${options.length - insideCount} nearby (within ${nearbyKm} km)` : ''}`}</p>
+      <ul class="station-list" aria-label={`Matching ${dataset.label} stations`}>{#each options.slice(0,20) as station}<li><button onclick={() => onchoose(station)}><strong>{station.name}</strong><span>{station.id} · {station.first.slice(0,4)}–{station.last.slice(0,4)}{#if !domainBounds.some(b => inBounds(station, b))} · Nearby · observations only{/if}</span></button></li>{/each}</ul>
       {#if options.length > 20}<p>Showing 20 matches. Type to narrow the list.</p>{/if}
       <div class="station-legend"><span><i></i>Manual</span><span><i class="automated"></i>Automated</span></div>
-      <p>Archive through July 2025. Click a marker to compare with historical observations.</p>
+      <p>Archive through {dataset.through}. Click a marker to compare with historical observations.</p>
     {/if}
   {/if}
 </section>

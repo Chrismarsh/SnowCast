@@ -4,9 +4,7 @@ from pathlib import Path
 
 import pytest
 
-spec = importlib.util.spec_from_file_location('download_index', Path(__file__).parents[1] / 'scripts/index_tiff_downloads.py')
-indexer = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(indexer)
+from snowcast_runner import downloads as indexer
 
 
 def row(name, size='379M'):

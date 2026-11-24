@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from postprocess.publish_cogs import retained_times, publish
+from snowcast_runner.publish_cogs import retained_times, publish
 from test_publish_cogs import write
 
 
@@ -86,7 +86,7 @@ def test_publisher_archives_snow_only_and_skips_unselected_source_hashing(tmp_pa
     # Previous-year archives must be skipped before even opening the dataset.
     for variable in ("swe", "snowdepthavg", "t"):
         (source / f'{variable}-0.001x0.001_20260831T230000.tiff').write_bytes(b'not a readable TIFF')
-    from postprocess import publish_cogs as publisher
+    from snowcast_runner import publish_cogs as publisher
     original = publisher.dataset_sha256
     hashed = []
     def digest(path):
@@ -111,7 +111,7 @@ def test_publisher_archives_snow_only_and_skips_unselected_source_hashing(tmp_pa
 
 
 def test_september_rollover_drops_published_previous_year_and_cleans_after_grace(tmp_path, monkeypatch):
-    from postprocess import publish_cogs as publisher
+    from snowcast_runner import publish_cogs as publisher
     source, output = tmp_path / 'input', tmp_path / 'output'
     for variable in ('swe', 'snowdepthavg', 't'):
         write(source, '20260831T230000', variable=variable)

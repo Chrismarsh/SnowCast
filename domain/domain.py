@@ -1,11 +1,16 @@
 import importlib.machinery
 import os
+from pathlib import Path
 import subprocess
 import shutil
 
 # Load in configuration file as module
 X = importlib.machinery.SourceFileLoader('config', os.path.join(os.getcwd(),'config.py'))
 X = X.load_module()
+
+landcover = Path(X.landcover).expanduser().resolve()
+if not landcover.is_file():
+    raise FileNotFoundError(f'Set landcover in config.py to an existing tree-cover raster: {landcover}')
 
 windmapper_config = """
 # Configuration file for windmapper when a DEM is downloaded from the SRTM 30m archive
@@ -91,8 +96,8 @@ wkt_out = "PROJCS[\\"North_America_Albers_Equal_Area_Conic\\"," \\
               "     UNIT[\\"Meter\\",1]," \\
               "     AUTHORITY[\\"EPSG\\",\\"102008\\"]]" 
               
-parameter_files = { 'landcover': {'file':'/Users/chris/Documents/science/data/Global/veg/60N_120W_treecover2010_v3.tif', 'method':'mean','classifier':Tree_cover_2_Simple_Canopy}, %s }
-              """ % WN_output
+parameter_files = { 'landcover': {'file':%r, 'method':'mean','classifier':Tree_cover_2_Simple_Canopy}, %s }
+              """ % (str(landcover), WN_output)
 
 with open('mesher_config.py', 'w') as file:
     file.write(mesher_config)

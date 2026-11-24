@@ -3,12 +3,15 @@
   import Icon from './Icon.svelte';
   import type { PointValue } from '../lib/types';
   import { formatValue } from '../lib/data';
-  import { binExtent, binLabel, flagsLabel, halfMonth, loadStation, matchedModel, observationComparison, observationCSV, observationValue, seasonDay, snowVariable, snowYear, type SnowStation, type StationData, type StationIndex } from '../lib/canswe';
+  import { binExtent, binLabel, flagsLabel, halfMonth, loadStation, matchedModel, observationComparison, observationCSV, observationValue, seasonDay, snowVariable, snowYear, type SnowStation, type StationData, type StationIndex } from '../lib/stations';
+  import type { ObservationDataset } from '../lib/observations';
+  export let dataset: ObservationDataset;
   export let station: SnowStation;
   export let index: StationIndex;
   export let variableId: string;
   export let model: PointValue[] = [];
   export let showModel = true;
+  export let outsideDomain = false;
   export let selectedTime = '';
   export let modelLoading = false;
   export let onretrymodel: () => void;
@@ -22,7 +25,8 @@
   const W = 340, H = 220, left = 40, right = 12, top = 18, bottom = 29;
   const months = ['Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul'];
   $: if (station.id !== loadedId) read(station);
-  $: variable = snowVariable(variableId);
+  $: snowKey = snowVariable(variableId);
+  $: variable = snowKey && dataset.variables[snowKey] ? snowKey : null;
   $: unit = variable === 'depth' ? 'm' : 'mm';
   $: records = data && variable ? data.records.filter(r => observationValue(r, variable!) !== null) : [];
   $: years = [...new Set(records.map(r => snowYear(r[0])))].sort((a, b) => b - a);
@@ -53,28 +57,29 @@
     controller?.abort(); controller = new AbortController();
     const pending = controller;
     loadedId = next.id; data = null; error = ''; year = 0; tableExpanded = false;
-    try { const result = await loadStation(next, pending.signal); if (!pending.signal.aborted) data = result; }
+    try { const result = await loadStation(next, pending.signal, dataset.index); if (!pending.signal.aborted) data = result; }
     catch (e) { if (!pending.signal.aborted) error = e instanceof Error ? e.message : 'Could not load station observations'; }
   }
   function download() {
     if (!data) return;
     const url = URL.createObjectURL(new Blob([observationCSV(station, data)], { type: 'text/csv;charset=utf-8' }));
-    const link = document.createElement('a'); link.href = url; link.download = `CanSWE-v8-${station.id}.csv`; link.click(); URL.revokeObjectURL(url);
+    const link = document.createElement('a'); link.href = url; link.download = `${dataset.id}-${dataset.release}-${station.id}.csv`; link.click(); URL.revokeObjectURL(url);
   }
   onDestroy(() => controller?.abort());
 </script>
 
-<section class="station-comparison" aria-label={showModel ? 'CanSWE station comparison' : 'CanSWE station observations'}>
-  <div class="station-source"><span class="station-badge">CanSWE · {index.dataset.version}</span><span>{station.automated ? 'Automated' : 'Manual survey'}</span></div>
+<section class="station-comparison" aria-label={`${dataset.label} station ${showModel ? 'comparison' : 'observations'}`}>
+  <div class="station-source"><span class="station-badge">{dataset.label} · {index.dataset.version}</span><span>{station.automated ? 'Automated' : 'Manual survey'}</span></div>
   <p class="station-meta">{station.id} · {station.elevation === null ? 'Elevation unavailable' : `${Math.round(station.elevation)} m elevation`}<br/>{station.agency}</p>
   <p class="station-record">Record: {station.first.slice(0, 4)}–{station.last.slice(0, 4)} · {station.method}</p>
+  {#if outsideDomain}<p class="comparison-note">Outside model coverage · observations only. No model comparison is available at this station.</p>{/if}
   {#if error}<div class="station-state" role="status">{error}<button class="text-button" onclick={() => read(station)}>Retry observations</button></div>
   {:else if !data}<div class="station-state" role="status"><span class="spinner"></span>Loading station observations…</div>
-  {:else if !variable}<p class="station-state">CanSWE provides SWE and snow depth comparisons. Choose one of those variables to view this station’s observations.</p>
+  {:else if !variable}<p class="station-state">{dataset.label} provides {Object.keys(dataset.variables).join(" and ")} comparisons. Choose an available snow variable to view this station’s observations.</p>
   {:else if !records.length}<p class="station-state">No {variable === 'swe' ? 'SWE' : 'snow depth'} observations are available at this station. Missing observations are not zero.</p>
   {:else}
     <div class="comparison-tabs" role="group" aria-label="Station comparison view"><button class:chosen={tab === 'seasonal'} aria-pressed={tab === 'seasonal'} onclick={() => tab = 'seasonal'}>Seasonal context</button><button class:chosen={tab === 'observations'} aria-pressed={tab === 'observations'} onclick={() => tab = 'observations'}>Observations</button></div>
-    {#if !showModel}<p class="comparison-note">Model comparison is hidden in Difference mode. Select Value to compare with observations.</p>{/if}
+    {#if !showModel && !outsideDomain}<p class="comparison-note">Model comparison is hidden in Difference mode. Select Value to compare with observations.</p>{/if}
     {#if tab === 'seasonal'}
       <h2>Historical seasonal context</h2><p class="chart-subtitle">All available years · {records[0][0].slice(0, 4)}–{last![0].slice(0, 4)}</p>
     {:else}
@@ -119,9 +124,9 @@
     {/if}
     <p class="last-observation">Last observation: <strong>{last![0]}</strong> · {formatValue(observationValue(last!,variable!),unit)} {unit}</p>
   {/if}
-  <div class="station-actions"><button class="outlined" disabled={!data} onclick={download}><Icon name="download" size={14}/>Observation CSV</button><a href={index.dataset.doi} target="_blank" rel="noreferrer">CanSWE source <Icon name="external" size={12}/></a></div>
+  <div class="station-actions"><button class="outlined" disabled={!data} onclick={download}><Icon name="download" size={14}/>Observation CSV</button><a href={index.dataset.doi} target="_blank" rel="noreferrer">{dataset.label} source <Icon name="external" size={12}/></a></div>
   {#if showModel}<p class="comparison-note">Station measurements and model grid values represent different areas of terrain. A survey location may differ from the surrounding grid cell.</p>{/if}
-  <details class="station-details"><summary>Source and attribution</summary><p>{index.dataset.citation} Archive coverage ends {index.dataset.through}; this is not a live observation feed.</p><p><a href="https://doi.org/10.5194/essd-13-4603-2021" target="_blank" rel="noreferrer">Dataset methods: Vionnet et al. (2021)</a><br/><a href={index.dataset.licence_url} target="_blank" rel="noreferrer">{index.dataset.licence}</a></p></details>
+  <details class="station-details"><summary>Source and attribution</summary><p>{index.dataset.citation} Archive coverage ends {index.dataset.through}; this is not a live observation feed.</p><p>{#if dataset.methods_url}<a href={dataset.methods_url} target="_blank" rel="noreferrer">Dataset methods</a><br/>{/if}<a href={index.dataset.licence_url} target="_blank" rel="noreferrer">{index.dataset.licence}</a></p></details>
 </section>
 
 <style>
