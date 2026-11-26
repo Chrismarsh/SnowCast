@@ -48,6 +48,36 @@ shared pair that has expired is reported instead of silently substituted.
 
 ![Working explorer with explicitly labelled synthetic COG data](docs/explorer-demo-20261105.jpg)
 
+## Live CaLDAS SWE overlay
+
+In **Map layers**, enable **CaLDAS SWE** to display ECCC's latest 2.5 km
+snow-water-equivalent analysis. It is off by default, with an independent opacity
+slider and ECCC legend (millimetres). The overlay sits above the model and
+satellite imagery and below observation markers. Its caption shows the UTC
+analysis time; it remains on that analysis when the model date, variable,
+playback or Difference mode changes. Point values, histories and CSV downloads
+continue to describe SnowCast model output.
+
+The browser reads the latest advertised analysis from
+[MSC GeoMet](https://eccc-msc.github.io/open-data/msc-geomet/wms_en/) and requests
+transparent WMS images for `CaLDAS-NSRPS_2.5km_SnowWaterEquiv`. Both `TIME` and
+`DIM_REFERENCE_TIME` are pinned to the advertised defaults. The service's style
+is used for both the map and its legend. **Refresh CaLDAS** retries a failure or
+loads a newer analysis; enabled, visible pages also check every 15 minutes.
+Failures are shown separately from model-loading errors. No GeoMet requests are
+started while the overlay is off. Links preserve `caldas=1` and `caldasOpacity`;
+a shared link displays the latest available analysis when opened.
+
+This is a browser-only overlay: no model rerun, data download, archive destination
+or `snowcast publish` change is required. **Rebuild and deploy the Web UI** using
+the commands below to make the toggle available on the website. The browser
+needs access to `https://geo.weather.gc.ca` for metadata, map images and the
+legend (allow that host in `connect-src` and `img-src` if using a Content Security
+Policy). Availability and recent analysis coverage follow ECCC's service;
+SnowCast does not archive these images or add them to the Data tab.
+
+Source: [ECCC CaLDAS-NSRPS documentation](https://eccc-msc.github.io/open-data/msc-data/nwp_caldas-nsrps/readme_caldas-nsrps_en/).
+
 ## How the COGs are generated
 
 The project model pipeline is:

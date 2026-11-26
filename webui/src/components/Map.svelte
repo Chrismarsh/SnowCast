@@ -19,6 +19,7 @@
   import { initialRenderer, isRendererPreference, RendererSelection, RENDERER_STORAGE_KEY, type RendererPreference } from '../lib/renderer';
   import { HlsSource } from '../lib/hlsSource';
   import { HLS_MIN_ZOOM, hlsWindow, initialHls, type HlsSettings, type HlsStatus, type HlsPick } from '../lib/hls';
+  import { CaldasLayer, type CaldasStatus } from '../lib/caldas';
   import { ModelLayers } from '../lib/modelLayers';
   import type { ModelFrame } from '../lib/projects';
   import 'ol/ol.css';
@@ -43,6 +44,11 @@
   export let satelliteRevision = 0;
   export let onsatellitestatus: (status: HlsStatus, zoomedOut: boolean) => void = () => {};
   export let onsatellitepick: (pick: HlsPick | null) => void = () => {};
+  export let caldasEnabled = false;
+  export let caldasOpacity = .7;
+  export let caldasRevision = 0;
+  export let oncaldasstatus: (status: CaldasStatus) => void = () => {};
+  let caldasLayer: CaldasLayer;
   let satelliteLayer: TileLayer<HlsSource>;
   let satelliteKey = '';
   let satelliteStatusFrame = 0;
@@ -126,6 +132,7 @@
     probe?.getExtension('WEBGL_lose_context')?.loseContext();
     base = new TileLayer({ preload: 0 });
     satelliteLayer = new TileLayer({ zIndex: 20, preload: 0, cacheSize: 64, visible: false, minZoom: HLS_MIN_ZOOM - 0.001 });
+    caldasLayer = new CaldasLayer(status => oncaldasstatus(status));
     marker = new VectorSource();
     stationSource = new VectorSource();
     const stationStyles = new globalThis.Map<string, Style>();
@@ -145,7 +152,7 @@
       target,
       pixelRatio: displayPixelRatio(window.devicePixelRatio, [target.clientWidth, target.clientHeight], lowDetail),
       controls: defaults({ zoom: false, rotate: false, attributionOptions: { collapsible: false } }),
-      layers: [base, satelliteLayer, stationLayer, new VectorLayer({
+      layers: [base, satelliteLayer, caldasLayer, stationLayer, new VectorLayer({
         source: marker, zIndex: 50,
         style: new Style({ image: new Circle({ radius: 7, fill: new Fill({ color: '#08777a' }), stroke: new Stroke({ color: 'white', width: 3 }) }) }),
       })],
@@ -179,7 +186,7 @@
     });
     map.on('pointermove', e => { if (!e.dragging) target.style.cursor = map.hasFeatureAtPixel(e.pixel, { layerFilter: layer => layer === stationLayer, hitTolerance: 6 }) ? 'pointer' : ''; });
     mounted = true;
-    return () => { mounted = false; cancelAnimationFrame(satelliteStatusFrame); satelliteLayer.getSource()?.dispose(); models.dispose(); map.setTarget(undefined); map.dispose(); };
+    return () => { mounted = false; cancelAnimationFrame(satelliteStatusFrame); satelliteLayer.getSource()?.dispose(); caldasLayer.dispose(); models.dispose(); map.setTarget(undefined); map.dispose(); };
   });
 
   function queueSatelliteStatus() {
@@ -239,5 +246,6 @@
   }
   $: if (mounted) stationLayer.setVisible(stationsVisible);
   $: if (mounted) setSatellite(satellite, satelliteRevision);
+  $: if (mounted) caldasLayer.configure(caldasEnabled, caldasOpacity, caldasRevision);
 </script>
 <div bind:this={target} class="map-canvas" aria-label="Interactive snowpack map"></div>

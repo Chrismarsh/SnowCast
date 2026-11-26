@@ -8,6 +8,8 @@
   import HelpDialog from './components/HelpDialog.svelte';
   import StationPanel from './components/StationPanel.svelte';
   import StationControls from './components/StationControls.svelte';
+  import CaldasControls from './components/CaldasControls.svelte';
+  import type { CaldasStatus } from './lib/caldas';
   import SatelliteControls from './components/SatelliteControls.svelte';
   import { initialHls, hlsWindow, hlsParams, sceneLabel, type HlsSettings, type HlsStatus, type HlsPick } from './lib/hls';
   import { stationsForDomains, parseIndex, type SnowStation, type StationIndex } from './lib/stations';
@@ -67,6 +69,19 @@
   try { savedBasemap = localStorage.getItem(BASEMAP_STORAGE_KEY); } catch { /* Storage may be unavailable. */ }
   let basemap = initialBasemap(params.get('basemap'), savedBasemap);
   let basemapOpen = false;
+  let caldasEnabled = params.get('caldas') === '1';
+  const requestedCaldasOpacity = Number(params.get('caldasOpacity') ?? .7);
+  let caldasOpacity = Number.isFinite(requestedCaldasOpacity) ? Math.max(0, Math.min(1, requestedCaldasOpacity)) : .7;
+  let caldasRevision = 0;
+  let caldasStatus: CaldasStatus = { loading: false };
+  function changeCaldas(enabled: boolean, opacity: number) {
+    caldasEnabled = enabled; caldasOpacity = opacity;
+    const url = new URL(window.location.href);
+    url.searchParams.set('caldas', enabled ? '1' : '0');
+    url.searchParams.set('caldasOpacity', String(opacity));
+    window.history.replaceState(null, '', url);
+  }
+  function refreshCaldas() { caldasRevision++; }
   let satellite = initialHls(params);
   let satelliteRevision = 0;
   let satelliteStatus: HlsStatus = { pending: 0, loaded: 0, empty: 0, failed: 0 };
@@ -481,14 +496,14 @@
 
 <main class="workspace">
   <section class="map-workspace" class:comparison={mode === 'difference'} aria-label="Map and playback">
-    <Map bind:this={map} frames={frameSelection.frames} selectionId={selected?.id || ''} initialView={initialMapView} onviewchange={saveMapView} {satellite} {satelliteRevision} onsatellitestatus={satelliteProgress} onsatellitepick={value => satellitePick = value} {opacity} {hideZeroSnow} {point} {basemap} bounds={domainBounds || [-132, 46.4, -109.8, 56]} stations={domainStations} {stationsVisible} onstation={station => selectStation(station)} onstationcluster={showCluster} onpick={pick} onready={ready} onerror={failed} onslow={id => slowFrameId = id}/>
+    <Map bind:this={map} frames={frameSelection.frames} selectionId={selected?.id || ''} initialView={initialMapView} onviewchange={saveMapView} {caldasEnabled} {caldasOpacity} {caldasRevision} oncaldasstatus={value => caldasStatus = value} {satellite} {satelliteRevision} onsatellitestatus={satelliteProgress} onsatellitepick={value => satellitePick = value} {opacity} {hideZeroSnow} {point} {basemap} bounds={domainBounds || [-132, 46.4, -109.8, 56]} stations={domainStations} {stationsVisible} onstation={station => selectStation(station)} onstationcluster={showCluster} onpick={pick} onready={ready} onerror={failed} onslow={id => slowFrameId = id}/>
     <div class="map-toolbar">
       {#if siteMode}<label class="project-picker surface"><span>Zoom to</span><select aria-label="Zoom to project" value={zoomProjectId} onchange={e => zoomProject(e.currentTarget.value)}><option value="">All projects</option>{#each projects as project}<option value={project.id}>{project.name}</option>{/each}</select></label>{/if}
       <AreaPicker bounds={domainBounds} onchoose={chooseArea}/>
       <div class="variable-tabs surface" role="group" aria-label="Map variable">{#each variables as v}<button class:active={variableId === v.id} onclick={() => chooseVariable(v.id)}>{v.label}</button>{/each}</div>
     </div>
     <div class="map-tools"><div class="surface tool-pair"><button aria-label="Zoom in" onclick={() => map?.zoom(1)}><Icon name="plus"/></button><button aria-label="Zoom out" onclick={() => map?.zoom(-1)}><Icon name="minus"/></button></div><button class="surface icon-button" aria-label="Fit model domain" onclick={() => map?.fit()}><Icon name="target"/></button><button class="surface icon-button" aria-label="Choose map layers" aria-expanded={basemapOpen} aria-controls="basemap-picker" onclick={() => { basemapOpen = !basemapOpen; stationCluster = []; }}><Icon name="layers"/></button>
-      {#if basemapOpen}<div class="basemap-picker surface" id="basemap-picker"><div class="basemap-heading"><strong>Map layers</strong><button class="icon-button" aria-label="Close map layers" onclick={() => basemapOpen = false}><Icon name="close" size={14}/></button></div><label class="basemap-label" for="basemap-select">Basemap</label><select id="basemap-select" value={basemap} onchange={e => chooseBasemap(e.currentTarget.value)}>{#each basemapIds as id}<option value={id}>{basemaps[id].label}</option>{/each}</select><p>None hides the basemap; model data and stations remain available.</p><SatelliteControls settings={satellite} onchange={changeSatellite} onrefresh={refreshSatellite}/><section class="observation-datasets" aria-label="Observation datasets"><label class="basemap-label" for="observation-dataset">Observations</label>
+      {#if basemapOpen}<div class="basemap-picker surface" id="basemap-picker"><div class="basemap-heading"><strong>Map layers</strong><button class="icon-button" aria-label="Close map layers" onclick={() => basemapOpen = false}><Icon name="close" size={14}/></button></div><label class="basemap-label" for="basemap-select">Basemap</label><select id="basemap-select" value={basemap} onchange={e => chooseBasemap(e.currentTarget.value)}>{#each basemapIds as id}<option value={id}>{basemaps[id].label}</option>{/each}</select><p>None hides the basemap; model data and stations remain available.</p><CaldasControls enabled={caldasEnabled} opacity={caldasOpacity} status={caldasStatus} onchange={changeCaldas} onrefresh={refreshCaldas}/><SatelliteControls settings={satellite} onchange={changeSatellite} onrefresh={refreshSatellite}/><section class="observation-datasets" aria-label="Observation datasets"><label class="basemap-label" for="observation-dataset">Observations</label>
       {#if registryLoading}<p role="status">Loading observation datasets…</p>
       {:else if registryError}<p role="status">{registryError} <button class="text-button" onclick={loadObservationRegistry}>Retry</button></p>
       {:else if !observationDatasets.length}<p>No observation datasets have been published for this site.</p>
@@ -501,6 +516,15 @@
     {:else if stale && !catalogue?.sample_data}<div class="map-banner">Latest model output is over 48 hours old. <button class="text-button" onclick={load}>Refresh</button></div>{/if}
     {#if variable}
       <div class="map-bottom">
+      {#if caldasEnabled}
+        <div class="caldas-caption satellite-caption surface" role="status" aria-label="CaLDAS overlay status">
+          <button class="text-button" onclick={() => basemapOpen = true}>CaLDAS SWE · 2.5 km · Legend / settings</button>
+          {#if caldasStatus.error}<span class="satellite-error">{caldasStatus.error} <button class="text-button" onclick={refreshCaldas}>Retry CaLDAS</button></span>
+          {:else if caldasOpacity === 0}<span>CaLDAS layer hidden at 0% opacity.</span>
+          {:else if caldasStatus.loading}<span><span class="spinner"></span> Loading CaLDAS…</span>{/if}
+          {#if caldasStatus.time}<span>Analysis: {timeLabel(caldasStatus.time)} · Independent of model date</span>{/if}
+        </div>
+      {/if}
       {#if satellite.enabled}
         <div class="satellite-caption surface" role="status">
           <button class="text-button" onclick={() => basemapOpen = true}>Sentinel-2 / Landsat · {satellite.view === 'snow' ? 'Snow false colour' : 'True colour'}</button>
@@ -514,7 +538,7 @@
           {#if satelliteStatus.first}<span>Visible observations: {satelliteStatus.first}{satelliteStatus.first !== satelliteStatus.last ? ` → ${satelliteStatus.last}` : ''} · Click for exact date.</span>{/if}
         </div>
       {/if}
-      <div class="legend surface">{#if siteMode}<div class="legend-scope">{legendProject ? `${legendProject.name} scale` : 'All projects · common scale'}</div>{/if}<div>{legendVariable?.title} <span>· {variable.unit}</span></div><div class="colour-ramp" style={`background:linear-gradient(90deg,${colors.join(',')})`}></div><div class="legend-labels">{#each [0, .25, .5, .75, 1] as fraction}<span>{formatValue(legendVariable.range[0] + (legendVariable.range[1] - legendVariable.range[0]) * fraction, variable.unit)}{fraction === 1 ? '+' : ''}</span>{/each}</div>{#if displayed?.difference}<div class="difference-key"><span>{legendVariable.palette === 'temperature-difference' ? 'Cooling' : 'Decrease'}</span><span>0</span><span>{legendVariable.palette === 'temperature-difference' ? 'Warming' : 'Increase'}</span></div>{/if}</div>
+      <div class="legend surface">{#if siteMode}<div class="legend-scope">{legendProject ? `${legendProject.name} scale` : 'All projects · common scale'}</div>{/if}<div>{caldasEnabled ? 'SnowCast · ' : ''}{legendVariable?.title} <span>· {variable.unit}</span></div><div class="colour-ramp" style={`background:linear-gradient(90deg,${colors.join(',')})`}></div><div class="legend-labels">{#each [0, .25, .5, .75, 1] as fraction}<span>{formatValue(legendVariable.range[0] + (legendVariable.range[1] - legendVariable.range[0]) * fraction, variable.unit)}{fraction === 1 ? '+' : ''}</span>{/each}</div>{#if displayed?.difference}<div class="difference-key"><span>{legendVariable.palette === 'temperature-difference' ? 'Cooling' : 'Decrease'}</span><span>0</span><span>{legendVariable.palette === 'temperature-difference' ? 'Warming' : 'Increase'}</span></div>{/if}</div>
       <div class="timeline surface">
         <div class="timeline-heading"><div class="map-mode" role="group" aria-label="Map display"><button class:active={mode === 'value'} aria-pressed={mode === 'value'} onclick={() => chooseMode('value')}>Value</button><button class:active={mode === 'difference'} aria-pressed={mode === 'difference'} onclick={() => chooseMode('difference')}>Difference</button></div><span>{displayed?.difference ? `${dateLabel(displayed.difference.from.datetime)} → ${dateLabel(displayed.datetime)} · To − From` : displayed ? (siteMode ? `${dateLabel(displayed.datetime)} · UTC day` : timeLabel(displayed.datetime)) : 'Preparing map'}</span></div>
         {#if hasArchive}<div class="history-controls"><label>History<select aria-label="History range" value={showArchive ? 'all' : 'recent'} onchange={e => chooseHistory(e.currentTarget.value === 'all')}><option value="recent">Recent {catalogue?.window_days || 10} days</option><option value="all">Daily + weekly archive</option></select></label>{#if showArchive}<span>Older dates are weekly snapshots</span>{/if}</div>{/if}
@@ -559,6 +583,7 @@
       {:else}<p class="subtle selected-time">{displayed ? (siteMode && point ? (pointDisplayTime ? timeLabel(pointDisplayTime) : 'No model data for this date') : siteMode ? `${dateLabel(displayed.datetime)} · UTC day` : timeLabel(displayed.datetime)) : 'Select a simulation'}</p>{#if !selectedStation}<div class="stats"><div><strong>{change == null ? '—' : `${change > 0 ? '+' : ''}${formatValue(change, variable?.unit)} ${variable?.unit}`}</strong><span>Since first frame</span></div><div><strong>{siteMode && point ? pointDates.filter(d => d.asset).length : available} <span>/ {dates.length || 10}</span></strong><span>Dates available</span></div></div>{/if}{/if}</section>{/if}
     {#if selectedStation && stationIndex && observationDataset}{#key observationDatasetId}<StationPanel dataset={observationDataset} station={selectedStation} index={stationIndex} {variableId} outsideDomain={!pointProject} showModel={!!pointProject && mode === 'value' && !displayed?.difference} model={series} selectedTime={displayed?.datetime || ''} modelLoading={querying} onretrymodel={() => { if (point) query(point, pointDates); }}/>{/key}{:else}<section class="history-section"><div class="section-heading"><h2>History</h2><span>{variable?.label || 'SWE'} · {variable?.unit || 'mm'}</span></div>{#if querying}<div class="chart-empty"><span class="spinner"></span>Reading full-resolution values…</div>{:else if point && series.length}<Trend values={series} selectedTime={displayed?.datetime || ''} unit={variable?.unit || 'mm'} onselect={selectTime}/><p class="subtle small">{mode === 'difference' ? 'Absolute model values. Select a date to change the To date.' : 'Select a date to view it on the map.'}</p>{#if series.some(v => v.error)}<p class="query-error" role="status">Some raster reads failed. Check range requests and CORS. <button class="text-button" onclick={() => point && query(point, pointDates)}>Retry</button></p>{:else if series.every(v => v.value === null)}<p class="subtle small">No model data at this location.</p>{/if}{:else}<div class="chart-empty"><Icon name="pin" size={28}/><span>Select a point to reveal its history.</span></div>{/if}</section>
     {/if}
+    {#if caldasEnabled && point}<p class="point-project">Point values and charts show SnowCast. CaLDAS is a visual overlay; its colours use the ECCC legend in Map layers.</p>{/if}
     {#if satellite.enabled && point}
       <section class="satellite-point" aria-label="Satellite observation at selected location">
         <h2>Satellite observation</h2>
