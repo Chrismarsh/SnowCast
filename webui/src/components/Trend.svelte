@@ -24,14 +24,14 @@
 <svg class="trend" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Model ${unit} values. Use the date buttons below the chart to select a frame.`}>
   {#each [0, 0.5, 1] as step}
     {@const value = low + step * (high - low)}
-    <line x1={left} x2={W - right} y1={y(value)} y2={y(value)} stroke="#e0e7e7" />
+    <line x1={left} x2={W - right} y1={y(value)} y2={y(value)} stroke="var(--ui-border,#e0e7e7)" />
     <text x={left - 9} y={y(value) + 4} text-anchor="end">{formatValue(value, unit)}</text>
   {/each}
-  <path d={line} fill="none" stroke="#08777a" stroke-width="2.2" stroke-linecap="round" />
+  <path d={line} fill="none" stroke="var(--teal,#08777a)" stroke-width="2.2" stroke-linecap="round" />
   {#each values as v}
-    {#if v.time === selectedTime}<line x1={x(v.time)} x2={x(v.time)} y1={top} y2={H - bottom} stroke="#08777a" stroke-dasharray="2 4" />{/if}
+    {#if v.time === selectedTime}<line x1={x(v.time)} x2={x(v.time)} y1={top} y2={H - bottom} stroke="var(--teal,#08777a)" stroke-dasharray="2 4" />{/if}
     {#if v.value !== null}
-      <circle cx={x(v.time)} cy={y(v.value)} r={v.time === selectedTime ? 5 : 3.2} stroke="#08777a" stroke-width="1.5" fill={v.time === selectedTime ? '#08777a' : 'white'}><title>{dateLabel(v.time)}: {formatValue(v.value, unit)} {unit}</title></circle>
+      <circle cx={x(v.time)} cy={y(v.value)} r={v.time === selectedTime ? 5 : 3.2} stroke="var(--teal,#08777a)" stroke-width="1.5" fill={v.time === selectedTime ? 'var(--teal)' : 'var(--ui-surface,white)'}><title>{dateLabel(v.time)}: {formatValue(v.value, unit)} {unit}</title></circle>
     {/if}
   {/each}
   {#if values.length}

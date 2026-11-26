@@ -6,6 +6,17 @@
     <meta name="theme-color" content="#08777a" />
     <meta name="description" content="Download daily SnowCast GeoTIFFs and AEP ASCII grids. Browse snow water equivalent, snow depth and temperature by date and format." />
     <title>SnowCast · Data downloads</title>
+    <script>
+      (() => {
+        let preference = 'system';
+        try { preference = localStorage.getItem('snowcast-theme') || 'system'; } catch {}
+        const dark = preference === 'dark' || (preference !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+        document.documentElement.style.backgroundColor = dark ? '#0c151d' : '#edf1ef';
+        document.querySelector('meta[name="theme-color"]').content = dark ? '#111c24' : '#08777a';
+      })();
+    </script>
   </head>
   <body><div id="app"></div><script type="module" src="/src/downloads.ts"></script></body>
 </html>

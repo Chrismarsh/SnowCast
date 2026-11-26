@@ -59,6 +59,7 @@
   let stationSource: VectorSource;
   let stationLayer: VectorLayer<Cluster>;
   let base: TileLayer<XYZ>;
+  let baseLabels: TileLayer<XYZ>;
   let rendering: RendererSelection;
   let models: ModelLayers;
   let fitted = false;
@@ -105,20 +106,18 @@
   function setBasemap(mode: BasemapId) {
     if (baseMode === mode) return;
     baseMode = mode;
-    const old = base.getSource();
     baseProgress = new TileProgress();
     const counter = baseProgress;
     const definition = basemaps[mode];
-    base.setVisible(mode !== 'none');
-    if (!definition.url) {
-      base.setSource(null); old?.dispose(); return;
+    for (const [layer, url] of [[base, definition.url], [baseLabels, 'labelsUrl' in definition ? definition.labelsUrl : undefined]] as const) {
+      const old = layer.getSource();
+      layer.setVisible(!!url);
+      const source = url ? new XYZ({ ...definition, url, crossOrigin: 'anonymous', transition: 0 }) : null;
+      source?.on('tileloadstart', e => counter.start(e.tile));
+      source?.on('tileloadend', e => counter.end(e.tile));
+      source?.on('tileloaderror', e => counter.end(e.tile, true));
+      layer.setSource(source); old?.dispose();
     }
-    const source = new XYZ({ ...definition, crossOrigin: 'anonymous', transition: 0 });
-    source.on('tileloadstart', e => counter.start(e.tile));
-    source.on('tileloadend', e => counter.end(e.tile));
-    source.on('tileloaderror', e => counter.end(e.tile, true));
-    base.setSource(source);
-    old?.dispose();
   }
 
   onMount(() => {
@@ -131,6 +130,7 @@
     rendering = new RendererSelection(preference, !!probe, rememberRenderer);
     probe?.getExtension('WEBGL_lose_context')?.loseContext();
     base = new TileLayer({ preload: 0 });
+    baseLabels = new TileLayer({ preload: 0, zIndex: 1 });
     satelliteLayer = new TileLayer({ zIndex: 20, preload: 0, cacheSize: 64, visible: false, minZoom: HLS_MIN_ZOOM - 0.001 });
     caldasLayer = new CaldasLayer(status => oncaldasstatus(status));
     marker = new VectorSource();
@@ -152,7 +152,7 @@
       target,
       pixelRatio: displayPixelRatio(window.devicePixelRatio, [target.clientWidth, target.clientHeight], lowDetail),
       controls: defaults({ zoom: false, rotate: false, attributionOptions: { collapsible: false } }),
-      layers: [base, satelliteLayer, caldasLayer, stationLayer, new VectorLayer({
+      layers: [base, baseLabels, satelliteLayer, caldasLayer, stationLayer, new VectorLayer({
         source: marker, zIndex: 50,
         style: new Style({ image: new Circle({ radius: 7, fill: new Fill({ color: '#08777a' }), stroke: new Stroke({ color: 'white', width: 3 }) }) }),
       })],
@@ -186,7 +186,7 @@
     });
     map.on('pointermove', e => { if (!e.dragging) target.style.cursor = map.hasFeatureAtPixel(e.pixel, { layerFilter: layer => layer === stationLayer, hitTolerance: 6 }) ? 'pointer' : ''; });
     mounted = true;
-    return () => { mounted = false; cancelAnimationFrame(satelliteStatusFrame); satelliteLayer.getSource()?.dispose(); caldasLayer.dispose(); models.dispose(); map.setTarget(undefined); map.dispose(); };
+    return () => { mounted = false; cancelAnimationFrame(satelliteStatusFrame); base.getSource()?.dispose(); baseLabels.getSource()?.dispose(); satelliteLayer.getSource()?.dispose(); caldasLayer.dispose(); models.dispose(); map.setTarget(undefined); map.dispose(); };
   });
 
   function queueSatelliteStatus() {

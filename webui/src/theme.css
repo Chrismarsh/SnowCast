@@ -1,0 +1,41 @@
+/* Only interface colours change. Raster palettes and scientific imagery retain
+   their original colours; chart lines keep their model/observation identities. */
+:root[data-theme=dark] {
+  --teal:#6bd4c9;
+  --border:#344650;
+  --muted:#a4b5be;
+  --ink:#e7eef2;
+  --ui-page:#0c151d;
+  --ui-surface:#111c24;
+  --ui-surface-soft:#192832;
+  --ui-surface-raised:#20343e;
+  --ui-glass:rgba(17,28,36,.97);
+  --ui-map:#0b131a;
+  --ui-selected:#21433f;
+  --ui-action:#126c70;
+  --ui-text-primary:#e7eef2;
+  --ui-text-secondary:#c0cfd6;
+  --ui-text-muted:#a4b5be;
+  --ui-border:#344650;
+  --ui-border-strong:#68808e;
+  --ui-warning-bg:#302b22;
+  --ui-warning-text:#ecc796;
+  --ui-warning-border:#62523b;
+  --ui-error-bg:#382520;
+  --ui-error-text:#ffb38f;
+  --ui-success-bg:#19352f;
+  --ui-success-text:#a0d3b7;
+  --ui-shadow:#0005;
+  --ui-backdrop:#02080dbb;
+  --chart-observation:#e1b176;
+  --chart-band:#b68c58;
+  --chart-sparse:#d0b38d;
+}
+:root[data-theme=dark] .brand-icon{filter:invert(1);mix-blend-mode:screen}
+:root[data-theme=dark] .ol-attribution{color:var(--ui-text-secondary)}
+:root[data-theme=dark] .ol-attribution a{color:var(--ui-text-secondary);text-shadow:none}
+:root[data-theme=dark] .caldas-legend img{background:#fff;border-radius:3px}
+/* Keep the appearance menu reachable above map controls on narrow screens. */
+.app-header:has(.theme-control[open]){z-index:100}
+@media(max-width:760px){:root .app-header{gap:10px}:root .app-header nav{margin-right:0}}
+@media(max-width:360px){:root .app-header{gap:5px}:root .brand{font-size:19px;gap:4px}:root .brand-icon{width:23px}:root .app-header nav a,:root .app-header nav button{padding:7px 5px}}

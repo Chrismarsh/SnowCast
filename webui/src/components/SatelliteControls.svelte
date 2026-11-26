@@ -39,6 +39,6 @@
 <style>
   .satellite-controls{border-top:1px solid var(--border);margin-top:15px;padding-top:14px}
   .toggle{display:flex;align-items:center;gap:8px;font-size:12px;margin:0}.toggle input{accent-color:var(--teal);margin:0}.toggle span{margin-left:auto;font-size:10px;color:var(--muted);white-space:nowrap}
-  label:not(.toggle){display:block;font-size:10px;color:#526b69;margin:12px 0 5px}select,input[type=date]{width:100%;font-size:12px}input[type=range]{width:100%;margin:8px 0}
-  p{font-size:11px;line-height:1.5;color:#647278;margin:8px 0 0}.opacity{display:flex!important;justify-content:space-between}.text-button{font-size:11px;margin-top:12px}
+  label:not(.toggle){display:block;font-size:10px;color:var(--ui-text-secondary,#526b69);margin:12px 0 5px}select,input[type=date]{width:100%;font-size:12px}input[type=range]{width:100%;margin:8px 0}
+  p{font-size:11px;line-height:1.5;color:var(--ui-text-muted,#647278);margin:8px 0 0}.opacity{display:flex!important;justify-content:space-between}.text-button{font-size:11px;margin-top:12px}
 </style>

@@ -58,17 +58,17 @@
   .area-trigger{padding:11px 12px;display:flex;gap:8px;align-items:center;font-size:13px;font-weight:550;white-space:nowrap}
   .area-trigger :global(svg:first-child){color:var(--teal)}
   .chevron{display:flex;transition:transform .15s}.chevron.rotated{transform:rotate(180deg)}
-  .area-panel{position:absolute;top:calc(100% + 8px);left:0;width:294px;max-width:calc(100vw - 28px);max-height:min(620px,calc(100dvh - 155px));display:flex;flex-direction:column;overflow:hidden;background:#fff}
+  .area-panel{position:absolute;top:calc(100% + 8px);left:0;width:294px;max-width:calc(100vw - 28px);max-height:min(620px,calc(100dvh - 155px));display:flex;flex-direction:column;overflow:hidden;background:var(--ui-surface,#fff)}
   .whole-domain{display:flex;gap:11px;align-items:center;text-align:left;padding:15px 16px;border-bottom:1px solid var(--border);flex-shrink:0;font-size:13px;font-weight:600}
   .whole-domain :global(svg){color:var(--teal)}
   small{display:block;font-weight:400;font-size:11px;color:var(--muted);margin-top:3px}
   .group-heading{padding:14px 16px 7px;color:var(--muted);font-size:10px;font-weight:650;letter-spacing:.7px;text-transform:uppercase;flex-shrink:0}
   ul{list-style:none;padding:0 6px 6px;margin:0;overflow:auto;overscroll-behavior:contain;min-height:0}
   li button{width:100%;padding:9px 10px;display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left;font-size:13px;border-radius:5px;min-height:48px}
-  li button :global(svg){color:#8b9c9e}
-  li button:hover,li button:focus-visible{background:#edf6f4;filter:none}
+  li button :global(svg){color:var(--ui-text-muted,#8b9c9e)}
+  li button:hover,li button:focus-visible{background:var(--ui-selected,#edf6f4);filter:none}
   li button:focus-visible{outline-offset:-3px}
-  .area-footer{padding:12px 16px;border-top:1px solid var(--border);font-size:11px;line-height:1.5;flex-shrink:0;background:#f8fbfa}
+  .area-footer{padding:12px 16px;border-top:1px solid var(--border);font-size:11px;line-height:1.5;flex-shrink:0;background:var(--ui-surface-soft,#f8fbfa)}
   .area-footer p{color:var(--muted);margin-bottom:6px}
   .area-footer a{display:inline-flex;gap:6px;align-items:center;text-decoration:none;font-weight:550}
   .area-footer a:hover{text-decoration:underline}

@@ -17,6 +17,13 @@ export const basemaps = {
     attributions: 'Imagery © Esri, Maxar, Earthstar Geographics, and the GIS User Community',
     maxZoom: 17,
   },
+  dark: {
+    label: 'Esri dark grey',
+    url: 'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+    labelsUrl: 'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
+    attributions: 'Tiles © Esri, HERE, Garmin, <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors',
+    maxZoom: 17,
+  },
   none: { label: 'None — data only', url: undefined, attributions: '', maxZoom: 19 },
 } as const;
 
@@ -27,8 +34,9 @@ export const BASEMAP_STORAGE_KEY = 'snowcast-basemap';
 export function isBasemap(value: string | null | undefined): value is BasemapId {
   return !!value && Object.hasOwn(basemaps, value);
 }
-export function initialBasemap(requested: string | null, saved: string | null): BasemapId {
+export function initialBasemap(requested: string | null, saved: string | null, dark = false): BasemapId {
+  const fallback = dark ? 'dark' : DEFAULT_BASEMAP;
   if (isBasemap(requested)) return requested;
-  if (requested === 'auto') return DEFAULT_BASEMAP;
-  return isBasemap(saved) ? saved : DEFAULT_BASEMAP;
+  if (requested === 'auto') return fallback;
+  return isBasemap(saved) ? saved : fallback;
 }
