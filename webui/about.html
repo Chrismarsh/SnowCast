@@ -6,6 +6,17 @@
     <meta name="theme-color" content="#08777a" />
     <meta name="description" content="About SnowCast, the Canadian Hydrological Model, and the research collaboration between Environment and Climate Change Canada and the University of Saskatchewan." />
     <title>SnowCast · About</title>
+    <script>
+      (() => {
+        let preference = 'system';
+        try { preference = localStorage.getItem('snowcast-theme') || 'system'; } catch {}
+        const dark = preference === 'dark' || (preference !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+        document.documentElement.style.backgroundColor = dark ? '#0c151d' : '#edf1ef';
+        document.querySelector('meta[name="theme-color"]').content = dark ? '#111c24' : '#08777a';
+      })();
+    </script>
   </head>
   <body><div id="app"></div><script type="module" src="/src/about.ts"></script></body>
 </html>

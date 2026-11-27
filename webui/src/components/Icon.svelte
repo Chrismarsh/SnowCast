@@ -2,6 +2,9 @@
   export let name = 'pin';
   export let size = 20;
   const paths: Record<string, string> = {
+    sun: 'M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5M17 12a5 5 0 1 1-10 0 5 5 0 0 1 10 0Z',
+    moon: 'M20.5 14A9 9 0 0 1 10 3.5 9 9 0 1 0 20.5 14Z',
+    monitor: 'M3 4h18v13H3ZM8 21h8M12 17v4',
     pin: 'M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0ZM15 10a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z',
     play: 'm8 5 11 7-11 7Z', pause: 'M8 5v14M16 5v14',
     previous: 'M5 5v14M18 5l-9 7 9 7Z', next: 'M19 5v14M6 5l9 7-9 7Z',

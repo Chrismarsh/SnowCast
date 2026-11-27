@@ -2,6 +2,8 @@
   import snowflake from './assets/snowcast-snowflake.png';
   import { onMount, tick } from 'svelte';
   import Map from './components/Map.svelte';
+  import ThemeControl from './components/ThemeControl.svelte';
+  import { resolvedTheme } from './lib/theme';
   import Icon from './components/Icon.svelte';
   import AreaPicker from './components/AreaPicker.svelte';
   import Trend from './components/Trend.svelte';
@@ -67,7 +69,9 @@
   }
   let savedBasemap: string | null = null;
   try { savedBasemap = localStorage.getItem(BASEMAP_STORAGE_KEY); } catch { /* Storage may be unavailable. */ }
-  let basemap = initialBasemap(params.get('basemap'), savedBasemap);
+  let automaticBasemap = params.get('basemap') === 'auto' || (!isBasemap(params.get('basemap')) && !isBasemap(savedBasemap));
+  let basemap = initialBasemap(params.get('basemap'), savedBasemap, $resolvedTheme === 'dark');
+  $: if (automaticBasemap) basemap = initialBasemap('auto', null, $resolvedTheme === 'dark');
   let basemapOpen = false;
   let caldasEnabled = params.get('caldas') === '1';
   const requestedCaldasOpacity = Number(params.get('caldasOpacity') ?? .7);
@@ -132,6 +136,7 @@
 
   function chooseBasemap(value: string) {
     if (!isBasemap(value)) return;
+    automaticBasemap = false;
     basemap = value;
     try { localStorage.setItem(BASEMAP_STORAGE_KEY, value); } catch { /* Keep the session choice. */ }
     const url = new URL(window.location.href);
@@ -491,6 +496,7 @@
 <header class="app-header">
   <a class="brand" href={window.location.pathname + window.location.search} aria-label="SnowCast home"><img class="brand-icon" src={snowflake} width="40" height="40" alt=""/><span>SnowCast</span></a>
   <nav aria-label="Main navigation"><button class="active nav-explore" aria-current="page" onclick={() => dialog?.close()}>Explore</button><a href="./downloads.html">Data</a><a href="./about.html">About</a><button onclick={() => help.open()}>Help</button></nav>
+  <ThemeControl/>
   <span class:sample={catalogue?.sample_data} class="status-pill"><span class="status-dot"></span>{catalogue?.sample_data ? 'Demo · Synthetic data' : 'Daily simulations'}</span>
 </header>
 

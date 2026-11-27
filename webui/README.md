@@ -48,6 +48,30 @@ shared pair that has expired is reported instead of silently substituted.
 
 ![Working explorer with explicitly labelled synthetic COG data](docs/explorer-demo-20261105.jpg)
 
+## Light and dark appearance
+
+Use the **Appearance** control in the header (sun, moon or monitor icon) to choose
+**Light**, **Dark** or **System**. System is the default and follows your device,
+including changes while the page is open. Your choice is remembered in this
+browser across Explore, Data and About, and synchronizes across open tabs. If
+browser storage is unavailable, the current page still supports a manual choice.
+The saved theme is applied before the app loads to avoid a white flash.
+
+With no explicit basemap preference, Light uses Esri topographic and Dark uses
+Esri dark grey with reference labels. A basemap selected in Map layers or a
+shared link stays selected when appearance changes. `?basemap=auto` overrides a
+saved basemap and follows the current appearance; `?basemap=dark` explicitly
+selects Esri dark grey. Appearance itself is a browser preference and is not
+forced onto recipients of shared map links.
+
+Dark mode changes interface colours and chart contrast. SWE, snow-depth,
+temperature and difference-map colour scales, model values, satellite imagery
+and CaLDAS images retain their scientific colours. The external CaLDAS legend
+keeps its light background so ECCC's labels remain readable.
+
+This is a Web UI update: rebuild and deploy `webui/dist/` as described below.
+`snowcast publish` does not deploy the appearance controls.
+
 ## Live CaLDAS SWE overlay
 
 In **Map layers**, enable **CaLDAS SWE** to display ECCC's latest 2.5 km
@@ -262,10 +286,11 @@ is fetched beside the UI's `index.html`, even with `?site=` or `?catalog=` links
 The old v2 source/assets are retired; deployed files are not removed by that
 source cleanup.
 
-Esri topographic is the default basemap. The layers button opens a picker for
-OpenStreetMap, Esri topographic, Esri satellite, or None (model data only).
+Esri topographic is the default basemap in Light mode; Esri dark grey is the default
+in Dark mode when no explicit basemap is selected. The layers button opens a picker for
+OpenStreetMap, Esri topographic, Esri satellite, Esri dark grey, or None (model data only).
 The choice is saved in this browser and in the page URL; an explicit
-`?basemap=osm`, `terrain`, `satellite`, or `none` takes precedence over the saved
+`?basemap=osm`, `terrain`, `satellite`, `dark`, or `none` takes precedence over the saved
 choice. `?basemap=auto` resets to Esri topographic. Switching basemaps does not
 reload the COG layer, reset the date, or clear the selected point.
 
