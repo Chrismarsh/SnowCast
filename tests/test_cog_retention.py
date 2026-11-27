@@ -110,7 +110,7 @@ def test_publisher_archives_snow_only_and_skips_unselected_source_hashing(tmp_pa
     assert retention['hydrological_year_start'] == '2026-09-01'
 
 
-def test_september_rollover_drops_published_previous_year_and_cleans_after_grace(tmp_path, monkeypatch):
+def test_september_rollover_drops_previous_year_and_cleans_immediately(tmp_path, monkeypatch):
     from snowcast_runner import publish_cogs as publisher
     source, output = tmp_path / 'input', tmp_path / 'output'
     for variable in ('swe', 'snowdepthavg', 't'):
@@ -135,8 +135,5 @@ def test_september_rollover_drops_published_previous_year_and_cleans_after_grace
     assert len(current['variables']) == 3
     assert all([a['datetime'] for a in v['assets']] == ['2026-09-01T23:00:00Z'] for v in current['variables'])
     assert len(hashed) == 3 and all('20260901' in name for name in hashed)
-    assert all(path.exists() for path in old_paths)
-
-    publish([source], output, now=now + timedelta(hours=48, seconds=1))
     assert all(not path.exists() for path in old_paths)
     assert len(list(source.glob('*.tiff'))) == 6  # Daily source archive is untouched.

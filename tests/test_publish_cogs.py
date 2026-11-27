@@ -64,7 +64,7 @@ def test_revision_has_new_url_and_idempotent_republish(tmp_path):
     write(src, value=225)
     new = publisher.publish([src], dst)["variables"][0]["assets"][0]
     assert old["href"] != new["href"]
-    assert (dst / old["path"]).exists()
+    assert not (dst / old["path"]).exists()
 
 
 def test_failed_conversion_leaves_previous_catalogue_valid(tmp_path):
@@ -204,6 +204,7 @@ def test_mixed_archive_and_current_inputs_only_publish_the_target_grid(tmp_path)
 
 
 def test_migrates_a_mixed_legacy_catalogue_without_retaining_coarse_dates(tmp_path):
+    import shutil
     source = write(tmp_path / "fine", "20261104T230000")
     output = tmp_path / "published"
     legacy = publisher.publish([source.parent], output)
@@ -211,8 +212,11 @@ def test_migrates_a_mixed_legacy_catalogue_without_retaining_coarse_dates(tmp_pa
     coarse = tmp_path / "coarse"
     write(coarse, "20261105T230000", grid="0.01x0.01")
     write(coarse, "20261106T230000", grid="0.01x0.01")
-    with pytest.warns(UserWarning, match="Omitting"):
-        coarse_catalogue = publisher.publish([coarse], output, grid="0.01x0.01")
+    # Construct a mixed legacy store without a modern publication pruning the
+    # fine-grid fixture before the migration is tested.
+    coarse_output = tmp_path / "coarse-published"
+    coarse_catalogue = publisher.publish([coarse], coarse_output, grid="0.01x0.01")
+    shutil.copytree(coarse_output / "cogs", output / "cogs", dirs_exist_ok=True)
     legacy["variables"][0]["assets"] += coarse_catalogue["variables"][0]["assets"]
     legacy.pop("grid")
     publisher.atomic_json(output / "catalog.json", legacy)
@@ -288,23 +292,18 @@ def test_coarse_only_inputs_require_explicit_grid_selection(tmp_path):
     assert catalogue["grid"] == "0.01x0.01"
 
 
-def test_external_mask_addition_revision_and_removal_change_the_published_asset(tmp_path):
+def test_external_mask_changes_do_not_republish_unchanged_tiff(tmp_path, monkeypatch):
     source = write(tmp_path / "input")
     output = tmp_path / "published"
+    original = publisher.publish([source.parent], output)["variables"][0]["assets"][0]
     tiff_digest = publisher.sha256(source)
+    assert original["source_sha256"] == tiff_digest
+    cog = output / original["path"]
+    before = (cog.read_bytes(), cog.stat().st_mtime_ns)
     mask_path = Path(str(source) + ".msk")
-
-    def publish_mask(expected):
-        asset = publisher.publish([source.parent], output)["variables"][0]["assets"][0]
-        with rasterio.open(output / asset["path"]) as cog:
-            np.testing.assert_array_equal(cog.read_masks(1), expected)
-        assert publisher.publish([source.parent], output)["variables"][0]["assets"][0] == asset
-        return asset
-
-    with rasterio.open(source) as src:
-        original_mask = src.read_masks(1)
-    original = publish_mask(original_mask)
-    masks = []
+    monkeypatch.setattr(publisher, "convert", lambda *a: pytest.fail("Unchanged TIFF was reconverted"))
+    # Sidecars are deliberately outside the identity contract. A meaningful
+    # mask revision must be embedded in the TIFF (covered separately below).
     for start in (10, 20):
         mask = np.full((600, 600), 255, dtype="uint8")
         mask[start:start + 10, :30] = 0
@@ -312,45 +311,79 @@ def test_external_mask_addition_revision_and_removal_change_the_published_asset(
             with rasterio.open(source, "r+") as src:
                 src.write_mask(mask)
         assert mask_path.is_file()
+        with rasterio.open(source) as src:
+            assert str(mask_path) in src.files
         assert publisher.sha256(source) == tiff_digest
-        masks.append(publish_mask(mask))
-    assert len({a["href"] for a in [original, *masks]}) == 3
+        assert publisher.dataset_sha256(source) == tiff_digest
+        assert publisher.publish([source.parent], output)["variables"][0]["assets"][0] == original
     mask_path.unlink()
-    restored = publish_mask(original_mask)
-    assert restored["href"] == original["href"] != masks[-1]["href"]
+    assert publisher.publish([source.parent], output)["variables"][0]["assets"][0] == original
+    assert (cog.read_bytes(), cog.stat().st_mtime_ns) == before
+    assert list(output.rglob("*.tif")) == [cog]
 
 
-def test_legacy_tiff_only_identity_is_rebuilt_with_dataset_dependencies(tmp_path):
+def test_sidecar_manifest_identity_migrates_once_to_tiff_bytes(tmp_path, monkeypatch):
+    import hashlib
     source = write(tmp_path / "input")
     output = tmp_path / "published"
     catalogue = publisher.publish([source.parent], output)
-    catalogue["variables"][0]["assets"][0]["source_sha256"] = publisher.sha256(source)
+    old = catalogue["variables"][0]["assets"][0]
+    digest = publisher.sha256(source)
+    manifest = [(source.name, digest)]
+    legacy_digest = hashlib.sha256(json.dumps(manifest, separators=(",", ":")).encode()).hexdigest()
+    legacy_path = old["path"].replace(digest[:20], legacy_digest[:20])
+    old_bytes = (output / old["path"]).read_bytes()
+    (output / old["path"]).rename(output / legacy_path)
+    old.update(source_sha256=legacy_digest, path=legacy_path, href=legacy_path,
+               id=old["id"].replace(digest[:20], legacy_digest[:20]))
     publisher.atomic_json(output / "catalog.json", catalogue)
-    mask = np.zeros((600, 600), dtype="uint8")
-    with rasterio.Env(GDAL_TIFF_INTERNAL_MASK=False):
-        with rasterio.open(source, "r+") as src:
-            src.write_mask(mask)
     updated = publisher.publish([source.parent], output)["variables"][0]["assets"][0]
-    assert updated["source_sha256"] != catalogue["variables"][0]["assets"][0]["source_sha256"]
-    with rasterio.open(output / updated["path"]) as cog:
-        np.testing.assert_array_equal(cog.read_masks(1), mask)
+    assert updated["source_sha256"] == digest
+    assert updated["path"] != legacy_path
+    assert not (output / legacy_path).exists()
+    assert old_bytes == (output / updated["path"]).read_bytes()
+    monkeypatch.setattr(publisher, "convert", lambda *a: pytest.fail("TIFF identity migrated twice"))
+    assert publisher.publish([source.parent], output)["variables"][0]["assets"][0] == updated
 
 
-def test_auxiliary_metadata_and_directory_moves_are_part_of_dataset_identity(tmp_path):
+def test_auxiliary_metadata_changes_and_directory_moves_keep_tiff_identity(tmp_path, monkeypatch):
     source = write(tmp_path / "current")
     output = tmp_path / "published"
     original = publisher.publish([source.parent], output)["variables"][0]["assets"][0]
     auxiliary = Path(str(source) + ".aux.xml")
-    auxiliary.write_text('<PAMDataset><PAMRasterBand band="1"><Scale>0.5</Scale>'
-                         '<Offset>10</Offset></PAMRasterBand></PAMDataset>')
-    revised = publisher.publish([source.parent], output)["variables"][0]["assets"][0]
-    assert revised["href"] != original["href"]
-    assert (revised["scale"], revised["offset"]) == (.5, 10)
-    with rasterio.open(output / revised["path"]) as cog:
-        assert cog.scales == (.5,) and cog.offsets == (10,)
+    monkeypatch.setattr(publisher, "convert", lambda *a: pytest.fail("Sidecar caused reconversion"))
+    for scale in (.5, .75):
+        auxiliary.write_text(f'<PAMDataset><PAMRasterBand band="1"><Scale>{scale}</Scale>'
+                             '<Offset>10</Offset></PAMRasterBand></PAMDataset>')
+        with rasterio.open(source) as src:
+            assert str(auxiliary) in src.files
+        assert publisher.dataset_sha256(source) == original["source_sha256"]
+        assert publisher.publish([source.parent], output)["variables"][0]["assets"][0] == original
+    auxiliary.unlink()
+    assert publisher.publish([source.parent], output)["variables"][0]["assets"][0] == original
     archive = tmp_path / "archive"
     source.parent.rename(archive)
-    assert publisher.publish([archive], output)["variables"][0]["assets"][0] == revised
+    assert publisher.publish([archive], output)["variables"][0]["assets"][0] == original
+
+
+def test_internal_mask_and_metadata_revisions_change_the_published_asset(tmp_path):
+    source = write(tmp_path / "input")
+    output = tmp_path / "published"
+    original = publisher.publish([source.parent], output)["variables"][0]["assets"][0]
+    mask = np.full((600, 600), 255, dtype="uint8")
+    mask[:20, :30] = 0
+    with rasterio.Env(GDAL_TIFF_INTERNAL_MASK=True):
+        with rasterio.open(source, "r+") as src:
+            src.write_mask(mask)
+            src.scales = (.5,)
+            src.offsets = (10,)
+    updated = publisher.publish([source.parent], output)["variables"][0]["assets"][0]
+    assert updated["path"] != original["path"]
+    assert updated["source_sha256"] != original["source_sha256"]
+    with rasterio.open(output / updated["path"]) as cog:
+        np.testing.assert_array_equal(cog.read_masks(1), mask)
+        assert cog.scales == (.5,) and cog.offsets == (10,)
+    assert publisher.publish([source.parent], output)["variables"][0]["assets"][0] == updated
 
 
 def test_publication_versions_are_precise_and_increase_when_the_clock_repeats(tmp_path):
@@ -399,10 +432,11 @@ def test_same_second_publications_cannot_arrive_out_of_order(tmp_path):
     now = datetime(2026, 11, 9, 12, 0, 0, 100000, tzinfo=timezone.utc)
     write(source, value=10)
     old = publisher.publish([source], output, now=now)
-    write(source, value=20)
-    new = publisher.publish([source], output, now=now + timedelta(microseconds=1))
     shutil.copytree(output / 'cogs', remote / 'cogs')
     remote_action('pin', remote, 'a' * 32, json.dumps(old))
+    write(source, value=20)
+    new = publisher.publish([source], output, now=now + timedelta(microseconds=1))
+    shutil.copytree(output / 'cogs', remote / 'cogs', dirs_exist_ok=True)
     remote_action('pin', remote, 'b' * 32, json.dumps(new))
     remote_action('commit', remote, 'b' * 32)
     remote_action('commit', remote, 'a' * 32)
