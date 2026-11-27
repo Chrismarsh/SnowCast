@@ -379,9 +379,22 @@ The old checkout-level `runs/` directory is unused by the current project runner
 
 Each project retains ten recent daily SWE/SD dates plus older weekly snapshots
 back to September 1 of the latest model date's hydrological year; temperature
-retains ten daily dates. The per-store 48-hour COG orphan grace period is unchanged.
+retains ten daily dates. COG orphan cleanup defaults to **zero grace hours** in
+both local staging and on the web host: after a successful catalogue switch,
+unreferenced COGs are removed immediately. Current catalogue assets and active
+upload pins remain protected. Pages using an older catalogue may need a refresh.
 Daily original archives remain daily. Old immutable observation assets are retained
 for open pages; there is currently no automatic observation garbage collection.
+
+COG source hashes use TIFF bytes only, so GDAL sidecar rewrites do not generate
+another copy of unchanged model output. When disk space is tight, see
+[reclaiming space from superseded COGs](../webui/README.md#reclaiming-space-from-superseded-cogs)
+for a remote dry-run and manual cleanup before the next publication if space is
+tight. `--grace-hours 0` is now the default; no extra cron flag is needed.
+Upgrading from sidecar-based hashes rebuilds available source dates once;
+superseded migration copies are cleaned automatically after publication. New
+assets still need space during upload before the catalogue can switch. This is a
+runner update: no CHM rerun, UI build or UI deployment is required.
 
 ## Observation datasets
 

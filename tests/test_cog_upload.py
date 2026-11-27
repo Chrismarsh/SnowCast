@@ -103,6 +103,24 @@ def test_upload_protects_one_snapshot_and_switches_catalogue_after_assets(host):
     assert (host.remote / 'cogs/swe/fixture.tif').read_bytes() == b'fixture'
 
 
+def test_upload_removes_superseded_cogs_immediately_after_catalogue_commit(host):
+    old = host.remote / 'cogs/swe/20261108T230000-00000000000000000001-float32-v1.tif'
+    old.parent.mkdir(parents=True)
+    old.write_bytes(b'previous')
+    previous = {'version': 1, 'generated_at': '2026-11-08T12:00:00Z',
+                'variables': [{'assets': [{'path': old.relative_to(host.remote).as_posix(), 'bytes': 8}]}]}
+    cog_store.atomic_json(host.remote / 'catalog.json', previous)
+
+    def during_transfer():
+        assert old.exists()
+        assert json.loads((host.remote / 'catalog.json').read_text()) == previous
+    host.during_transfer = during_transfer
+    uploader.upload(host.local, 'user@example.org', '/srv/data', refresh_downloads=False)
+    assert json.loads((host.remote / 'catalog.json').read_text()) == json.loads(host.original)
+    assert not old.exists()
+    assert (host.remote / 'cogs/swe/fixture.tif').read_bytes() == b'fixture'
+
+
 @pytest.mark.parametrize('stage', ['pin', 'assets', 'commit', 'index-directory', 'index-transfer', 'index-publish'])
 def test_upload_recovers_from_a_failure_at_each_remote_step(host, retry_delays, stage):
     host.fail_stage, host.failures = stage, 1

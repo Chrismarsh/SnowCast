@@ -1,4 +1,4 @@
-"""Locked catalogue publication and delayed cleanup of generated COGs.
+"""Locked catalogue publication and cleanup of unreferenced generated COGs.
 
 Standard library only: the uploader also executes this module on the web host.
 """
@@ -9,6 +9,7 @@ import fcntl
 import gzip
 import hashlib
 import json
+import math
 import os
 from pathlib import Path, PurePosixPath
 import re
@@ -16,7 +17,7 @@ import sys
 import tempfile
 import time
 
-GRACE_HOURS = 48
+GRACE_HOURS = 0
 MANAGED = re.compile(r"cogs/(swe|snowdepthavg|t)/\d{8}T\d{6}-[0-9a-f]{20}(?:-[A-Za-z0-9_-]+)?\.tif$")
 
 
@@ -92,8 +93,14 @@ def make_assets_public(root, catalogue):
         directory.chmod(0o755)
 
 
-def cleanup_locked(root, now=None, dry_run=False):
-    """Caller holds store_lock. Age starts at first observed loss of references."""
+def cleanup_locked(root, now=None, dry_run=False, *, grace_hours=GRACE_HOURS):
+    """Caller holds store_lock. Remove unreferenced assets immediately by default.
+
+    An explicit grace period starts at first observed loss of references.
+    Catalogue references and upload pins always protect their assets.
+    """
+    if not isinstance(grace_hours, (int, float)) or not math.isfinite(grace_hours) or grace_hours < 0:
+        raise ValueError("COG cleanup grace hours must be finite and non-negative")
     root = Path(root)
     now = time.time() if now is None else now
     catalogue = json.loads((root / "catalog.json").read_text())
@@ -133,7 +140,7 @@ def cleanup_locked(root, now=None, dry_run=False):
         if not isinstance(since, (int, float)) or not 0 <= since <= now:
             since = now
         unreferenced[relative] = since
-        if now - since >= GRACE_HOURS * 3600:
+        if now - since >= grace_hours * 3600:
             removable.append(relative)
     removed_bytes = sum(files[p] for p in removable)
     if not dry_run:
@@ -143,7 +150,8 @@ def cleanup_locked(root, now=None, dry_run=False):
         atomic_json(state_path, {"version": 1, "unreferenced": unreferenced})
     active_bytes = sum((root / p).stat().st_size for p in active)
     result = {"active_bytes": active_bytes, "managed_bytes": sum(files.values()) - (0 if dry_run else removed_bytes),
-              "removable_bytes": removed_bytes, "removable_files": removable, "dry_run": dry_run}
+              "removable_bytes": removed_bytes, "removable_files": removable, "dry_run": dry_run,
+              "grace_hours": grace_hours}
     print(f"COG storage: {active_bytes / 1e9:.3f} GB active; {result['managed_bytes'] / 1e9:.3f} GB managed; "
           f"{'would remove' if dry_run else 'removed'} {len(removable)} files ({removed_bytes / 1e9:.3f} GB)")
     return result
@@ -372,10 +380,13 @@ def main():
     parser.add_argument("directory", type=Path)
     parser.add_argument("token", nargs="?")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--grace-hours", type=float, default=GRACE_HOURS,
+                        help="Cleanup grace after loss of references (default: %(default)s hours). "
+                             "Use 0 for immediate orphan cleanup; current and uploading assets stay protected.")
     args = parser.parse_args()
     if args.action == "cleanup":
         with store_lock(args.directory):
-            cleanup_locked(args.directory, dry_run=args.dry_run)
+            cleanup_locked(args.directory, dry_run=args.dry_run, grace_hours=args.grace_hours)
     elif args.action == 'commit-observations':
         commit_observations(args.directory, json.load(sys.stdin))
     elif args.action.endswith('-site'):

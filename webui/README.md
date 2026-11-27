@@ -158,13 +158,22 @@ New URLs prevent browsers/CDNs from reusing cached Float64 bytes; the uploader
 still transfers the files before switching the catalogue. No catalogue edits
 or manual deletion are needed.
 
-Source content identities include the TIFF and GDAL-reported sidecars, including
-external validity masks and auxiliary metadata. Adding, revising or removing a
-sidecar invalidates the published asset. This replaces the former TIFF-only
-hash and rebuilds available source datasets once on upgrade. Moving a dataset
-and its sidecars together from the current directory to the archive keeps the
-same identity. `catalog.json` is made publicly readable (0644) before its atomic
-replacement, including when the publisher runs with a restrictive umask.
+Source content identities are the **SHA-256 of the source TIFF bytes only**.
+GDAL may recreate `.msk` or `.aux.xml` sidecars between runs; adding, rewriting
+or removing those files does not change the identity. Re-publishing unchanged
+TIFFs reuses the existing COG filename and mtime, so rsync skips them. Moving
+the TIFF from the current directory to the archive also keeps its identity.
+Conversion still reads GDAL masks and metadata, but a meaningful mask, scale or
+offset revision must be embedded in the TIFF itself to trigger re-publication;
+changing only a sidecar or touching the TIFF's mtime is insufficient.
+
+Upgrading from sidecar-manifest hashing regenerates available source dates once
+under the TIFF-only identity. Older COGs become unreferenced and follow normal
+cleanup; dates without source TIFFs retain their existing assets. If space is
+tight, use the [immediate orphan cleanup](#reclaiming-space-from-superseded-cogs)
+before publishing. The next successful publication automatically removes
+superseded migration copies after the catalogue switch. No model rerun is required. `catalog.json` is made publicly readable (0644)
+before its atomic replacement, including under a restrictive umask.
 
 ## Hosting on an ordinary disk
 
@@ -493,10 +502,13 @@ The catalogue records `retention.hydrological_year_start`; `window_days` is capp
 at the number of days since September 1 so the viewer does not show previous-year
 gap slots during the first nine days. There is at most one timestamp
 per UTC day and one snapshot per older calendar week for each snow variable.
-A week with no output contributes no snapshot. Each expired or superseded COG
-is kept for **48 hours after it first becomes unreferenced**, allowing existing
-browser sessions to finish. Cleanup never uses file mtime as its age criterion.
-Reintroducing a file into a catalogue or upload pin resets its grace period.
+A week with no output contributes no snapshot. Cleanup defaults to **zero grace
+hours** on both machines: after each successful catalogue switch, expired or
+superseded COGs are removed immediately unless a current catalogue or upload pin
+still references them. The new assets are transferred and verified before the
+remote catalogue switches. Already-open pages using an older catalogue may need
+a refresh. Cleanup never removes current catalogue assets to make room for an
+upload that has not completed.
 Catalogue and pin references must use canonical paths (no `./` or repeated `/`);
 invalid references stop cleanup before any deletion. Referenced COGs cannot use
 symlink aliases. Only publisher-named COGs under `cogs/swe`, `cogs/snowdepthavg` and `cogs/t` are
@@ -505,16 +517,17 @@ invalid catalogue/pin/state data stops cleanup without deleting files.
 
 Every successful publication/upload reports active and managed COG bytes and
 cleanup totals. At the measured November sizes, a full hydrological year would
-reach about 23 GB of active COGs, with additional space required during the 48-hour grace
-period, revisions and the initial migration/backfill. A 25 GB allocation is tight;
+reach about 23 GB of active COGs. Extra space is still required for new assets
+while conversion/upload is in progress, before the catalogue switch frees
+superseded files, and for initial migration/backfill. A 25 GB allocation is tight;
 this is a retention policy, not a hard quota or guarantee of seasonal file sizes.
 The first run only backfills selected weekly dates within the current hydrological
 year where source TIFFs are available. Existing COGs from previous years leave the
-catalogue and enter the same 48-hour cleanup grace period. Original daily TIFF
+catalogue and are cleaned immediately unless an upload pin still references them. Original daily TIFF
 and ASCII download archives, including earlier hydrological years, are unchanged.
 Older dates without either an original or a published COG cannot be recovered.
 
-To preview cleanup without deleting COGs or starting any grace clocks:
+To preview cleanup without deleting COGs or changing cleanup state:
 
 ```bash
 python -m snowcast_runner.cog_store cleanup /srv/snowcast/data/western-cordillera --dry-run
@@ -526,14 +539,48 @@ To inspect the web host using the same stdlib-only helper from your updated repo
 ssh USER@HOST 'python3 - cleanup /var/www/html/v3/data/western-cordillera --dry-run' < snowcast_runner/cog_store.py
 ```
 
-Omit `--dry-run` to record unreferenced files and remove those already past the
-grace period. Regular publisher/uploads do this automatically; no extra cron is
-needed. Do not remove `.cog-cleanup.json` while relying on its recorded grace
-periods. A process crash releases its local lock. Failed uploads unpin their
+Omit `--dry-run` to remove the reported unreferenced files immediately. Regular
+publishers/uploads do this automatically; no extra cron is needed. An explicit
+`cleanup --grace-hours 48` delays deletion for that maintenance invocation only;
+it does not change the zero-hour default of later publications. With a nonzero
+period, age starts at first observed loss of references, never file mtime;
+re-referencing an asset resets that age. Preserve `.cog-cleanup.json` if relying
+on those recorded ages. A process crash releases its local lock. Failed uploads unpin their
 snapshot when the host is reachable; otherwise the next upload from the same
 machine/source directory replaces that stale pin. If permanently retiring that
 source, remove its specific `.uploads/*.json` pin only after confirming no upload
 from it is running. Pins from active uploads must be preserved.
+
+### Reclaiming space from superseded COGs
+
+`cleanup` defaults to `--grace-hours 0` and immediately removes generated COGs
+that are absent from both the current catalogue and every upload pin. It works
+even if the files have not previously been recorded in `.cog-cleanup.json`.
+It does not choose a copy by filename, hash or mtime: the current catalogue is
+authoritative. All validation, locking, symlink and unmanaged-file protections
+still apply. Automatic publication cleanup uses the same zero-hour default.
+
+From the updated SnowCast checkout, preview both production projects on the host
+(substitute the SSH host and `deploy.directory` from your site configuration):
+
+```bash
+for project in western-cordillera tvc; do
+  ssh USER@HOST "python3 - cleanup /var/www/html/v3/data/$project --grace-hours 0 --dry-run" < snowcast_runner/cog_store.py
+done
+```
+
+Repeat without `--dry-run` to reclaim the reported space. The helper requires
+only Python's standard library on the host; the SnowCast package need not be
+installed there. Use the equivalent local command to free staging space:
+
+```bash
+python -m snowcast_runner.cog_store cleanup site-staging/data/tvc --grace-hours 0 --dry-run
+```
+
+Already-open browser sessions using an older catalogue may need a refresh after
+cleanup. Current catalogue assets and active upload pins remain protected. If a pin
+keeps an old copy alive, follow the stale-pin guidance above rather than deleting
+all pins. Original TIFF/ASCII archives and other projects are outside this cleanup.
 
 ## Areas of interest
 

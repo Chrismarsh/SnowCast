@@ -81,14 +81,14 @@ def sha256(path: Path) -> str:
 
 
 def dataset_sha256(path: Path) -> str:
-    """Identify the TIFF and GDAL-reported sidecars, independent of its directory."""
-    path = path.resolve()
-    with rasterio.open(path) as src:
-        files = {Path(name).resolve() for name in src.files} | {path}
-    # Hash the manifest as well as the bytes: adding/removing a .msk or .aux.xml
-    # must invalidate the COG even when the TIFF itself has not changed.
-    manifest = sorted((os.path.relpath(name, path.parent), sha256(name)) for name in files)
-    return hashlib.sha256(json.dumps(manifest, separators=(",", ":")).encode()).hexdigest()
+    """Identify the source TIFF bytes, independent of sidecars or its directory.
+
+    GDAL can rewrite .msk/.aux.xml files without changing the model TIFF.
+    Those rewrites must not mint another immutable COG for every retained date.
+    Data, mask or metadata revisions intended for publication must change the
+    TIFF itself (for example, use an internal TIFF mask).
+    """
+    return sha256(path)
 
 
 def grid_resolution(grid: str) -> tuple[float, float]:
